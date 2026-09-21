@@ -20,8 +20,8 @@
 
 ## 4. Level-52 Persistent Transition State Machine and Status Flags
 
-- [ ] 4.1 Implement `Level52TransitionState` enum (`NOT_RELEVANT`, `PREPARING`, `VERIFYING`, `BLOCKED`, `READY`, `TRANSITIONING`, `COMPLETE`), root `Level52TransitionResult` model, and derived current-condition status properties `transition_pending` and `missed_transition` in `companion/transition/state.py`.
-- [ ] 4.2 Implement deterministic transition evaluator `evaluate_level52_transition` and transition trigger `trigger_transition_start` in `companion/transition/evaluator.py`, enforcing:
+- [x] 4.1 Implement `Level52TransitionState` enum (`NOT_RELEVANT`, `PREPARING`, `VERIFYING`, `BLOCKED`, `READY`, `TRANSITIONING`, `COMPLETE`), root `Level52TransitionResult` model, and derived current-condition status properties `transition_pending` and `missed_transition` in `companion/transition/state.py`.
+- [x] 4.2 Implement deterministic transition evaluator `evaluate_level52_transition` and transition trigger `trigger_transition_start` in `companion/transition/evaluator.py`, enforcing:
   1. `level < 52`: evaluates to `NOT_RELEVANT` unless an applicable `USABLE` rule with role `PREPARATION` is satisfied (which sets `PREPARING`); no invented preparation thresholds (45/50/51); `PENDING_SOURCE_VERIFICATION` rules cannot establish `PREPARING`,
   2. `level >= 52` with unobserved/stale evidence or pending verification: `VERIFYING` (never `BLOCKED` from uncertainty),
   3. `level >= 52` with verified failed `USABLE` `BLOCKING_REQUIREMENT`: `BLOCKED`,
@@ -32,7 +32,7 @@
   8. `missed_transition` is deterministically derived as `level > 52 and state != COMPLETE and verified pre-swap evidence active`, resolving to `False` once `COMPLETE`,
   9. Late install at level >= 52 with verified completion evidence: directly resolves `COMPLETE` without `missed_transition`; insufficient evidence resolves to `VERIFYING`,
   10. Idempotent `COMPLETE`: level advancement to 58+ preserves `COMPLETE`.
-- [ ] 4.3 Implement unit tests in `tests/transition/test_state_machine.py` verifying all valid state transitions, invalid transition rejections, `BLOCKED` vs `VERIFYING` distinction, `READY` requirements, late-install direct completion at level 60, `missed_transition` derivation on verified pre-swap build, and explicit transition start signal, verified by running `pytest tests/transition/test_state_machine.py`.
+- [x] 4.3 Implement unit tests in `tests/transition/test_state_machine.py` verifying all valid state transitions, invalid transition rejections, `BLOCKED` vs `VERIFYING` distinction, `READY` requirements, late-install direct completion at level 60, `missed_transition` derivation on verified pre-swap build, and explicit transition start signal, verified by running `pytest tests/transition/test_state_machine.py`.
 
 ## 5. Schema 3.0 Persistence, Migration, and Round-Trip Safety
 

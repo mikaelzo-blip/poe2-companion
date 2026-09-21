@@ -14,9 +14,9 @@
 
 ## 3. Tri-State Requirement Evaluation and Future Requirement Isolation
 
-- [ ] 3.1 Implement `RequirementReadiness` enum (`SATISFIED`, `UNSATISFIED`, `UNKNOWN`) and `RequirementEvaluation` model in `companion/transition/requirements.py`, implementing requirement aggregators that consume M2 `BuildDeltaResult` (equipment delta, skill delta, passive delta) and M1 character state, enforcing that only `USABLE` rules with role `BLOCKING_REQUIREMENT` gate transition blocking or readiness.
-- [ ] 3.2 Implement future requirement isolation in `companion/transition/requirements.py`: consume M2 `EligibilityState`, strictly excluding requirements with progression state `FUTURE` (such as Cast on Dodge with interval `[58, 100]` at level 52) from the level-52 blocking requirements set so they never block transition readiness.
-- [ ] 3.3 Implement unit tests in `tests/transition/test_requirements.py` verifying tri-state requirement evaluations (`SATISFIED`, `UNSATISFIED`, `UNKNOWN`), proving `UNKNOWN` is neither satisfied nor an active blocker, verifying M2 delta consumption, and verifying Cast on Dodge at level 52 evaluates as `FUTURE` and non-blocking, verified by running `pytest tests/transition/test_requirements.py`.
+- [x] 3.1 Implement `RequirementReadiness` enum (`SATISFIED`, `UNSATISFIED`, `UNKNOWN`) and `RequirementEvaluation` model in `companion/transition/requirements.py`, implementing requirement aggregators that consume M2 `BuildDeltaResult` (equipment delta, skill delta, passive delta) and M1 character state, enforcing that only `USABLE` rules with role `BLOCKING_REQUIREMENT` gate transition blocking or readiness.
+- [x] 3.2 Implement future requirement isolation in `companion/transition/requirements.py`: consume M2 `EligibilityState`, strictly excluding requirements with progression state `FUTURE` (such as Cast on Dodge with interval `[58, 100]` at level 52) from the level-52 blocking requirements set so they never block transition readiness.
+- [x] 3.3 Implement unit tests in `tests/transition/test_requirements.py` verifying tri-state requirement evaluations (`SATISFIED`, `UNSATISFIED`, `UNKNOWN`), proving `UNKNOWN` is neither satisfied nor an active blocker, verifying M2 delta consumption, and verifying Cast on Dodge at level 52 evaluates as `FUTURE` and non-blocking, verified by running `pytest tests/transition/test_requirements.py`.
 
 ## 4. Level-52 Persistent Transition State Machine and Status Flags
 

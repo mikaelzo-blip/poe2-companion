@@ -42,7 +42,7 @@
 
 ## 6. Golden Scenarios, Invariant Property Tests, and Suite Verification
 
-- [ ] 6.1 Implement comprehensive golden scenario test suite in `tests/transition/test_golden_scenarios.py` exercising:
+- [x] 6.1 Implement comprehensive golden scenario test suite in `tests/transition/test_golden_scenarios.py` exercising:
   1. Level 51 pre-transition without usable preparation rule (`NOT_RELEVANT`),
   2. Level 51 with usable `PREPARATION` rule satisfied/applicable (`PREPARING`),
   3. `PENDING_SOURCE_VERIFICATION` preparation rule does not trigger `PREPARING` authoritatively (`NOT_RELEVANT`),
@@ -69,7 +69,7 @@
   24. Restart while `READY` preserves state,
   25. Restart while `COMPLETE` preserves state,
   26. Conflicting source/evidence yields `CONFLICTING_EVIDENCE`.
-- [ ] 6.2 Implement invariant property tests in `tests/transition/test_invariants.py` proving:
+- [x] 6.2 Implement invariant property tests in `tests/transition/test_invariants.py` proving:
   1. No invented pre-52 preparation threshold (level < 52 is `NOT_RELEVANT` unless explicit usable preparation rule exists),
   2. Requirement type does not implicitly determine transition role,
   3. Only `USABLE` `BLOCKING_REQUIREMENT` rules can directly cause `BLOCKED`,
@@ -92,4 +92,4 @@
   20. Future progression requirements do not reopen completed Level-52 transition,
   21. M3 does not independently recompute M2 eligibility/delta semantics,
   22. State-machine evaluation is deterministic for identical persistent state and evidence.
-- [ ] 6.3 Verify complete test and compliance suite passes: run `pytest tests/compliance/test_no_input_guard.py tests/rules/ tests/transition/ tests/state/ tests/build/`.
+- [x] 6.3 Verify complete test and compliance suite passes: run `pytest tests/compliance/test_no_input_guard.py tests/rules/ tests/transition/ tests/state/ tests/build/`.

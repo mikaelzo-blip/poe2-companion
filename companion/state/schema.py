@@ -1,7 +1,7 @@
-"""CharacterState v2 root schema and domain models.
+"""CharacterState v3 root schema and domain models.
 
 Provides isolated per-character runtime persistence state with provenanced facts,
-semantic verification, and schema versioning.
+semantic verification, schema versioning, and Level-52 milestone transition records.
 """
 
 from __future__ import annotations
@@ -12,9 +12,10 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from companion.state.provenance import ProvenancedField, VerificationState
+from companion.transition.state import Level52TransitionRecord
 
 CHARACTER_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-CURRENT_SCHEMA_VERSION = "2.0"
+CURRENT_SCHEMA_VERSION = "3.0"
 
 
 class InvalidCharacterIdError(ValueError):
@@ -96,6 +97,8 @@ class CharacterState(BaseModel):
             "passive_checkpoint_last_completed": None,
         }
     )
+
+    transition: Level52TransitionRecord | None = None
 
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())

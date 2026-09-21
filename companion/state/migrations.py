@@ -1,6 +1,6 @@
 """Schema versioning and lightweight migration dispatcher for CharacterState.
 
-Upgrades older character state dictionaries to the current schema version (2.0)
+Upgrades older character state dictionaries to the current schema version (3.0)
 and cleanly rejects unrecognized future versions.
 """
 
@@ -50,8 +50,21 @@ def migrate_1_0_to_2_0(data: dict[str, Any]) -> dict[str, Any]:
     return upgraded
 
 
+def migrate_2_0_to_3_0(data: dict[str, Any]) -> dict[str, Any]:
+    """Upgrade v2.0 character state dict to v3.0 format with uninitialized transition.
+
+    Strictly DOES NOT infer historical transition state during schema migration;
+    sets transition to None so first evaluation can deterministically derive it.
+    """
+    upgraded = dict(data)
+    upgraded["schema_version"] = "3.0"
+    upgraded["transition"] = None
+    return upgraded
+
+
 MIGRATION_REGISTRY: dict[str, MigrationCallable] = {
     "1.0": migrate_1_0_to_2_0,
+    "2.0": migrate_2_0_to_3_0,
 }
 
 

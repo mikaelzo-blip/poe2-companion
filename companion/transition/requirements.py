@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from companion.build.eligibility import EligibilityState, evaluate_eligibility
-from companion.build.policy import DeltaStatus
 from companion.build.validation import validate_character_level
 from companion.rules.evaluator import evaluate_rule
 from companion.rules.loader import load_guide_rules

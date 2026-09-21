@@ -36,9 +36,9 @@
 
 ## 5. Schema 3.0 Persistence, Migration, and Round-Trip Safety
 
-- [ ] 5.1 Implement `Level52TransitionRecord` model and update `CharacterState` in `companion/state/schema.py` to schema version `3.0`, adding the persistent field `transition: Level52TransitionRecord | None = None`.
-- [ ] 5.2 Implement `migrate_2_0_to_3_0` in `companion/state/migrations.py` and register it in `MIGRATION_REGISTRY`, setting `transition = None` (uninitialized) without inferring historical transition state during schema migration. Implement deterministic initialization on first post-migration evaluation.
-- [ ] 5.3 Implement unit tests in `tests/state/test_schema_v3_migration.py` verifying sequential migration from `1.0` -> `2.0` -> `3.0`, direct migration from `2.0` -> `3.0` leaving `transition = None` for levels 20, 52, and 60, followed by deterministic initialization on first evaluation, round-trip persistence of transition state across process restart, and rejection of unrecognized future schema versions (e.g. `4.0`), verified by running `pytest tests/state/test_schema_v3_migration.py`.
+- [x] 5.1 Implement `Level52TransitionRecord` model and update `CharacterState` in `companion/state/schema.py` to schema version `3.0`, adding the persistent field `transition: Level52TransitionRecord | None = None`.
+- [x] 5.2 Implement `migrate_2_0_to_3_0` in `companion/state/migrations.py` and register it in `MIGRATION_REGISTRY`, setting `transition = None` (uninitialized) without inferring historical transition state during schema migration. Implement deterministic initialization on first post-migration evaluation.
+- [x] 5.3 Implement unit tests in `tests/state/test_schema_v3_migration.py` verifying sequential migration from `1.0` -> `2.0` -> `3.0`, direct migration from `2.0` -> `3.0` leaving `transition = None` for levels 20, 52, and 60, followed by deterministic initialization on first evaluation, round-trip persistence of transition state across process restart, and rejection of unrecognized future schema versions (e.g. `4.0`), verified by running `pytest tests/state/test_schema_v3_migration.py`.
 
 ## 6. Golden Scenarios, Invariant Property Tests, and Suite Verification
 

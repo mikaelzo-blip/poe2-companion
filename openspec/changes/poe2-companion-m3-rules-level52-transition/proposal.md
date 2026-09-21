@@ -1,0 +1,34 @@
+# Proposal
+
+## Why
+
+The offline Build Brain (Milestone 2) calculates factual deltas between character state and build targets, but does not evaluate gameplay rules or manage progression transitions. In Path of Exile 2, the Level-52 weapon swap (transitioning to a dual weapon set setup) is a critical build turning point that persists across character levels and game sessions. Players may level past 52 while the companion is offline, start the companion late (e.g., at level 60), or hold future requirements (such as Cast on Dodge at level 58) that must not block the level-52 swap. Milestone 3 introduces a deterministic rule evaluation layer and a persistent Level-52 transition state machine to safely track, verify, and persist transition readiness without requiring live sensors, OCR, or premature objective engines.
+
+## What Changes
+
+- **Rule Schema & Metadata**: Introduce a lightweight, explicit declarative rule schema carrying stable rule IDs, source provenance, source verification status (`USABLE`, `PENDING_SOURCE_VERIFICATION`, `UNAVAILABLE`), applicability criteria (character level, progression phase), requirement classification, declarative observability paths (`API`, `GEAR_AUDIT`, `SKILL_AUDIT`, `PASSIVE_AUDIT`, `VISION`, `MANUAL`), and an `evaluable` flag. Introduce an explicit `TransitionRuleRole` (`BLOCKING_REQUIREMENT`, `COMPLETION_EVIDENCE`, `ADVISORY`, `PREPARATION`) decoupled from requirement type or observability.
+- **Rule Result Semantics & Source Trust Gating**: Implement six explicit semantic evaluation states: `PASS`, `FAIL`, `UNKNOWN`, `NOT_APPLICABLE`, `STALE`, and `CONFLICTING_EVIDENCE`. Prohibit converting `UNKNOWN` or `STALE` into `FAIL`. Enforce that rules marked `PENDING_SOURCE_VERIFICATION` evaluate conservatively as `UNKNOWN`, cannot produce `PASS` or `FAIL`, cannot independently produce `BLOCKED` or prove `COMPLETE`, and are not counted as unsatisfied authoritative blockers so they never deadlock `READY`. `UNAVAILABLE` rules also cannot gate transitions.
+- **Requirement Readiness Tri-State**: Model transition requirements with tri-state readiness (`SATISFIED`, `UNSATISFIED`, `UNKNOWN`). Only definitive verified evidence can mark requirements `SATISFIED` or `UNSATISFIED`; uncertainty remains `UNKNOWN`. Only `USABLE` rules with role `BLOCKING_REQUIREMENT` gate transition blocking/readiness.
+- **Persistent Level-52 Transition State Machine**: Implement the Blueprint v2 persistent states: `NOT_RELEVANT`, `PREPARING`, `VERIFYING`, `BLOCKED`, `READY`, `TRANSITIONING`, `COMPLETE`. Transition state persists across levels and restarts rather than being a transient single-level check. Remove invented preparation level thresholds (no level 45/50/51 thresholds); below level 52 evaluates to `NOT_RELEVANT` unless an explicit `USABLE` `PREPARATION` rule is matched and satisfied.
+- **Transition Status Flags as Derived Conditions**: Maintain `transition_pending` and `missed_transition` as deterministically derived current-condition evaluation outputs rather than independently mutable persisted booleans that risk drift. `transition_pending` is derived from `level > 52` and state not `COMPLETE`. `missed_transition` is derived from `level > 52`, transition not `COMPLETE`, and verified pre-swap evidence remaining; once `COMPLETE`, `missed_transition` evaluates to false.
+- **Future Requirement Isolation**: Consume M2 eligibility results (e.g., `Cast on Dodge [58, 100]` which is `FUTURE` at level 52) and strictly ensure non-applicable future requirements never block level-52 transition readiness, and later activation at level 58 never reopens a completed level-52 transition.
+- **Late Installation & Offline Skip Handling**: Ensure players launching the companion at level >= 52 with verified transition completion markers achieve `COMPLETE` without requiring exact equality to the full level-52 snapshot and without inferring skill weapon-set assignments from `.build`. When evidence is insufficient, evaluate to `VERIFYING` (not false `BLOCKED` or false `COMPLETE`).
+- **Deterministic Transitioning & Completion Triggers**: Transitioning from `READY` to `TRANSITIONING` requires an explicit deterministic start signal; reaching `COMPLETE` requires verified post-swap evidence matching `USABLE` `COMPLETION_EVIDENCE` rules, remaining strictly idempotent under subsequent evaluations.
+- **Crash-Safe Persistence & Migration**: Persist canonical transition state within `CharacterState` via the existing M1 `CharacterStore`, bumping the schema version to `3.0`. Migration from `2.0` to `3.0` sets `transition = None` (uninitialized), refusing to invent historical transition states during schema migration. The first post-migration evaluation deterministically derives the transition state from level, available M2 results, and verified evidence.
+- **Exclusions**: Live game sensors, Windows toasts, UI workflows, objective engines, and priority ranking are explicitly excluded and deferred to M4+.
+
+## Capabilities
+
+### New Capabilities
+- `rule-evaluation`: Deterministic rule schema, explicit `TransitionRuleRole`, six-state evaluation semantics (`PASS`, `FAIL`, `UNKNOWN`, `NOT_APPLICABLE`, `STALE`, `CONFLICTING_EVIDENCE`), source verification gating (`PENDING_SOURCE_VERIFICATION` non-deadlocking `UNKNOWN`), and requirement readiness tri-state evaluation.
+- `level52-transition`: Persistent Level-52 transition state machine (`NOT_RELEVANT`, `PREPARING`, `VERIFYING`, `BLOCKED`, `READY`, `TRANSITIONING`, `COMPLETE`) without invented pre-52 thresholds, derived transition status flags (`transition_pending`, `missed_transition`), future requirement non-blocking semantics, late-install completion via explicit completion evidence rules, explicit transition signals, and conservative schema 3.0 persistence migration (`transition = None` uninitialized).
+
+### Modified Capabilities
+<!-- None: existing canonical capabilities (build-delta, build-eligibility-progression, target-resolution, character-state, source-ingestion, no-input-compliance) remain unmodified. Schema versioning in character-state already accommodates backward-compatible upgrades via registered migrations. -->
+
+## Impact
+
+- **Build Brain Reuse**: Consumes `BuildDeltaResult`, `ProgressionPhase`, and `EligibilityState` from `companion/build/` without duplicating delta or eligibility logic.
+- **State Store**: Integrates with `companion/state/` by introducing schema version `3.0`, updating `CharacterState` with `transition: Level52TransitionRecord | None = None`, and adding `migrate_2_0_to_3_0` in `companion/state/migrations.py`.
+- **Dependencies**: No external runtime dependencies; purely standard library + Pydantic v2.
+- **Source Data**: Evaluates declarative rules defined in `data/source/guide_rules.yaml` alongside M0 normalized build fixtures.

@@ -1,6 +1,6 @@
 # Design Specification: Hermes PoE2 Companion (M0 & M1)
 
-**Status:** Proposed  
+**Status:** Proposed (Revised)  
 **Date:** 2026-09-21  
 **Scope:** M0 (Source Freeze & Validation) & M1 (State Foundation)  
 **Target Build:** Fubgun 0.5.5 Flameblast / Oil Grenade  
@@ -12,11 +12,13 @@
 
 This design defines the implementation of **M0** and **M1** for the personal-use **Hermes PoE2 Companion** at `C:\Projects\poe2-companion`.
 
-The companion is a personal, local AI journey director and advisor for Path of Exile 2. It is **not** a bot and does not control the game.
-This initial run is strictly limited to:
-- **M0 — Freeze and Validate Sources**: Extract, validate, normalize, and manifest the 9 Fubgun `.build` files from `C:\Users\Fikri\Downloads\0.5.5 Fubgun Flameblast Oil Grenade.zip`.
-- **M1 — State Foundation**: Establish the per-character persistent state store with atomic crash-safe writes, field provenance, verification enums, single-writer locking, backup rotation, and schema migration support.
-- **Hard No-Input Compliance**: Establish static code inspection to ensure the companion contains no game-input automation libraries or API hooks.
+The companion is a personal, local AI journey director and advisor for Path of Exile 2. It is **not** a bot and does not control the game. Early brainstorm notes in `IDEA.md` (such as an injected DirectX/Vulkan overlay and SQLite cache) conflict with Blueprint v2 and are marked `SUPERSEDED — DO NOT USE FOR IMPLEMENTATION`. Blueprint v2 remains authoritative.
+
+This initial foundation run is strictly limited to:
+- **Repository Hygiene**: Establish a minimal `.gitignore` before implementation.
+- **M0 — Freeze and Validate Sources**: Extract the nine expected pinned Fubgun 0.5.5 build snapshots from the supplied source archive (`C:\Users\Fikri\Downloads\0.5.5 Fubgun Flameblast Oil Grenade.zip`) with ZIP slip protection, validate, normalize, and manifest them deterministically.
+- **M1 — State Foundation**: Establish the per-character persistent state store with atomic crash-safe writes, safe backup copy ordering, field provenance, verification enums, cross-process single-writer locking via `msvcrt.locking`, conservative character ID validation, and schema migration support.
+- **Defense-in-Depth No-Input Compliance**: Establish static AST code inspection across `companion/**/*.py` to enforce the project's prohibited input/control dependencies and known API patterns at static-analysis time.
 
 All M2+ features (Client.txt watcher, process watcher, screenshots, vision/OCR, GGG API/OAuth, notifications, live monitoring, audit workflows) are explicitly out of scope for this run.
 
@@ -32,17 +34,18 @@ All M2+ features (Client.txt watcher, process watcher, screenshots, vision/OCR, 
 - **Development & Testing:**
   - `pytest`
   - `pytest-cov`
-- **CLI:**
+- **CLI & System:**
   - Standard library `argparse` (modular subcommands: `sources`, `state`).
+  - Standard library `msvcrt` (Windows single-writer file locking).
 
 ### 2.2 Simplicity Rules
 - Pure local file-based architecture. No SQLite, SQLAlchemy, FastAPI, Docker, Redis, or microservices.
 - No dependency injection containers or excessive abstractions.
 
 ### 2.3 Compliance and Safety Rules
-- Unattended companion daemon and modules must never import or invoke game-control or input-simulation mechanisms:
+- Defense-in-depth static compliance check: companion modules must never import or invoke game-control or input-simulation mechanisms:
   `pyautogui`, `pynput`, `keyboard`, `mouse`, `SendInput`, `keybd_event`, `mouse_event`, `cua-driver` input, memory-reading or DLL injection APIs.
-- Enforced via static AST/import scanner in the test suite.
+- Enforced via lightweight AST inspection on `companion/**/*.py` in the test suite, excluding virtual environments, test fixtures, docs, data, runtime, and OpenSpec artifacts.
 
 ---
 
@@ -51,9 +54,11 @@ All M2+ features (Client.txt watcher, process watcher, screenshots, vision/OCR, 
 ### 3.1 Project Directory Layout
 ```text
 C:\Projects\poe2-companion\
+├── .gitignore
 ├── pyproject.toml
 ├── README.md
 ├── POE2_Hermes_Companion_Blueprint_v2.md
+├── IDEA.md                           # Marked SUPERSEDED
 ├── companion\
 │   ├── __init__.py
 │   ├── __main__.py
@@ -81,13 +86,14 @@ C:\Projects\poe2-companion\
 ├── data\
 │   ├── source\
 │   │   ├── builds\               # Immutable raw .build files
-│   │   ├── manifest.json         # Generated deterministic source manifest
-│   │   └── guide_rules.yaml      # Initial Fubgun rules
+│   │   ├── manifest.json         # Byte-for-byte deterministic source manifest (no run timestamps)
+│   │   └── guide_rules.yaml      # Initial schema/skeleton with explicit provenance tags
 │   └── reports\
 │       ├── m0_anomaly_report.json
 │       └── m0_anomaly_report.md
 ├── runtime\                      # Local runtime storage (gitignored except .gitkeep)
 │   ├── active_character.json
+│   ├── state.lock
 │   ├── characters\
 │   │   └── <character_id>.json
 │   └── backups\
@@ -123,7 +129,7 @@ C:\Projects\poe2-companion\
 
 #### 3.2.1 Raw vs Normalized Models
 1. **RawBuild**:
-   - Matches official PoE2 `.build` JSON format.
+   - Matches PoE2 `.build` JSON format.
    - Keeps unknown/extra fields using `model_config = ConfigDict(extra="allow")`.
    - Preserves raw `additional_text` without mutation.
    - Raw passive entries are preserved as extracted lists to allow audit of exact duplicates.
@@ -138,8 +144,8 @@ C:\Projects\poe2-companion\
      - `0` -> `UNKNOWN_RESERVED`
    - Aggregates duplicate passives while recording occurrences count, distinct intervals, and original indices.
 
-#### 3.2.2 Snapshots Verification
-The 9 expected stages in the Fubgun archive:
+#### 3.2.2 Snapshots Verification and ZIP Slip Protection
+The nine expected pinned stages in the Fubgun 0.5.5 archive:
 1. `lvl 1-14`
 2. `lvl 15-32`
 3. `lvl 33-51`
@@ -150,7 +156,7 @@ The 9 expected stages in the Fubgun archive:
 8. `Mageblood`
 9. `DoT Cap`
 
-If any stage is missing or an extraneous file exists in the archive, validator flags it explicitly.
+The unpacker validates each ZIP entry against traversal sequences (`../`), absolute paths, Windows drive paths, and target directory escape before extraction. Only expected `.build` files are written to `data/source/builds/`. If any required stage is missing or an extraneous file exists in the archive, the validator flags it explicitly.
 
 #### 3.2.3 Special Anomalies & Annotations
 - **Cast on Dodge**: Meta-gem anomaly. The validator inspects all skills and supports. When `Cast on Dodge` is encountered, it records snapshot name, raw ID, `level_interval` (e.g. `[58, 100]`), and flags it as `SOURCE_ANNOTATION: meta-gem unsupported by official planner`.
@@ -158,20 +164,23 @@ If any stage is missing or an extraneous file exists in the archive, validator f
 - **Weapon-set context duplicates**: Logged in detail.
 
 #### 3.2.4 Source Manifest (`data/source/manifest.json`)
-Deterministic JSON file:
+Deterministic canonical JSON file (byte-for-byte identical across runs for identical source bytes):
 - `manifest_version`: "1.0"
 - `target_game_version`: "0.5.5"
 - `build_name`: "Fubgun Flameblast Oil Grenade"
-- `source_archive`: path, size, sha256
-- `extracted_at`: ISO timestamp
-- `files`: list of objects with:
+- `tool_version`: "0.1.0"
+- `files`: sorted list of objects by progression stage with:
   - `logical_stage`
-  - `original_filename`
-  - `stored_path`
+  - `filename`
   - `sha256`
   - `byte_size`
   - `validation_status` (PASS / ANOMALIES / FAIL)
-  - `anomalies`: list of anomaly tags
+*(Note: Wall-clock run timestamps like `extracted_at` are excluded from the canonical manifest and recorded only in `data/reports/m0_anomaly_report.json` and `.md`.)*
+
+#### 3.2.5 Guide Rules Integrity (`data/source/guide_rules.yaml`)
+- Provides schema and skeleton.
+- Explicit provenance: `provenance: BLUEPRINT_V2` for items derived from Blueprint v2; items requiring external guide text are tagged `status: PENDING_SOURCE_VERIFICATION`.
+- No executable rule engine is built in M0/M1.
 
 ---
 
@@ -211,29 +220,30 @@ Root model contains:
 - `resources`: gold, gcp
 - `audit`: gear_last_completed, skill_last_completed, passive_checkpoint_last_completed
 
-#### 3.3.3 File Store & Per-Character Isolation
-- Characters stored at `runtime/characters/<safe_char_id>.json`.
+#### 3.3.3 File Store, Isolation & Character ID Safety
+- Characters stored at `runtime/characters/<character_id>.json`.
+- Character ID validation: Conservative allowed pattern `^[a-zA-Z0-9_-]{1,64}$`. Any invalid characters or path separators raise `InvalidCharacterIdError` (no lossy sanitization). Original character ID preserved inside model.
 - `runtime/active_character.json` points to the currently active character ID and file path.
-- Sanitization helper prevents path traversal (`..` or invalid characters in ID).
 
-#### 3.3.4 Single-Writer Enforcement
-- File lock mechanism: `runtime/state.lock`.
-- On Windows: Uses `msvcrt.locking` on an open lockfile or non-blocking atomic file open.
-- When writer process starts, it holds the exclusive lock. If another process tries to acquire, `StateLockError` is raised immediately.
-- Context manager `StateLock`:
-  ```python
-  with StateLock(lock_path):
-      # write state
-  ```
+#### 3.3.4 Cross-Process Single-Writer Enforcement
+- Mechanism: Windows standard `msvcrt.locking` on `runtime/state.lock`.
+- Lockfile guarantees at least 1 byte, seeks to byte 0, and acquires exclusive lock on 1 byte via `msvcrt.LK_NBLCK`.
+- Lock is held across the entire state mutation transaction (serialization, temp write, sync, backup copy, atomic replace, and backup pruning).
+- Unlocked in `finally` and file descriptor reliably closed.
+- Contention raises `StateLockError` immediately without modifying state.
+- Verified via multi-process tests (`multiprocessing` / `subprocess`).
 
-#### 3.3.5 Atomic Writes & Rolling Backups
-- Atomic write flow:
-  1. Serialize Pydantic model to formatted JSON string.
-  2. Write to temp file `runtime/characters/<safe_char_id>.tmp.<uuid>`.
+#### 3.3.5 Crash-Safe Atomic Writes & Safe Backup Ordering
+- Ordered persistence sequence:
+  1. Serialize Pydantic model to formatted JSON bytes.
+  2. Write to temp file `runtime/characters/<character_id>.tmp.<uuid>`.
   3. `flush()` and `os.fsync(fileno)`.
-  4. Rotate current file (if exists) into `runtime/backups/<safe_char_id>/state.<timestamp>.bak` (keep max 3).
-  5. `os.replace(tmp_path, final_path)`.
-- If final file is corrupted, store provides `recover_from_backup(character_id)`.
+  4. If current canonical state exists and is valid, COPY current canonical file to `runtime/backups/<character_id>/state.<timestamp>.bak` using a safe backup procedure (never move or delete canonical file before replacement).
+  5. Atomically replace: `os.replace(tmp_path, canonical_path)`.
+  6. Only after successful replacement, prune old backups exceeding retention limit (max 3 backups).
+  7. Corrupted or unreadable canonical files are never copied to backup, preserving good backups.
+  8. `runtime/active_character.json` uses the same atomic-write primitive.
+- Store provides `recover_from_backup(character_id)` to restore the most recent valid backup if canonical state is corrupted.
 
 #### 3.3.6 Lightweight Schema Migrations
 - `migrations.py` contains registry: `MIGRATION_REGISTRY: dict[str, Callable[[dict], dict]]`.
@@ -244,18 +254,17 @@ Root model contains:
 
 ---
 
-### 3.4 Compliance Guard Design
+### 3.4 Compliance Guard Design (Defense-in-Depth)
 
 `companion/compliance/no_input_guard.py`:
-- Scans Python files in `companion/` using `ast.parse`.
-- Collects:
-  - `Import` and `ImportFrom` modules
-  - `Call` names and attribute lookups
-- Prohibited tokens:
-  - Modules: `pyautogui`, `pynput`, `keyboard`, `mouse`, `ctypes.windll.user32.SendInput`
-  - Symbols: `SendInput`, `keybd_event`, `mouse_event`
-  - Patterns: memory injection, dll injection, `cua_driver` input
-- If any forbidden token is found in unattended packages, returns failure with file, line number, and offending symbol.
+- Static AST defense-in-depth scanner across `companion/**/*.py`.
+- Excludes `.venv/`, test fixtures, `docs/`, `data/`, `runtime/`, and OpenSpec artifacts.
+- Detects:
+  - Direct module imports (`import pyautogui`, `import pynput`, `import keyboard`, `import mouse`)
+  - From-imports (`from pynput import mouse`, `from ctypes.windll.user32 import SendInput`)
+  - Aliased imports (`import pyautogui as pag`, `from pynput.keyboard import Controller as KCtrl`)
+  - Prohibited native call tokens / attributes (`SendInput`, `keybd_event`, `mouse_event`)
+- If any forbidden token is found, raises verification failure detailing file, line number, and offending symbol.
 
 ---
 
@@ -273,17 +282,18 @@ Root model contains:
 ## 4. Verification and Test Plan
 
 ### 4.1 Unit Tests
-- `test_no_input_guard.py`: Passes on clean codebase; raises violation on synthetic test files importing forbidden libraries.
+- `test_no_input_guard.py`: Enforces prohibited dependencies and known API patterns at static-analysis time; verifies direct, from, and aliased imports and call tokens fail compliance; ignores excluded folders.
 - `test_interval.py`: Verifies `None`, `[0, 100]`, negative bounds, `min > max`, lengths != 2, and single uint.
+- `test_unpacker.py`: Tests valid extraction and malicious synthetic ZIP slip entries (`../`, absolute paths).
 - `test_validator.py` & `test_raw_vs_normalized.py`:
-  - Validates all 9 `.build` files extracted from the actual zip.
+  - Validates the nine expected pinned `.build` files extracted from the archive.
   - Validates passive deduplication preservation with `(passive_id, weapon_set_context)`.
   - Detects `Cast on Dodge` meta-gem anomaly accurately.
-- `test_manifest.py`: Ensures manifest hash calculation is deterministic and matches byte-for-byte on repeat runs.
-- `test_store_isolation.py`: Two characters never collide or overwrite each other.
-- `test_atomic_write.py`: Confirms temporary file cleanup and crash-safety.
-- `test_single_writer.py`: Proves second writer cannot acquire lock while first writer holds it.
-- `test_backup_recovery.py`: Corrupting current state successfully restores from newest backup.
+- `test_manifest.py`: Verifies byte-for-byte deterministic canonical manifest output without run timestamps.
+- `test_store_isolation.py`: Tests distinct characters, character ID safety (`InvalidCharacterIdError`), and collision resistance.
+- `test_atomic_write.py`: Confirms same-dir temp file, fsync, safe backup copy ordering, and atomic replace failure cleanup.
+- `test_single_writer.py`: Proves second writer in a separate process cannot acquire lock while first writer holds it.
+- `test_backup_recovery.py`: Corrupted canonical state successfully restores from newest backup; corrupt state never displaces backups.
 - `test_migrations.py`: Old schema version upgraded; future schema version rejected cleanly.
 
 ### 4.2 Integration Smoke Test

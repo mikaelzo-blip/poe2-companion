@@ -1,0 +1,31 @@
+# Tasks
+
+## 1. Project Setup, Repository Hygiene, and Compliance Guard
+
+- [ ] 1.1 Create minimal `.gitignore` to establish repository hygiene, ignoring local/generated paths (`.venv/`, `__pycache__/`, `.pytest_cache/`, `.coverage`, `htmlcov/`, `.env`, `runtime/characters/`, `runtime/backups/`, `runtime/*.lock`, `runtime/*.json`, temporary atomic files `*.tmp.*`, and screenshot caches) while preserving source `.build` files, OpenSpec artifacts, source manifest, tests, and Blueprint v2.
+- [ ] 1.2 Create `pyproject.toml` and directory structure (`companion/`, `data/source/builds/`, `data/reports/`, `runtime/characters/`, `runtime/backups/`, `tests/`) and verify directory structure and dependency resolution with `python -c "import pydantic, yaml"`.
+- [ ] 1.3 Implement static defense-in-depth compliance guard in `companion/compliance/no_input_guard.py` and unit tests in `tests/compliance/test_no_input_guard.py`, verifying that the scanner enforces prohibited input/control dependencies and known API patterns at static-analysis time (direct imports, `from ... import ...`, aliased imports, and native call tokens like `SendInput`, `keybd_event`, `mouse_event`) across `companion/**/*.py` while excluding `.venv/`, test fixtures, `docs/`, `data/`, `runtime/`, and OpenSpec artifacts, verified by running `pytest tests/compliance/test_no_input_guard.py`.
+
+## 2. M0 — Source Validation and Ingestion
+
+- [ ] 2.1 Implement conservative `level_interval` parser in `companion/sources/interval.py` and unit tests in `tests/sources/test_interval.py`, verifying explicit `[min, max]` ranges, unrestricted omitted values, single uint preserved as unresolved shape, and rejection of invalid bounds by running `pytest tests/sources/test_interval.py`.
+- [ ] 2.2 Implement raw models in `companion/sources/models_raw.py` (with extra field preservation) and normalized models in `companion/sources/models_normalized.py` (preserving passive compound identity `(passive_id, weapon_set_context)` and weapon-set mapping) with unit tests in `tests/sources/test_raw_vs_normalized.py`, verified by running `pytest tests/sources/test_raw_vs_normalized.py`.
+- [ ] 2.3 Implement snapshot extractor in `companion/sources/unpacker.py` with ZIP slip path-traversal validation (rejecting `../`, absolute paths, Windows drive-qualified paths, and escaped paths, materializing only expected `.build` files) and build validator in `companion/sources/validator.py` ensuring the nine expected pinned Fubgun 0.5.5 build snapshots from the supplied source archive are validated, raw source bytes remain immutable, and `Cast on Dodge` meta-gem anomaly is annotated, with unit tests in `tests/sources/test_unpacker.py` (including malicious synthetic ZIP entries) and `tests/sources/test_validator.py`, verified by running `pytest tests/sources/test_unpacker.py tests/sources/test_validator.py`.
+- [ ] 2.4 Implement deterministic manifest generator in `companion/sources/manifest.py`, source anomaly reporter in `companion/sources/reporter.py`, and initial `data/source/guide_rules.yaml` schema and skeleton (tagging Blueprint v2 provenance explicitly as `BLUEPRINT_V2`, marking rules requiring external guide verification as `PENDING_SOURCE_VERIFICATION`, with no executable rule engine), ensuring canonical `data/source/manifest.json` excludes wall-clock/run timestamps (`extracted_at` placed only in anomaly reports) and produces byte-for-byte deterministic output across repeated runs, verified by running `pytest tests/sources/test_manifest.py`.
+
+## 3. M1 — Character State Foundation
+
+- [ ] 3.1 Implement provenance model (`ProvenancedField[T]`) and semantic verification enum (`VerificationState`) in `companion/state/provenance.py` with unit tests in `tests/state/test_provenance.py`, verified by running `pytest tests/state/test_provenance.py`.
+- [ ] 3.2 Implement `CharacterState v2` Pydantic root schema in `companion/state/schema.py` and lightweight migration registry in `companion/state/migrations.py` with unit tests in `tests/state/test_schema.py` and `tests/state/test_migrations.py`, verified by running `pytest tests/state/test_schema.py tests/state/test_migrations.py`.
+- [ ] 3.3 Implement cross-process single-writer file locking in `companion/state/lock.py` using Windows `msvcrt.locking` on `runtime/state.lock` (guaranteeing non-empty lock file, seeking to byte 0, locking 1 byte with `LK_NBLCK`, holding the descriptor open for the entire logical state mutation transaction, unlocking/closing in `finally`, and raising `StateLockError` on contention without modifying state), verified by running `pytest tests/state/test_single_writer.py` using separate processes to prove cross-process writer exclusion.
+- [ ] 3.4 Implement crash-safe atomic file store in `companion/state/store.py` and bounded rolling backup management in `companion/state/backup.py` enforcing:
+  1. conservative character ID format (`^[a-zA-Z0-9_-]{1,64}$`) rejecting invalid IDs with `InvalidCharacterIdError` (no lossy sanitization) while keeping original ID in the model,
+  2. atomic write ordering: write same-dir temp file, flush + `os.fsync`, copy existing valid canonical state to backup (never moving canonical file away before replacement), atomic `os.replace`, and prune old backups beyond max 3 only after replacement,
+  3. ensuring corrupt/unreadable canonical state never displaces valid backups,
+  4. applying the same atomic-write primitive to `runtime/active_character.json`,
+  verified by running `pytest tests/state/test_atomic_write.py tests/state/test_store_isolation.py tests/state/test_backup_recovery.py` with tests simulating failure at each stage.
+
+## 4. CLI Interface and Integration Verification
+
+- [ ] 4.1 Implement modular CLI subcommands in `companion/cli.py` and entrypoint `companion/__main__.py` supporting `sources unpack`, `sources validate`, `sources inspect`, `state init`, and `state inspect`, verified by running `pytest tests/test_cli.py`.
+- [ ] 4.2 Execute end-to-end integration test exercising source unpacking from archive, manifest generation, source validation reporting, character state initialization, and inspecting active character state, verified by running the full test suite with 100% pass rate via `pytest --cov=companion`.

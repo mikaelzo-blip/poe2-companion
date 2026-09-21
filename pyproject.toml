@@ -23,6 +23,7 @@ include = ["companion*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+norecursedirs = [".*", "dist", "CVS", "_darcs", "{arch}", "*.egg", "venv", ".venv"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

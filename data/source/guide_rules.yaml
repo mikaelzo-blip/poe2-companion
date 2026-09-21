@@ -14,7 +14,12 @@ rules:
   - id: "SWAP_LVL_52"
     name: "Level 52 Weapon Swap Milestone"
     provenance: "BLUEPRINT_V2"
-    status: "CONFIRMED"
+    status: "USABLE"
+    requirement_type: "EQUIPMENT"
+    transition_role: "COMPLETION_EVIDENCE"
+    observable_via:
+      - API
+      - GEAR_AUDIT
     trigger:
       type: "CHARACTER_LEVEL"
       min_level: 52
@@ -23,7 +28,12 @@ rules:
   - id: "GEM_CAST_ON_DODGE"
     name: "Cast on Dodge Meta-Gem Milestone"
     provenance: "BLUEPRINT_V2"
-    status: "CONFIRMED"
+    status: "USABLE"
+    requirement_type: "SKILL"
+    transition_role: "BLOCKING_REQUIREMENT"
+    observable_via:
+      - API
+      - SKILL_AUDIT
     trigger:
       type: "CHARACTER_LEVEL"
       min_level: 58
@@ -34,6 +44,10 @@ rules:
     name: "Fubgun Written Guide Gear Priority Affixes"
     provenance: "PENDING_SOURCE_VERIFICATION"
     status: "PENDING_SOURCE_VERIFICATION"
+    requirement_type: "EQUIPMENT"
+    transition_role: "PREPARATION"
+    observable_via:
+      - GEAR_AUDIT
     trigger:
       type: "PROGRESSION_STAGE"
       stage: "lvl 33-51"
@@ -44,6 +58,10 @@ rules:
     name: "Fubgun Flask Rotation & Suffix Rules"
     provenance: "PENDING_SOURCE_VERIFICATION"
     status: "PENDING_SOURCE_VERIFICATION"
+    requirement_type: "FLASK"
+    transition_role: "ADVISORY"
+    observable_via:
+      - MANUAL
     trigger:
       type: "PROGRESSION_STAGE"
       stage: "Endgame"

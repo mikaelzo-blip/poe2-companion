@@ -1,0 +1,71 @@
+{
+  "manifest_version": "1.0",
+  "target_game_version": "0.5.5",
+  "build_name": "Fubgun Flameblast Oil Grenade",
+  "tool_version": "0.1.0",
+  "files": [
+    {
+      "logical_stage": "lvl 1-14",
+      "filename": "lvl 1-14 - 0.5.5 Fubgun Flameblast Oil G.build",
+      "sha256": "6dd123f803d4ef6f41785b4806efbf982296c5d89a0c9ac7860f48f0311fa0fd",
+      "byte_size": 3082,
+      "validation_status": "PASS"
+    },
+    {
+      "logical_stage": "lvl 15-32",
+      "filename": "lvl 15-32 - 0.5.5 Fubgun Flameblast Oil.build",
+      "sha256": "b8a1ed44fdde5faa92ba0a1b17428dea8f9fbb09e8b0a14e4f4870e7d00b7885",
+      "byte_size": 4162,
+      "validation_status": "PASS"
+    },
+    {
+      "logical_stage": "lvl 33-51",
+      "filename": "lvl 33-51 - 0.5.5 Fubgun Flameblast Oil.build",
+      "sha256": "df4801480831223b3fa3871895d169cb6ee89b1a941cd3da849b12fd05a68bfb",
+      "byte_size": 4553,
+      "validation_status": "PASS"
+    },
+    {
+      "logical_stage": "lvl 52 Swap",
+      "filename": "lvl 52 Swap - 0.5.5 Fubgun Flameblast Oi.build",
+      "sha256": "42743e97bbf98c999be66c1937a1bdff97015b55d39fe52312eb7b77b2bff2e5",
+      "byte_size": 7291,
+      "validation_status": "ANOMALIES"
+    },
+    {
+      "logical_stage": "lvl 53-68",
+      "filename": "lvl 53-68 - 0.5.5 Fubgun Flameblast Oil.build",
+      "sha256": "a50eb7728cb6cc70fc23b4191cb51fddb659ba6335fb815a01a0891bc2d5ba78",
+      "byte_size": 8718,
+      "validation_status": "ANOMALIES"
+    },
+    {
+      "logical_stage": "lvl 85",
+      "filename": "lvl 85 - 0.5.5 Fubgun Flameblast Oil Gre.build",
+      "sha256": "66570ab580639021aaec193517b1cb901a47207b4637a4a730d076577ddde75a",
+      "byte_size": 10303,
+      "validation_status": "ANOMALIES"
+    },
+    {
+      "logical_stage": "Endgame",
+      "filename": "Endgame - 0.5.5 Fubgun Flameblast Oil Gr.build",
+      "sha256": "e58427e9b5ba5bdbc60a4d2149b67d1f6c3a5fc257ab59696f37293e7bb543c8",
+      "byte_size": 10558,
+      "validation_status": "ANOMALIES"
+    },
+    {
+      "logical_stage": "Mageblood",
+      "filename": "Mageblood - 0.5.5 Fubgun Flameblast Oil.build",
+      "sha256": "88abcb1ecb4d0e6ba7d8cf284539b2183e41e41417881b4e76b791a45c51d30b",
+      "byte_size": 13934,
+      "validation_status": "ANOMALIES"
+    },
+    {
+      "logical_stage": "DoT Cap",
+      "filename": "DoT Cap - 0.5.5 Fubgun Flameblast Oil Gr.build",
+      "sha256": "528d5bb9a9b1b2a5b5d96307c172f9eb2ceb7207c11f30803f4c562e3aaf0e57",
+      "byte_size": 13952,
+      "validation_status": "ANOMALIES"
+    }
+  ]
+}

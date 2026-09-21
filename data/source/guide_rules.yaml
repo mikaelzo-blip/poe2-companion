@@ -1,0 +1,51 @@
+# Guide Rules Schema and Declarative Skeleton
+# NOTE: M0/M1 milestone does NOT contain an executable rule engine.
+# Rules are purely declarative metadata and will be interpreted by M3+ rule engine.
+
+version: "1.0"
+build_name: "Fubgun Flameblast Oil Grenade"
+target_game_version: "0.5.5"
+
+provenance_legend:
+  BLUEPRINT_V2: "Rule or milestone directly derived from authoritative POE2_Hermes_Companion_Blueprint_v2.md"
+  PENDING_SOURCE_VERIFICATION: "Rule derived from external written build guides where authoritative text is not yet frozen in repository"
+
+rules:
+  - id: "SWAP_LVL_52"
+    name: "Level 52 Weapon Swap Milestone"
+    provenance: "BLUEPRINT_V2"
+    status: "CONFIRMED"
+    trigger:
+      type: "CHARACTER_LEVEL"
+      min_level: 52
+    description: "Switch to dual weapon set setup as defined in stage 'lvl 52 Swap'"
+
+  - id: "GEM_CAST_ON_DODGE"
+    name: "Cast on Dodge Meta-Gem Milestone"
+    provenance: "BLUEPRINT_V2"
+    status: "CONFIRMED"
+    trigger:
+      type: "CHARACTER_LEVEL"
+      min_level: 58
+    description: "Equip Cast on Dodge trigger gem setup as indicated in Endgame snapshot"
+    notes: "Annotated as unsupported by official PoE2 build planner"
+
+  - id: "FUBGUN_WRITTEN_GUIDE_GEAR_PRIORITIES"
+    name: "Fubgun Written Guide Gear Priority Affixes"
+    provenance: "PENDING_SOURCE_VERIFICATION"
+    status: "PENDING_SOURCE_VERIFICATION"
+    trigger:
+      type: "PROGRESSION_STAGE"
+      stage: "lvl 33-51"
+    description: "Specific item affix progression and tier thresholds from written notes"
+    notes: "Requires frozen external text source ingestion prior to activation"
+
+  - id: "FUBGUN_WRITTEN_GUIDE_FLASK_SETUP"
+    name: "Fubgun Flask Rotation & Suffix Rules"
+    provenance: "PENDING_SOURCE_VERIFICATION"
+    status: "PENDING_SOURCE_VERIFICATION"
+    trigger:
+      type: "PROGRESSION_STAGE"
+      stage: "Endgame"
+    description: "Optimal flask suffixes and trigger enchantments from written guide"
+    notes: "Requires frozen external text source ingestion prior to activation"

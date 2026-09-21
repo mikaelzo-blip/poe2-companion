@@ -1,0 +1,32 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Environment variables
+.env
+
+# Local runtime state and rolling backups
+runtime/characters/
+runtime/backups/
+runtime/*.lock
+runtime/*.json
+*.tmp.*
+
+# Future screenshot caches
+cache/
+screenshots/

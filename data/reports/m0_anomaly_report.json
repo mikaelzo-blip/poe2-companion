@@ -1,0 +1,2954 @@
+{
+  "report_type": "M0_SOURCE_VALIDATION_AND_ANOMALY_REPORT",
+  "tool_version": "0.1.0",
+  "target_game_version": "0.5.5",
+  "build_name": "Fubgun Flameblast Oil Grenade",
+  "execution_timestamp": "2026-09-21T17:38:02.116613+00:00",
+  "summary": {
+    "total_snapshots": 9,
+    "passed_count": 3,
+    "anomalies_count": 6,
+    "failed_count": 0
+  },
+  "interval_shapes": {
+    "UNRESTRICTED": 16,
+    "RANGE": 380,
+    "UNRESOLVED_SINGLE_UINT": 0
+  },
+  "weapon_set_distribution": {
+    "DEFAULT_OR_SHARED": 940,
+    "SPECIALISATION_1": 149,
+    "SPECIALISATION_2": 153,
+    "UNKNOWN_RESERVED": 0,
+    "OTHER": 0
+  },
+  "cast_on_dodge_findings": [
+    {
+      "stage": "lvl 52 Swap",
+      "symbol": "Metadata/Items/Gems/SkillGemCastOnDodge",
+      "interval": [
+        58,
+        100
+      ],
+      "details": "meta-gem unsupported by official planner"
+    },
+    {
+      "stage": "lvl 53-68",
+      "symbol": "Metadata/Items/Gems/SkillGemCastOnDodge",
+      "interval": [
+        58,
+        100
+      ],
+      "details": "meta-gem unsupported by official planner"
+    },
+    {
+      "stage": "lvl 85",
+      "symbol": "Metadata/Items/Gems/SkillGemCastOnDodge",
+      "interval": [
+        58,
+        100
+      ],
+      "details": "meta-gem unsupported by official planner"
+    },
+    {
+      "stage": "Endgame",
+      "symbol": "Metadata/Items/Gems/SkillGemCastOnDodge",
+      "interval": [
+        58,
+        100
+      ],
+      "details": "meta-gem unsupported by official planner"
+    },
+    {
+      "stage": "Mageblood",
+      "symbol": "Metadata/Items/Gems/SkillGemCastOnDodge",
+      "interval": [
+        58,
+        100
+      ],
+      "details": "meta-gem unsupported by official planner"
+    },
+    {
+      "stage": "DoT Cap",
+      "symbol": "Metadata/Items/Gems/SkillGemCastOnDodge",
+      "interval": [
+        58,
+        100
+      ],
+      "details": "meta-gem unsupported by official planner"
+    }
+  ],
+  "dual_weapon_set_passives": [
+    {
+      "stage": "Mageblood",
+      "passive_id": "dexterity30_",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_2"
+      ]
+    },
+    {
+      "stage": "Mageblood",
+      "passive_id": "dexterity13",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_2"
+      ]
+    },
+    {
+      "stage": "Mageblood",
+      "passive_id": "attributes7",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_2"
+      ]
+    },
+    {
+      "stage": "Mageblood",
+      "passive_id": "strength64",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_1"
+      ]
+    },
+    {
+      "stage": "Mageblood",
+      "passive_id": "attributes70",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_1"
+      ]
+    },
+    {
+      "stage": "Mageblood",
+      "passive_id": "strength48",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_2"
+      ]
+    },
+    {
+      "stage": "Mageblood",
+      "passive_id": "strength68",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_1"
+      ]
+    },
+    {
+      "stage": "Mageblood",
+      "passive_id": "area_attacks11",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_2"
+      ]
+    },
+    {
+      "stage": "Mageblood",
+      "passive_id": "area_attacks61",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_2"
+      ]
+    },
+    {
+      "stage": "Mageblood",
+      "passive_id": "attributes19",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_2"
+      ]
+    },
+    {
+      "stage": "Mageblood",
+      "passive_id": "attributes43",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_1"
+      ]
+    },
+    {
+      "stage": "Mageblood",
+      "passive_id": "dexterity65_",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_1"
+      ]
+    },
+    {
+      "stage": "Mageblood",
+      "passive_id": "ranged13",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_2"
+      ]
+    },
+    {
+      "stage": "DoT Cap",
+      "passive_id": "dexterity13",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_2"
+      ]
+    },
+    {
+      "stage": "DoT Cap",
+      "passive_id": "attributes7",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_2"
+      ]
+    },
+    {
+      "stage": "DoT Cap",
+      "passive_id": "projectiles47",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_2"
+      ]
+    },
+    {
+      "stage": "DoT Cap",
+      "passive_id": "attributes70",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_1"
+      ]
+    },
+    {
+      "stage": "DoT Cap",
+      "passive_id": "strength48",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_2"
+      ]
+    },
+    {
+      "stage": "DoT Cap",
+      "passive_id": "intelligence8",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_1"
+      ]
+    },
+    {
+      "stage": "DoT Cap",
+      "passive_id": "intelligence52",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_2"
+      ]
+    },
+    {
+      "stage": "DoT Cap",
+      "passive_id": "intelligence54",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_1"
+      ]
+    },
+    {
+      "stage": "DoT Cap",
+      "passive_id": "strength68",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_1"
+      ]
+    },
+    {
+      "stage": "DoT Cap",
+      "passive_id": "area_attacks11",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_2"
+      ]
+    },
+    {
+      "stage": "DoT Cap",
+      "passive_id": "fire62",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_1",
+        "SPECIALISATION_2"
+      ]
+    },
+    {
+      "stage": "DoT Cap",
+      "passive_id": "dexterity75",
+      "contexts": [
+        "DEFAULT_OR_SHARED",
+        "SPECIALISATION_1"
+      ]
+    }
+  ],
+  "additional_text_metrics": {
+    "total_non_empty_additional_text": 105,
+    "recognized_markup_syntax_entries": 0
+  },
+  "raw_passive_duplicates": {
+    "total_duplicate_occurrences": 228,
+    "total_duplicate_entries": 228,
+    "duplicate_entries": [
+      {
+        "stage": "lvl 1-14",
+        "passive_id": "dexterity30_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          9,
+          21
+        ]
+      },
+      {
+        "stage": "lvl 1-14",
+        "passive_id": "strength37",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          10,
+          22
+        ]
+      },
+      {
+        "stage": "lvl 1-14",
+        "passive_id": "strength36",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          11,
+          23
+        ]
+      },
+      {
+        "stage": "lvl 15-32",
+        "passive_id": "dexterity30_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          9,
+          53
+        ]
+      },
+      {
+        "stage": "lvl 15-32",
+        "passive_id": "strength37",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          12,
+          54
+        ]
+      },
+      {
+        "stage": "lvl 15-32",
+        "passive_id": "strength36",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          13,
+          55
+        ]
+      },
+      {
+        "stage": "lvl 33-51",
+        "passive_id": "dexterity30_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          9,
+          74
+        ]
+      },
+      {
+        "stage": "lvl 33-51",
+        "passive_id": "strength37",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          12,
+          75
+        ]
+      },
+      {
+        "stage": "lvl 33-51",
+        "passive_id": "strength36",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          13,
+          76
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "dexterity26",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          1,
+          99
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "dexterity27",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          2,
+          100
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "dexterity28",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          3,
+          101
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "dexterity29",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          4,
+          102
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "dexterity30_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          5,
+          96
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "strength37",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          6,
+          97
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "strength82",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          12,
+          103
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "dexterity79",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          13,
+          104
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "strength81",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          14,
+          105
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "dexterity77",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          15,
+          106
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "attributes8_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          16,
+          107
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "dexterity76",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          17,
+          108
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "dexterity75",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          18,
+          109
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "attributes20-",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          24,
+          110
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "attributes19",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          25,
+          111
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "dexterity64",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          26,
+          112
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "strength87",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          27,
+          113
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "dexterity65_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          28,
+          114
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "attributes43",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          29,
+          115
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "strength71",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          35,
+          116
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "attributes6",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          36,
+          117
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "strength70",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          37,
+          118
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "strength69",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          38,
+          119
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "attributes71",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          39,
+          120
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "strength67",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          40,
+          121
+        ]
+      },
+      {
+        "stage": "lvl 52 Swap",
+        "passive_id": "strength68",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          41,
+          122
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "dexterity26",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          1,
+          128
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "dexterity27",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          2,
+          129
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "dexterity28",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          3,
+          130
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "dexterity29",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          4,
+          131
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "dexterity30_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          5,
+          125
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "strength37",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          6,
+          126
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "strength82",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          12,
+          132
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "dexterity79",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          13,
+          133
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "strength81",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          14,
+          134
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "dexterity77",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          15,
+          135
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "attributes8_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          16,
+          136
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "dexterity76",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          17,
+          137
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "dexterity75",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          18,
+          138
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "attributes20-",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          24,
+          139
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "attributes19",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          25,
+          140
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "dexterity64",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          26,
+          141
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "strength87",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          27,
+          142
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "dexterity65_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          28,
+          143
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "attributes43",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          29,
+          144
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "strength71",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          35,
+          145
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "attributes6",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          36,
+          146
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "strength70",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          37,
+          147
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "strength69",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          38,
+          148
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "attributes71",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          39,
+          149
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "strength67",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          40,
+          150
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "strength68",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          41,
+          151
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "attributes5",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          49,
+          152
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "attributes70",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          50,
+          153
+        ]
+      },
+      {
+        "stage": "lvl 53-68",
+        "passive_id": "strength48",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          52,
+          154
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "dexterity26",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          1,
+          145
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "dexterity27",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          2,
+          146
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "dexterity28",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          3,
+          147
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "dexterity29",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          4,
+          148
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "dexterity30_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          5,
+          142
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "strength37",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          6,
+          143
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "strength82",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          12,
+          149
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "dexterity79",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          13,
+          150
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "strength81",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          14,
+          151
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "dexterity77",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          15,
+          152
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "attributes8_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          16,
+          153
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "dexterity76",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          17,
+          154
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "dexterity75",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          18,
+          155
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "attributes20-",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          24,
+          156
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "attributes19",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          25,
+          157
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "dexterity64",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          26,
+          158
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "strength87",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          27,
+          159
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "dexterity65_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          28,
+          160
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "attributes43",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          29,
+          161
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "strength71",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          35,
+          162
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "attributes6",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          36,
+          163
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "strength70",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          37,
+          164
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "strength69",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          38,
+          165
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "attributes71",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          39,
+          166
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "strength67",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          40,
+          167
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "strength68",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          41,
+          168
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "attributes5",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          49,
+          169
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "attributes70",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          50,
+          170
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "strength48",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          74,
+          171
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "strength47",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          75,
+          176
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "strength46",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          76,
+          177
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "attributes4",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          77,
+          178
+        ]
+      },
+      {
+        "stage": "lvl 85",
+        "passive_id": "intelligence8",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          78,
+          179
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "dexterity26",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          1,
+          157
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "dexterity27",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          2,
+          158
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "dexterity28",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          3,
+          159
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "dexterity29",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          4,
+          160
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "dexterity30_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          5,
+          154
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "strength37",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          6,
+          155
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "strength82",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          12,
+          161
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "dexterity79",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          13,
+          162
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "strength81",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          14,
+          163
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "dexterity77",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          15,
+          164
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "attributes8_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          16,
+          165
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "dexterity76",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          17,
+          166
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "dexterity75",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          18,
+          167
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "attributes20-",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          24,
+          168
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "attributes19",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          25,
+          169
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "dexterity64",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          26,
+          170
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "strength87",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          27,
+          171
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "dexterity65_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          28,
+          172
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "attributes43",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          29,
+          173
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "strength71",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          35,
+          174
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "attributes6",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          36,
+          175
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "strength70",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          37,
+          176
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "strength69",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          38,
+          177
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "attributes71",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          39,
+          178
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "strength67",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          40,
+          179
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "strength68",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          41,
+          180
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "attributes5",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          49,
+          181
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "attributes70",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          50,
+          182
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "strength48",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          74,
+          183
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "strength47",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          75,
+          188
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "strength46",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          76,
+          189
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "attributes4",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          77,
+          190
+        ]
+      },
+      {
+        "stage": "Endgame",
+        "passive_id": "intelligence8",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          78,
+          191
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "dexterity26",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          1,
+          179
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "dexterity27",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          2,
+          177
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "dexterity28",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          3,
+          180
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "dexterity29",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          4,
+          185
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "dexterity30_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          5,
+          184
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength37",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          6,
+          192
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "attributes30_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          7,
+          201
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "dexterity13",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          8,
+          208
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength82",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          10,
+          207
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "dexterity79",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          11,
+          168
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength81",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          12,
+          165
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength83",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          13,
+          167
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "attributes7",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          14,
+          170
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength84",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          15,
+          200
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength85",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          16,
+          202
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength71",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          18,
+          203
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "attributes6",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          23,
+          198
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength70",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          24,
+          206
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength69",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          25,
+          191
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "attributes71",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          26,
+          169
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength65_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          27,
+          188
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength64",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          28,
+          197
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "attributes5",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          29,
+          199
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "attributes70",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          30,
+          190
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength48",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          32,
+          174
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength47",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          33,
+          205
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength46",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          34,
+          196
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "attributes4",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          35,
+          195
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "intelligence8",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          36,
+          204
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength44",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          37,
+          209
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "intelligence74",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          38,
+          194
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength67",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          47,
+          166
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength68",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          48,
+          175
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "attributes72",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          54,
+          171
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "dexterity77",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          67,
+          173
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "attributes8_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          68,
+          176
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "dexterity76",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          74,
+          178
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "dexterity75",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          75,
+          182
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "attributes20-",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          77,
+          186
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "attributes19",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          78,
+          183
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "dexterity64",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          79,
+          193
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "attributes43",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          80,
+          189
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "strength87",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          81,
+          181
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "dexterity65_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          82,
+          187
+        ]
+      },
+      {
+        "stage": "Mageblood",
+        "passive_id": "dexterity80",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          86,
+          172
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength34",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          1,
+          177
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength33_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          2,
+          191
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength32",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          3,
+          186
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength35",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          4,
+          174
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength36",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          5,
+          202
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength37",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          6,
+          219
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "attributes30_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          7,
+          211
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "dexterity13",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          8,
+          197
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength82",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          10,
+          181
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "dexterity79",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          11,
+          179
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength81",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          12,
+          168
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength83",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          13,
+          180
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "attributes7",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          14,
+          172
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength84",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          15,
+          220
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength85",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          19,
+          201
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength71",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          21,
+          189
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "attributes6",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          26,
+          192
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength70",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          27,
+          194
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength69",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          28,
+          199
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "attributes71",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          29,
+          213
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength65_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          30,
+          217
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength64",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          34,
+          200
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "attributes5",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          35,
+          218
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "attributes70",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          36,
+          193
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength48",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          38,
+          176
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength47",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          39,
+          207
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength46",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          40,
+          204
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "attributes4",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          41,
+          205
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "intelligence8",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          42,
+          210
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "intelligence72",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          43,
+          187
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "attributes3",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          44,
+          195
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "intelligence71",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          45,
+          215
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "intelligence41__",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          46,
+          198
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "intelligence51",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          48,
+          212
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "intelligence52",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          49,
+          209
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "intelligence53_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          50,
+          214
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "intelligence54",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          51,
+          208
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "intelligence45",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          52,
+          216
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "intelligence58",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          53,
+          183
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "intelligence59",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          54,
+          178
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "intelligence60",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          55,
+          173
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "attributes1",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          56,
+          170
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "intelligence56",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          58,
+          203
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "intelligence57",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          59,
+          171
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength44",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          61,
+          206
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "intelligence74",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          62,
+          196
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength67",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          70,
+          175
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "strength68",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          71,
+          184
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "attributes72",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          76,
+          169
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "dexterity77",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          91,
+          182
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "attributes8_",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          92,
+          190
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "dexterity76",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          94,
+          188
+        ]
+      },
+      {
+        "stage": "DoT Cap",
+        "passive_id": "dexterity75",
+        "weapon_set_context": "DEFAULT_OR_SHARED",
+        "occurrences": 2,
+        "duplicate_count": 1,
+        "original_indices": [
+          95,
+          185
+        ]
+      }
+    ]
+  },
+  "snapshots": [
+    {
+      "logical_stage": "lvl 1-14",
+      "filename": "lvl 1-14 - 0.5.5 Fubgun Flameblast Oil G.build",
+      "sha256": "6dd123f803d4ef6f41785b4806efbf982296c5d89a0c9ac7860f48f0311fa0fd",
+      "byte_size": 3082,
+      "validation_status": "PASS",
+      "anomalies": [],
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "logical_stage": "lvl 15-32",
+      "filename": "lvl 15-32 - 0.5.5 Fubgun Flameblast Oil.build",
+      "sha256": "b8a1ed44fdde5faa92ba0a1b17428dea8f9fbb09e8b0a14e4f4870e7d00b7885",
+      "byte_size": 4162,
+      "validation_status": "PASS",
+      "anomalies": [],
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "logical_stage": "lvl 33-51",
+      "filename": "lvl 33-51 - 0.5.5 Fubgun Flameblast Oil.build",
+      "sha256": "df4801480831223b3fa3871895d169cb6ee89b1a941cd3da849b12fd05a68bfb",
+      "byte_size": 4553,
+      "validation_status": "PASS",
+      "anomalies": [],
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "logical_stage": "lvl 52 Swap",
+      "filename": "lvl 52 Swap - 0.5.5 Fubgun Flameblast Oi.build",
+      "sha256": "42743e97bbf98c999be66c1937a1bdff97015b55d39fe52312eb7b77b2bff2e5",
+      "byte_size": 7291,
+      "validation_status": "ANOMALIES",
+      "anomalies": [
+        {
+          "category": "SOURCE_ANNOTATION",
+          "symbol": "Metadata/Items/Gems/SkillGemCastOnDodge",
+          "details": "meta-gem unsupported by official planner",
+          "interval": [
+            58,
+            100
+          ]
+        }
+      ],
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "logical_stage": "lvl 53-68",
+      "filename": "lvl 53-68 - 0.5.5 Fubgun Flameblast Oil.build",
+      "sha256": "a50eb7728cb6cc70fc23b4191cb51fddb659ba6335fb815a01a0891bc2d5ba78",
+      "byte_size": 8718,
+      "validation_status": "ANOMALIES",
+      "anomalies": [
+        {
+          "category": "SOURCE_ANNOTATION",
+          "symbol": "Metadata/Items/Gems/SkillGemCastOnDodge",
+          "details": "meta-gem unsupported by official planner",
+          "interval": [
+            58,
+            100
+          ]
+        }
+      ],
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "logical_stage": "lvl 85",
+      "filename": "lvl 85 - 0.5.5 Fubgun Flameblast Oil Gre.build",
+      "sha256": "66570ab580639021aaec193517b1cb901a47207b4637a4a730d076577ddde75a",
+      "byte_size": 10303,
+      "validation_status": "ANOMALIES",
+      "anomalies": [
+        {
+          "category": "SOURCE_ANNOTATION",
+          "symbol": "Metadata/Items/Gems/SkillGemCastOnDodge",
+          "details": "meta-gem unsupported by official planner",
+          "interval": [
+            58,
+            100
+          ]
+        }
+      ],
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "logical_stage": "Endgame",
+      "filename": "Endgame - 0.5.5 Fubgun Flameblast Oil Gr.build",
+      "sha256": "e58427e9b5ba5bdbc60a4d2149b67d1f6c3a5fc257ab59696f37293e7bb543c8",
+      "byte_size": 10558,
+      "validation_status": "ANOMALIES",
+      "anomalies": [
+        {
+          "category": "SOURCE_ANNOTATION",
+          "symbol": "Metadata/Items/Gems/SkillGemCastOnDodge",
+          "details": "meta-gem unsupported by official planner",
+          "interval": [
+            58,
+            100
+          ]
+        }
+      ],
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "logical_stage": "Mageblood",
+      "filename": "Mageblood - 0.5.5 Fubgun Flameblast Oil.build",
+      "sha256": "88abcb1ecb4d0e6ba7d8cf284539b2183e41e41417881b4e76b791a45c51d30b",
+      "byte_size": 13934,
+      "validation_status": "ANOMALIES",
+      "anomalies": [
+        {
+          "category": "SOURCE_ANNOTATION",
+          "symbol": "Metadata/Items/Gems/SkillGemCastOnDodge",
+          "details": "meta-gem unsupported by official planner",
+          "interval": [
+            58,
+            100
+          ]
+        }
+      ],
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "logical_stage": "DoT Cap",
+      "filename": "DoT Cap - 0.5.5 Fubgun Flameblast Oil Gr.build",
+      "sha256": "528d5bb9a9b1b2a5b5d96307c172f9eb2ceb7207c11f30803f4c562e3aaf0e57",
+      "byte_size": 13952,
+      "validation_status": "ANOMALIES",
+      "anomalies": [
+        {
+          "category": "SOURCE_ANNOTATION",
+          "symbol": "Metadata/Items/Gems/SkillGemCastOnDodge",
+          "details": "meta-gem unsupported by official planner",
+          "interval": [
+            58,
+            100
+          ]
+        }
+      ],
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

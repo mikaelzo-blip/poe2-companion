@@ -1,4 +1,4 @@
-"""Command-line interface for PoE2 Hermes Companion (M0 & M1).
+"""Command-line interface for PoE2 Hermes Companion (M0 through M4).
 
 Provides modular standard-library argparse subcommands:
 - companion sources unpack
@@ -6,6 +6,9 @@ Provides modular standard-library argparse subcommands:
 - companion sources inspect
 - companion state init
 - companion state inspect
+- companion objectives list
+- companion objectives next
+- companion evaluate
 """
 
 from __future__ import annotations
@@ -16,6 +19,8 @@ from pathlib import Path
 import sys
 from typing import Sequence
 
+from companion.objectives.formatter import format_objective, format_objective_list
+from companion.objectives.runner import run_objective_pipeline, save_current_objective_artifact
 from companion.sources.manifest import generate_manifest
 from companion.sources.models_raw import RawBuild
 from companion.sources.models_normalized import normalize_build
@@ -29,7 +34,7 @@ from companion.state.store import CharacterStateStore
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="companion",
-        description="Hermes PoE2 Companion CLI (M0/M1 Foundation)",
+        description="Hermes PoE2 Companion CLI",
     )
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
@@ -79,6 +84,35 @@ def build_parser() -> argparse.ArgumentParser:
     insp_state_p.add_argument("--id", help="Character ID (defaults to active character)")
     insp_state_p.add_argument("--runtime", default="runtime", help="Runtime directory (default: runtime)")
     insp_state_p.add_argument("--json", action="store_true", help="Output full JSON state")
+
+    # objectives subcommand group
+    obj_parser = subparsers.add_parser("objectives", help="Objective engine inspection")
+    obj_sub = obj_parser.add_subparsers(dest="objectives_action", required=True)
+
+    # objectives list
+    list_p = obj_sub.add_parser("list", help="List all generated objectives in deterministic priority order")
+    list_p.add_argument("--id", help="Character ID (defaults to active character)")
+    list_p.add_argument("--runtime", default="runtime", help="Runtime directory (default: runtime)")
+    list_p.add_argument("--builds", default="data/source/builds", help="Builds directory (default: data/source/builds)")
+    list_p.add_argument("--rules", help="Path to guide rules YAML")
+    list_p.add_argument("--json", action="store_true", help="Output full JSON evaluation result")
+
+    # objectives next
+    next_p = obj_sub.add_parser("next", help="Display the single highest-priority actionable objective")
+    next_p.add_argument("--id", help="Character ID (defaults to active character)")
+    next_p.add_argument("--runtime", default="runtime", help="Runtime directory (default: runtime)")
+    next_p.add_argument("--builds", default="data/source/builds", help="Builds directory (default: data/source/builds)")
+    next_p.add_argument("--rules", help="Path to guide rules YAML")
+    next_p.add_argument("--json", action="store_true", help="Output primary objective as JSON")
+
+    # evaluate command
+    eval_p = subparsers.add_parser("evaluate", help="Evaluate character state and emit CURRENT_OBJECTIVE.json")
+    eval_p.add_argument("character_file", help="Path to character state JSON file")
+    eval_p.add_argument("--runtime", default="runtime", help="Runtime directory (default: runtime)")
+    eval_p.add_argument("--builds", default="data/source/builds", help="Builds directory (default: data/source/builds)")
+    eval_p.add_argument("--rules", help="Path to guide rules YAML")
+    eval_p.add_argument("--out", help="Path to write CURRENT_OBJECTIVE.json artifact")
+    eval_p.add_argument("--json", action="store_true", help="Output primary objective as JSON")
 
     return parser
 
@@ -210,6 +244,100 @@ def handle_state_inspect(args: argparse.Namespace) -> int:
         return 1
 
 
+def _load_character_for_objectives(args: argparse.Namespace) -> CharacterState | None:
+    store = CharacterStateStore(args.runtime)
+    if args.id:
+        try:
+            return store.load_character(args.id)
+        except Exception as e:
+            sys.stderr.write(f"Failed to load character '{args.id}': {e}\n")
+            return None
+    active = store.get_active_character()
+    if active is None:
+        sys.stderr.write("No active character found in store and no --id specified.\n")
+    return active
+
+
+def handle_objectives_list(args: argparse.Namespace) -> int:
+    char = _load_character_for_objectives(args)
+    if char is None:
+        return 1
+
+    try:
+        eval_result = run_objective_pipeline(
+            character_state=char,
+            builds_dir=args.builds,
+            rules_path=args.rules,
+        )
+        if args.json:
+            print(json.dumps(eval_result.model_dump(), indent=2))
+        else:
+            print(format_objective_list(eval_result.all_objectives))
+        return 0
+    except Exception as e:
+        sys.stderr.write(f"Objectives list error: {e}\n")
+        return 1
+
+
+def handle_objectives_next(args: argparse.Namespace) -> int:
+    char = _load_character_for_objectives(args)
+    if char is None:
+        return 1
+
+    try:
+        eval_result = run_objective_pipeline(
+            character_state=char,
+            builds_dir=args.builds,
+            rules_path=args.rules,
+        )
+        if args.json:
+            if eval_result.primary_objective:
+                print(json.dumps(eval_result.primary_objective.model_dump(), indent=2))
+            else:
+                print(json.dumps({"status": eval_result.status, "primary_objective": None}, indent=2))
+        else:
+            print(format_objective(eval_result.primary_objective))
+        return 0
+    except Exception as e:
+        sys.stderr.write(f"Objectives next error: {e}\n")
+        return 1
+
+
+def handle_evaluate(args: argparse.Namespace) -> int:
+    char_file = Path(args.character_file)
+    if not char_file.is_file():
+        sys.stderr.write(f"Character file not found: {args.character_file}\n")
+        return 1
+
+    try:
+        char_dict = json.loads(char_file.read_text(encoding="utf-8"))
+        char = CharacterState.model_validate(char_dict)
+    except Exception as e:
+        sys.stderr.write(f"Failed to parse character state from '{char_file}': {e}\n")
+        return 1
+
+    try:
+        eval_result = run_objective_pipeline(
+            character_state=char,
+            builds_dir=args.builds,
+            rules_path=args.rules,
+        )
+        out_path = args.out if args.out else Path(args.runtime) / "CURRENT_OBJECTIVE.json"
+        save_current_objective_artifact(eval_result, out_path=out_path)
+
+        if args.json:
+            if eval_result.primary_objective:
+                print(json.dumps(eval_result.primary_objective.model_dump(), indent=2))
+            else:
+                print(json.dumps({"status": eval_result.status, "primary_objective": None}, indent=2))
+        else:
+            print(format_objective(eval_result.primary_objective))
+        return 0
+    except Exception as e:
+        sys.stderr.write(f"Evaluation error: {e}\n")
+        return 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -226,6 +354,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             return handle_state_init(args)
         elif args.state_action == "inspect":
             return handle_state_inspect(args)
+    elif args.subcommand == "objectives":
+        if args.objectives_action == "list":
+            return handle_objectives_list(args)
+        elif args.objectives_action == "next":
+            return handle_objectives_next(args)
+    elif args.subcommand == "evaluate":
+        return handle_evaluate(args)
 
     return 0
 

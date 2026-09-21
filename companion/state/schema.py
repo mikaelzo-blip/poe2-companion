@@ -100,6 +100,9 @@ class CharacterState(BaseModel):
 
     transition: Level52TransitionRecord | None = None
 
+    session_active: bool = False
+    last_observed_at: str | None = None
+
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 

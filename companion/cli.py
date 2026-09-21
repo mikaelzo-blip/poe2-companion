@@ -1,4 +1,4 @@
-"""Command-line interface for PoE2 Hermes Companion (M0 through M4).
+"""Command-line interface for PoE2 Hermes Companion (M0 through M5).
 
 Provides modular standard-library argparse subcommands:
 - companion sources unpack
@@ -9,6 +9,9 @@ Provides modular standard-library argparse subcommands:
 - companion objectives list
 - companion objectives next
 - companion evaluate
+- companion session status
+- companion session tail
+- companion journey list
 """
 
 from __future__ import annotations
@@ -19,19 +22,30 @@ from pathlib import Path
 import sys
 from typing import Sequence
 
+from companion.observations.schema import (
+    ObservationEvent,
+    ObservationEventType,
+    ObservationSource,
+)
 from companion.objectives.formatter import format_objective, format_objective_list
-from companion.objectives.runner import run_objective_pipeline, save_current_objective_artifact
+from companion.objectives.runner import (
+    run_objective_pipeline,
+    save_current_objective_artifact,
+)
+from companion.sensing.client_log import ClientLogTailer, ParsedLogEventType
+from companion.sensing.process_presence import ProcessMonitor
 from companion.sources.manifest import generate_manifest
-from companion.sources.models_raw import RawBuild
-from companion.sources.models_normalized import normalize_build
 from companion.sources.reporter import generate_anomaly_reports
-from companion.sources.unpacker import EXPECTED_STAGES, unpack_source_archive
+from companion.sources.unpacker import unpack_source_archive
 from companion.sources.validator import validate_single_snapshot, validate_snapshots_directory
+from companion.state.history import JourneyHistoryLogger
+from companion.state.reconciliation import reconcile_observation
 from companion.state.schema import CharacterState
 from companion.state.store import CharacterStateStore
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line argument parser with all subcommands."""
     parser = argparse.ArgumentParser(
         prog="companion",
         description="Hermes PoE2 Companion CLI",
@@ -113,6 +127,31 @@ def build_parser() -> argparse.ArgumentParser:
     eval_p.add_argument("--rules", help="Path to guide rules YAML")
     eval_p.add_argument("--out", help="Path to write CURRENT_OBJECTIVE.json artifact")
     eval_p.add_argument("--json", action="store_true", help="Output primary objective as JSON")
+
+    # session subcommand group
+    session_parser = subparsers.add_parser("session", help="Live session monitoring and client log tailing")
+    session_sub = session_parser.add_subparsers(dest="session_action", required=True)
+
+    status_p = session_sub.add_parser("status", help="Display game process and active session status")
+    status_p.add_argument("--id", help="Character ID (defaults to active character)")
+    status_p.add_argument("--runtime", default="runtime", help="Runtime directory (default: runtime)")
+    status_p.add_argument("--json", action="store_true", help="Output session status as JSON")
+
+    tail_p = session_sub.add_parser("tail", help="Tail client log and reconcile live observations")
+    tail_p.add_argument("--log", help="Path to Client.txt log file")
+    tail_p.add_argument("--id", help="Character ID (defaults to active character)")
+    tail_p.add_argument("--runtime", default="runtime", help="Runtime directory (default: runtime)")
+    tail_p.add_argument("--once", action="store_true", help="Execute single poll cycle and exit")
+    tail_p.add_argument("--json", action="store_true", help="Output processed observation events as JSON")
+
+    # journey subcommand group
+    journey_parser = subparsers.add_parser("journey", help="Inspect historical progression journey")
+    journey_sub = journey_parser.add_subparsers(dest="journey_action", required=True)
+
+    jlist_p = journey_sub.add_parser("list", help="List recent journey history milestones")
+    jlist_p.add_argument("--runtime", default="runtime", help="Runtime directory (default: runtime)")
+    jlist_p.add_argument("--limit", type=int, default=20, help="Maximum number of history entries (default: 20)")
+    jlist_p.add_argument("--json", action="store_true", help="Output history entries as JSON")
 
     return parser
 
@@ -233,11 +272,10 @@ def handle_state_inspect(args: argparse.Namespace) -> int:
             print(f"Character: {char.character_name} (ID: {char.character_id})")
             print(f"  Class / Ascendancy: {char.character_class} / {char.ascendancy}")
             print(f"  Level: {char.level.value} (verification: {char.level.verification_state.value})")
-            print(f"  Zone: {char.current_zone.value} (Act {char.current_act.value})")
-            print(f"  Deaths: {char.death_count.value}")
-            print(f"  Weapon set: {char.equipped_weapon_set.value}")
-            print(f"  Progression stage: {char.build_progression.get('active_stage')}")
-            print(f"  Target build: {char.build_progression.get('target_build')}")
+            print(f"  Zone: {char.current_zone.value if char.current_zone else 'Unknown'} (Act {char.current_act.value if char.current_act else 1})")
+            print(f"  Deaths: {char.death_count.value if char.death_count else 0}")
+            print(f"  Weapon set: {char.equipped_weapon_set.value if char.equipped_weapon_set else 1}")
+            print(f"  Session Active: {char.session_active}")
         return 0
     except Exception as e:
         sys.stderr.write(f"State inspect error: {e}\n")
@@ -338,6 +376,90 @@ def handle_evaluate(args: argparse.Namespace) -> int:
         return 1
 
 
+def handle_session_status(args: argparse.Namespace) -> int:
+    char = _load_character_for_objectives(args)
+    if char is None:
+        return 1
+
+    monitor = ProcessMonitor()
+    transition = monitor.poll()
+
+    status_data = {
+        "character_id": char.character_id,
+        "character_name": char.character_name,
+        "process_state": transition.current_state.value,
+        "session_active": char.session_active,
+        "current_zone": char.current_zone.value if char.current_zone else "Unknown",
+        "level": char.level.value,
+        "death_count": char.death_count.value if char.death_count else 0,
+        "last_observed_at": char.last_observed_at,
+    }
+
+    if args.json:
+        print(json.dumps(status_data, indent=2))
+    else:
+        print(f"Session Status: [{status_data['process_state']}] Active: {status_data['session_active']}")
+        print(f"Character: {status_data['character_name']} ({status_data['character_id']}) Level: {status_data['level']}")
+        print(f"Zone: {status_data['current_zone']} | Deaths: {status_data['death_count']} | Last Observed: {status_data['last_observed_at']}")
+    return 0
+
+
+def handle_session_tail(args: argparse.Namespace) -> int:
+    runtime_dir = Path(args.runtime)
+    store = CharacterStateStore(runtime_dir)
+    char = _load_character_for_objectives(args)
+    if char is None:
+        return 1
+
+    log_path = Path(args.log) if args.log else Path("Client.txt")
+    tailer = ClientLogTailer(log_path)
+    logger = JourneyHistoryLogger(runtime_dir / "journey_history.jsonl")
+
+    events = tailer.poll()
+    reconciled_events: list[ObservationEvent] = []
+    for ev in events:
+        obs_type = {
+            ParsedLogEventType.ZONE_ENTER: ObservationEventType.ZONE_TRANSITION,
+            ParsedLogEventType.ZONE_GENERATE: ObservationEventType.ZONE_TRANSITION,
+            ParsedLogEventType.LEVEL_UP: ObservationEventType.LEVEL_UP,
+            ParsedLogEventType.DEATH: ObservationEventType.DEATH,
+        }.get(ev.event_type, ObservationEventType.CUSTOM)
+
+        obs_event = ObservationEvent.create(
+            event_type=obs_type,
+            source=ObservationSource.CLIENT_LOG,
+            character_id=char.character_id,
+            payload=ev.payload,
+            timestamp=ev.timestamp,
+        )
+        char = reconcile_observation(char, obs_event)
+        logger.record_event(obs_event)
+        reconciled_events.append(obs_event)
+
+    store.save_character(char)
+
+    if args.json:
+        print(json.dumps([e.model_dump() for e in reconciled_events], indent=2, default=str))
+    else:
+        print(f"Tail poll processed {len(reconciled_events)} events. Character '{char.character_name}' updated.")
+    return 0
+
+
+def handle_journey_list(args: argparse.Namespace) -> int:
+    runtime_dir = Path(args.runtime)
+    logger = JourneyHistoryLogger(runtime_dir / "journey_history.jsonl")
+    entries = logger.read_history(limit=args.limit)
+
+    if args.json:
+        print(json.dumps([e.model_dump() for e in entries], indent=2))
+    else:
+        if not entries:
+            print("No journey history records found.")
+        for entry in entries:
+            print(f"[{entry.timestamp}] {entry.event_type.upper()}: {json.dumps(entry.payload)}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -361,6 +483,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             return handle_objectives_next(args)
     elif args.subcommand == "evaluate":
         return handle_evaluate(args)
+    elif args.subcommand == "session":
+        if args.session_action == "status":
+            return handle_session_status(args)
+        elif args.session_action == "tail":
+            return handle_session_tail(args)
+    elif args.subcommand == "journey":
+        if args.journey_action == "list":
+            return handle_journey_list(args)
 
     return 0
 

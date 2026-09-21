@@ -140,6 +140,17 @@ class GuideRule(BaseModel):
             if "stage" in trigger and "stage" not in data:
                 data["stage"] = trigger["stage"]
 
+        # Infer min_level / max_level from stage if not explicitly set
+        stage_val = data.get("stage")
+        if stage_val and isinstance(stage_val, str):
+            import re
+            m = re.match(r"^lvl\s*(\d+)-(\d+)$", stage_val.strip(), re.IGNORECASE)
+            if m:
+                if data.get("min_level") is None:
+                    data["min_level"] = int(m.group(1))
+                if data.get("max_level") is None:
+                    data["max_level"] = int(m.group(2))
+
         # Parse and normalize observable_via
         obs_input = data.get("observable_via", [])
         if isinstance(obs_input, (str, ObservabilityMethod)):

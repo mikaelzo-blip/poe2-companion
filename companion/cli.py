@@ -22,6 +22,13 @@ from pathlib import Path
 import sys
 from typing import Sequence
 
+from companion.notifications.manager import NotificationManager
+from companion.notifications.schema import (
+    NotificationCategory,
+    NotificationPayload,
+    NotificationSeverity,
+)
+from companion.notifications.sinks import ConsoleSink
 from companion.observations.schema import (
     ObservationEvent,
     ObservationEventType,
@@ -31,6 +38,11 @@ from companion.objectives.formatter import format_objective, format_objective_li
 from companion.objectives.runner import (
     run_objective_pipeline,
     save_current_objective_artifact,
+)
+from companion.recap.generator import (
+    format_recap_json,
+    format_recap_text,
+    generate_session_recap,
 )
 from companion.sensing.client_log import ClientLogTailer, ParsedLogEventType
 from companion.sensing.process_presence import ProcessMonitor
@@ -143,6 +155,23 @@ def build_parser() -> argparse.ArgumentParser:
     tail_p.add_argument("--runtime", default="runtime", help="Runtime directory (default: runtime)")
     tail_p.add_argument("--once", action="store_true", help="Execute single poll cycle and exit")
     tail_p.add_argument("--json", action="store_true", help="Output processed observation events as JSON")
+
+    recap_p = session_sub.add_parser("recap", help="Generate post-session summary recap from journey history")
+    recap_p.add_argument("--runtime", default="runtime", help="Runtime directory (default: runtime)")
+    recap_p.add_argument("--session-id", help="Optional session identifier")
+    recap_p.add_argument("--json", action="store_true", help="Output session recap as JSON")
+
+    # notify subcommand group
+    notify_parser = subparsers.add_parser("notify", help="Notification delivery inspection and testing")
+    notify_sub = notify_parser.add_subparsers(dest="notify_action", required=True)
+
+    test_notify_p = notify_sub.add_parser("test", help="Test notification dispatch through policy")
+    test_notify_p.add_argument("--title", default="Test Alert", help="Notification title")
+    test_notify_p.add_argument("--message", default="Test notification message", help="Notification message body")
+    test_notify_p.add_argument("--severity", default="INFO", help="Notification severity (CRITICAL, WARNING, INFO)")
+    test_notify_p.add_argument("--category", default="OPTIMIZATION", help="Notification category")
+    test_notify_p.add_argument("--zone", default="The Clear Fell Encampment", help="Simulated current zone")
+    test_notify_p.add_argument("--json", action="store_true", help="Output dispatch result as JSON")
 
     # journey subcommand group
     journey_parser = subparsers.add_parser("journey", help="Inspect historical progression journey")
@@ -445,6 +474,46 @@ def handle_session_tail(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_session_recap(args: argparse.Namespace) -> int:
+    runtime_dir = Path(args.runtime)
+    logger = JourneyHistoryLogger(runtime_dir / "journey_history.jsonl")
+    entries = logger.read_history()
+    recap = generate_session_recap(entries, session_id=args.session_id)
+
+    if args.json:
+        print(format_recap_json(recap))
+    else:
+        print(format_recap_text(recap))
+    return 0
+
+
+def handle_notify_test(args: argparse.Namespace) -> int:
+    try:
+        sev = NotificationSeverity(args.severity.upper())
+    except ValueError:
+        sev = NotificationSeverity.INFO
+
+    try:
+        cat = NotificationCategory(args.category.upper())
+    except ValueError:
+        cat = NotificationCategory.OPTIMIZATION
+
+    payload = NotificationPayload.create(
+        title=args.title,
+        message=args.message,
+        severity=sev,
+        category=cat,
+    )
+    manager = NotificationManager(sinks=[ConsoleSink(use_stderr=args.json)])
+    res = manager.dispatch(payload, current_zone=args.zone)
+
+    if args.json:
+        print(json.dumps(res.model_dump(), indent=2))
+    else:
+        print(f"[{res.status.value}] Notification '{payload.title}' dispatched in zone '{args.zone}'.")
+    return 0
+
+
 def handle_journey_list(args: argparse.Namespace) -> int:
     runtime_dir = Path(args.runtime)
     logger = JourneyHistoryLogger(runtime_dir / "journey_history.jsonl")
@@ -488,6 +557,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             return handle_session_status(args)
         elif args.session_action == "tail":
             return handle_session_tail(args)
+        elif args.session_action == "recap":
+            return handle_session_recap(args)
+    elif args.subcommand == "notify":
+        if args.notify_action == "test":
+            return handle_notify_test(args)
     elif args.subcommand == "journey":
         if args.journey_action == "list":
             return handle_journey_list(args)

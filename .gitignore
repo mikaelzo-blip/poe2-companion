@@ -30,3 +30,6 @@ runtime/*.json
 # Future screenshot caches
 cache/
 screenshots/
+
+# Superpowers scratch
+.superpowers/

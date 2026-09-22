@@ -35,9 +35,9 @@ class ParsedLogEvent(BaseModel):
 _TIMESTAMP_PATTERN = r"^(?P<year>\d{4})/(?P<month>\d{2})/(?P<day>\d{2})\s+(?P<hour>\d{2}):(?P<minute>\d{2}):(?P<second>\d{2})"
 
 _ZONE_GENERATE_RE = re.compile(
-    r':\s+Generating level\s+(?P<level>\d+)\s+area\s+"(?P<zone>[^"]+)"'
+    r'(?:\]\s+|:\s+)Generating level\s+(?P<level>\d+)\s+area\s+"(?P<zone>[^"]+)"'
 )
-_ZONE_ENTER_RE = re.compile(r':\s+Entered area\s+"(?P<zone>[^"]+)"')
+_ZONE_ENTER_RE = re.compile(r'(?:\]\s+|:\s+)Entered area\s+"(?P<zone>[^"]+)"')
 _LEVEL_UP_RE = re.compile(
     r':\s+(?P<char>[a-zA-Z0-9_\u00C0-\u017F-]+)(?:\s+\((?P<class>[a-zA-Z0-9_\s-]+)\))?\s+is now level\s+(?P<level>\d+)'
 )

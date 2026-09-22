@@ -33,6 +33,14 @@ def test_parse_log_line_recognized_events() -> None:
     assert ev_zone.event_type == ParsedLogEventType.ZONE_ENTER
     assert ev_zone.payload.get("zone") == "Clear Fell"
 
+    # Zone enter with bracket prefix
+    line_zone_bracket = "2026/09/22 10:01:00 123456 [DEBUG Client 1234] Entered area \"Clear Fell\""
+    ev_zone_bracket = parse_log_line(line_zone_bracket)
+    assert ev_zone_bracket is not None
+    assert ev_zone_bracket.event_type == ParsedLogEventType.ZONE_ENTER
+    assert ev_zone_bracket.payload.get("zone") == "Clear Fell"
+
+
     # Zone generate
     line_gen = "2026/09/22 10:00:30 123456 [INFO Client 1234] : Generating level 12 area \"The Crypt\""
     ev_gen = parse_log_line(line_gen)
@@ -203,3 +211,63 @@ def test_parse_poe2_level_up_with_class_token() -> None:
     # Chat line disguised as level-up must be rejected
     line_chat = "2026/09/22 10:00:00 123456 [INFO Client 1234] @From Player: BOMSHAK (Mercenary) is now level 11"
     assert parse_log_line(line_chat) is None
+
+
+def test_parse_poe2_real_zone_generate_without_colon() -> None:
+    # Real observed PoE2 line without colon after [DEBUG Client <pid>]
+    line_real = (
+        '2026/09/23 02:41:59 58968640 2caa229f [DEBUG Client 18772] '
+        'Generating level 10 area "G1_11" with seed 2336047553'
+    )
+    ev = parse_log_line(line_real)
+    assert ev is not None
+    assert ev.event_type == ParsedLogEventType.ZONE_GENERATE
+    assert ev.payload["zone"] == "G1_11"
+    assert ev.payload["area_level"] == 10
+
+    # Retain test for legacy colon form
+    line_legacy = '2026/09/22 10:00:30 123456 [INFO Client 1234] : Generating level 12 area "The Crypt"'
+    ev_legacy = parse_log_line(line_legacy)
+    assert ev_legacy is not None
+    assert ev_legacy.event_type == ParsedLogEventType.ZONE_GENERATE
+    assert ev_legacy.payload["zone"] == "The Crypt"
+    assert ev_legacy.payload["area_level"] == 12
+
+
+def test_parse_log_line_negative_and_anti_overmatch() -> None:
+    # 1. Chat containing "Generating level" must be dropped by chat filter
+    chat_whisper = '2026/09/23 02:41:59 123456 [INFO Client 1234] @From Friend: Generating level 10 area "G1_11"'
+    assert parse_log_line(chat_whisper) is None
+
+    chat_global = '2026/09/23 02:41:59 123456 [INFO Client 1234] #Player: Generating level 10 area "G1_11"'
+    assert parse_log_line(chat_global) is None
+
+    chat_trade = '2026/09/23 02:41:59 123456 [INFO Client 1234] $Trader: Generating level 10 area "G1_11"'
+    assert parse_log_line(chat_trade) is None
+
+    # 2. Arbitrary text containing "Entered area"
+    chat_entered = '2026/09/23 02:41:59 123456 [INFO Client 1234] #Player: I just Entered area "Town"'
+    assert parse_log_line(chat_entered) is None
+
+    arbitrary_text = '2026/09/23 02:41:59 123456 Random system notice Entered area "Secret"'
+    assert parse_log_line(arbitrary_text) is None
+
+    # 3. Malformed area lines
+    malformed_level = '2026/09/23 02:41:59 123456 [DEBUG Client 18772] Generating level notanumber area "G1_11"'
+    assert parse_log_line(malformed_level) is None
+
+    malformed_unquoted_zone = '2026/09/23 02:41:59 123456 [DEBUG Client 18772] Generating level 10 area G1_11'
+    assert parse_log_line(malformed_unquoted_zone) is None
+
+    malformed_unquoted_enter = '2026/09/23 02:41:59 123456 [DEBUG Client 18772] Entered area Unquoted'
+    assert parse_log_line(malformed_unquoted_enter) is None
+
+    # 4. Unrelated DEBUG lines
+    debug_asset = '2026/09/23 02:41:59 123456 [DEBUG Client 18772] Async loading asset "art/textures/environment.dds"'
+    assert parse_log_line(debug_asset) is None
+
+    debug_device = '2026/09/23 02:41:59 123456 [DEBUG Client 18772] Direct3D12 device created successfully'
+    assert parse_log_line(debug_device) is None
+
+    debug_connect = '2026/09/23 02:41:59 123456 [DEBUG Client 18772] Connect to instance server 127.0.0.1:1234'
+    assert parse_log_line(debug_connect) is None

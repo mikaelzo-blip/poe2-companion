@@ -34,6 +34,14 @@ from companion.observations.schema import (
     ObservationEventType,
     ObservationSource,
 )
+from companion.runtime.lease import (
+    RUNTIME_WRITER_ACTIVE_CODE,
+    WriterActiveError,
+    guard_state_mutation,
+)
+from companion.runtime.models import RuntimeConfig
+from companion.runtime.orchestrator import ContinuousRuntimeOrchestrator
+from companion.runtime.status import inspect_runtime_status
 from companion.objectives.formatter import format_objective, format_objective_list
 from companion.objectives.runner import (
     run_objective_pipeline,
@@ -289,6 +297,22 @@ def build_parser() -> argparse.ArgumentParser:
     async_p.add_argument("--mock", action="store_true", help="Use deterministic mock adapter")
     async_p.add_argument("--json", action="store_true", help="Output synchronized character as JSON")
 
+    # Continuous Runtime
+    runtime_parser = subparsers.add_parser("runtime", help="Continuous foreground runtime and status")
+    runtime_sub = runtime_parser.add_subparsers(dest="runtime_action", required=True)
+
+    rstart_p = runtime_sub.add_parser("start", help="Start continuous foreground companion runtime")
+    rstart_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    rstart_p.add_argument("--log", help="Path to Client.txt log file")
+    rstart_p.add_argument("--char", help="Character ID or name override")
+    rstart_p.add_argument("--poll-interval", type=float, default=1.0, help="Polling interval in seconds")
+    rstart_p.add_argument("--backfill", action="store_true", help="Catch up historical backlog without live notifications")
+    rstart_p.add_argument("--verbose", action="store_true", help="Enable verbose diagnostic console logging")
+
+    rstat_p = runtime_sub.add_parser("status", help="Inspect local runtime process status and heartbeats")
+    rstat_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    rstat_p.add_argument("--json", action="store_true", help="Output runtime status as JSON")
+
     return parser
 
 
@@ -369,20 +393,24 @@ def handle_sources_inspect(args: argparse.Namespace) -> int:
 
 def handle_state_init(args: argparse.Namespace) -> int:
     try:
-        store = CharacterStateStore(args.runtime)
-        char = CharacterState.create_initial(
-            character_id=args.id,
-            character_name=args.name,
-            character_class=args.class_name,
-            ascendancy=args.ascendancy,
-        )
-        saved_path = store.save_character(char)
-        store.set_active_character(args.id)
+        with guard_state_mutation(args.runtime):
+            store = CharacterStateStore(args.runtime)
+            char = CharacterState.create_initial(
+                character_id=args.id,
+                character_name=args.name,
+                character_class=args.class_name,
+                ascendancy=args.ascendancy,
+            )
+            saved_path = store.save_character(char)
+            store.set_active_character(args.id)
 
-        print(f"Initialized character '{args.id}' ({args.name}):")
-        print(f"  State file: {saved_path}")
-        print(f"  Set as active character in: {store.active_file}")
-        return 0
+            print(f"Initialized character '{args.id}' ({args.name}):")
+            print(f"  State file: {saved_path}")
+            print(f"  Set as active character in: {store.active_file}")
+            return 0
+    except WriterActiveError as e:
+        sys.stderr.write(f"State init error: {e}\n")
+        return 1
     except Exception as e:
         sys.stderr.write(f"State init error: {e}\n")
         return 1
@@ -542,43 +570,51 @@ def handle_session_status(args: argparse.Namespace) -> int:
 
 def handle_session_tail(args: argparse.Namespace) -> int:
     runtime_dir = Path(args.runtime)
-    store = CharacterStateStore(runtime_dir)
-    char = _load_character_for_objectives(args)
-    if char is None:
+    try:
+        with guard_state_mutation(runtime_dir):
+            store = CharacterStateStore(runtime_dir)
+            char = _load_character_for_objectives(args)
+            if char is None:
+                return 1
+
+            log_path = Path(args.log) if args.log else Path("Client.txt")
+            tailer = ClientLogTailer(log_path)
+            logger = JourneyHistoryLogger(runtime_dir / "journey_history.jsonl")
+
+            events = tailer.poll()
+            reconciled_events: list[ObservationEvent] = []
+            for ev in events:
+                obs_type = {
+                    ParsedLogEventType.ZONE_ENTER: ObservationEventType.ZONE_TRANSITION,
+                    ParsedLogEventType.ZONE_GENERATE: ObservationEventType.ZONE_TRANSITION,
+                    ParsedLogEventType.LEVEL_UP: ObservationEventType.LEVEL_UP,
+                    ParsedLogEventType.DEATH: ObservationEventType.DEATH,
+                }.get(ev.event_type, ObservationEventType.CUSTOM)
+
+                obs_event = ObservationEvent.create(
+                    event_type=obs_type,
+                    source=ObservationSource.CLIENT_LOG,
+                    character_id=char.character_id,
+                    payload=ev.payload,
+                    timestamp=ev.timestamp,
+                )
+                char = reconcile_observation(char, obs_event)
+                logger.record_event(obs_event)
+                reconciled_events.append(obs_event)
+
+            store.save_character(char)
+
+            if args.json:
+                print(json.dumps([e.model_dump() for e in reconciled_events], indent=2, default=str))
+            else:
+                print(f"Tail poll processed {len(reconciled_events)} events. Character '{char.character_name}' updated.")
+            return 0
+    except WriterActiveError as e:
+        sys.stderr.write(f"Session tail error: {e}\n")
         return 1
-
-    log_path = Path(args.log) if args.log else Path("Client.txt")
-    tailer = ClientLogTailer(log_path)
-    logger = JourneyHistoryLogger(runtime_dir / "journey_history.jsonl")
-
-    events = tailer.poll()
-    reconciled_events: list[ObservationEvent] = []
-    for ev in events:
-        obs_type = {
-            ParsedLogEventType.ZONE_ENTER: ObservationEventType.ZONE_TRANSITION,
-            ParsedLogEventType.ZONE_GENERATE: ObservationEventType.ZONE_TRANSITION,
-            ParsedLogEventType.LEVEL_UP: ObservationEventType.LEVEL_UP,
-            ParsedLogEventType.DEATH: ObservationEventType.DEATH,
-        }.get(ev.event_type, ObservationEventType.CUSTOM)
-
-        obs_event = ObservationEvent.create(
-            event_type=obs_type,
-            source=ObservationSource.CLIENT_LOG,
-            character_id=char.character_id,
-            payload=ev.payload,
-            timestamp=ev.timestamp,
-        )
-        char = reconcile_observation(char, obs_event)
-        logger.record_event(obs_event)
-        reconciled_events.append(obs_event)
-
-    store.save_character(char)
-
-    if args.json:
-        print(json.dumps([e.model_dump() for e in reconciled_events], indent=2, default=str))
-    else:
-        print(f"Tail poll processed {len(reconciled_events)} events. Character '{char.character_name}' updated.")
-    return 0
+    except Exception as e:
+        sys.stderr.write(f"Session tail error: {e}\n")
+        return 1
 
 
 def handle_session_recap(args: argparse.Namespace) -> int:
@@ -696,6 +732,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             return handle_api_status(args)
         elif args.api_action == "sync":
             return handle_api_sync(args)
+    elif args.subcommand == "runtime":
+        if args.runtime_action == "start":
+            return handle_runtime_start(args)
+        elif args.runtime_action == "status":
+            return handle_runtime_status(args)
 
     return 0
 
@@ -1032,6 +1073,46 @@ def handle_api_sync(args: argparse.Namespace) -> int:
         print(f"  Allocated Passives: {len(char.passives)}")
         print(f"  Equipment Items: {len(char.equipment)}")
         print(f"  Spirit Capacity: {char.quest_stats.spirit_capacity}")
+    return 0
+
+
+def handle_runtime_start(args: argparse.Namespace) -> int:
+    try:
+        cfg = RuntimeConfig(
+            runtime_dir=Path(args.runtime),
+            client_log_path=Path(args.log) if args.log else None,
+            character_id=args.char,
+            poll_interval=args.poll_interval,
+            backfill=args.backfill,
+            verbose=args.verbose,
+        )
+        orchestrator = ContinuousRuntimeOrchestrator(cfg)
+        orchestrator.run_forever()
+        return 0
+    except Exception as e:
+        sys.stderr.write(f"Runtime error: {e}\n")
+        return 1
+
+
+def handle_runtime_status(args: argparse.Namespace) -> int:
+    summary = inspect_runtime_status(args.runtime)
+    if args.json:
+        print(summary.model_dump_json(indent=2))
+    else:
+        print(f"Companion Runtime Status: [{summary.status}]")
+        if summary.runtime_pid:
+            print(f"  PID: {summary.runtime_pid}")
+        if summary.lifecycle_state:
+            print(f"  Lifecycle: {summary.lifecycle_state.value}")
+        print(f"  Game Presence: {'Running' if summary.game_process_running else 'Not Running'}")
+        if summary.active_character_id:
+            print(f"  Active Character: {summary.active_character_id}")
+        if summary.last_heartbeat:
+            age_str = f" ({summary.heartbeat_age_seconds:.1f}s ago)" if summary.heartbeat_age_seconds is not None else ""
+            print(f"  Last Heartbeat: {summary.last_heartbeat}{age_str}")
+        print(f"  Writer Lock Held: {summary.writer_lock_held}")
+        if summary.message:
+            print(f"  Message: {summary.message}")
     return 0
 
 

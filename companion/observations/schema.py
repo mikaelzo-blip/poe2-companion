@@ -51,10 +51,11 @@ class ObservationEvent(BaseModel):
         character_id: str | None = None,
         payload: dict[str, Any] | None = None,
         timestamp: datetime | None = None,
+        event_id: str | None = None,
     ) -> ObservationEvent:
         """Convenience constructor generating unique event ID."""
         return cls(
-            event_id=str(uuid.uuid4()),
+            event_id=event_id or str(uuid.uuid4()),
             event_type=event_type,
             source=source,
             timestamp=timestamp or datetime.now(timezone.utc),

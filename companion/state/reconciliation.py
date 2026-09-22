@@ -42,13 +42,49 @@ def reconcile_observation(
     elif event.event_type == ObservationEventType.DEATH:
         char_name = event.payload.get("character_name")
         if char_name is None or char_name == state.character_name:
-            curr_deaths = state.death_count.value if state.death_count else 0
-            state.death_count = ProvenancedField.create(
-                curr_deaths + 1,
-                src,
-                VerificationState.VERIFIED,
-                observed_at=ts_iso,
-            )
+            source_stream_id = event.payload.get("source_stream_id")
+            end_offset = event.payload.get("end_offset")
+
+            if source_stream_id is not None and end_offset is not None:
+                watermark_stream_id: str | None = None
+                watermark_end_offset: int | None = None
+                for ref in (state.death_count.evidence_refs if state.death_count else []):
+                    if ref.startswith("watermark:"):
+                        remainder = ref[len("watermark:"):]
+                        if ":" in remainder:
+                            w_stream, w_off = remainder.rsplit(":", 1)
+                            try:
+                                watermark_stream_id = w_stream
+                                watermark_end_offset = int(w_off)
+                            except ValueError:
+                                pass
+
+                if (
+                    watermark_stream_id is not None
+                    and watermark_end_offset is not None
+                    and source_stream_id == watermark_stream_id
+                    and int(end_offset) <= watermark_end_offset
+                ):
+                    # Already counted; idempotent no-op
+                    return state
+
+                curr_deaths = state.death_count.value if state.death_count else 0
+                new_watermark = f"watermark:{source_stream_id}:{end_offset}"
+                state.death_count = ProvenancedField.create(
+                    curr_deaths + 1,
+                    src,
+                    VerificationState.VERIFIED,
+                    observed_at=ts_iso,
+                    evidence_refs=[new_watermark],
+                )
+            else:
+                curr_deaths = state.death_count.value if state.death_count else 0
+                state.death_count = ProvenancedField.create(
+                    curr_deaths + 1,
+                    src,
+                    VerificationState.VERIFIED,
+                    observed_at=ts_iso,
+                )
 
     elif event.event_type == ObservationEventType.PROCESS_STATE_CHANGE:
         proc_state = event.payload.get("state")

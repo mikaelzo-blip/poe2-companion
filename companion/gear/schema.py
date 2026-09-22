@@ -63,6 +63,7 @@ class EquippedItem(BaseModel):
     base_type: str
     rarity: ItemRarity = ItemRarity.NORMAL
     level_req: int = 0
+    item_level: int = 0
     required_str: int = 0
     required_dex: int = 0
     required_int: int = 0

@@ -72,6 +72,14 @@ from companion.gear import (
     parse_item_tooltip,
     record_slot_audit,
 )
+from companion.intelligence import (
+    evaluate_economy_priorities,
+    evaluate_gear_rules,
+    evaluate_story_progression,
+    evaluate_survival_rules,
+    evaluate_troubleshooting_rules,
+    get_story_quests,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -237,6 +245,28 @@ def build_parser() -> argparse.ArgumentParser:
     gcomp_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
     gcomp_p.add_argument("--character-id", help="Character ID")
     gcomp_p.add_argument("--json", action="store_true", help="Output comparison as JSON")
+
+    # Milestone 9: Intelligence
+    intel_parser = subparsers.add_parser("intelligence", help="Expanded build intelligence and diagnostic advisory")
+    intel_sub = intel_parser.add_subparsers(dest="intel_action", required=True)
+
+    iaudit_p = intel_sub.add_parser("audit", help="Run comprehensive intelligence advisory audit")
+    iaudit_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    iaudit_p.add_argument("--character-id", help="Character ID")
+    iaudit_p.add_argument("--level", type=int, help="Override character level")
+    iaudit_p.add_argument("--act", type=int, default=1, help="Override current story act")
+    iaudit_p.add_argument("--json", action="store_true", help="Output advisories as JSON")
+
+    istory_p = intel_sub.add_parser("story", help="View story quest checklist and permanent rewards")
+    istory_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    istory_p.add_argument("--character-id", help="Character ID")
+    istory_p.add_argument("--json", action="store_true", help="Output quest status as JSON")
+
+    iecon_p = intel_sub.add_parser("economy", help="View gear upgrade prioritization and ROI guidance")
+    iecon_p.add_argument("--level", type=int, default=50, help="Character level")
+    iecon_p.add_argument("--resists-capped", action="store_true", help="Flag indicating elemental resists are capped")
+    iecon_p.add_argument("--weapon-lagging", action="store_true", help="Flag indicating weapon DPS is lagging")
+    iecon_p.add_argument("--json", action="store_true", help="Output priorities as JSON")
 
     return parser
 
@@ -633,6 +663,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             return handle_gear_audit(args)
         elif args.gear_action == "compare":
             return handle_gear_compare(args)
+    elif args.subcommand == "intelligence":
+        if args.intel_action == "audit":
+            return handle_intelligence_audit(args)
+        elif args.intel_action == "story":
+            return handle_intelligence_story(args)
+        elif args.intel_action == "economy":
+            return handle_intelligence_economy(args)
 
     return 0
 
@@ -832,6 +869,89 @@ def handle_gear_compare(args: argparse.Namespace) -> int:
         print(f"  Candidate: {candidate.name or candidate.base_type}")
         print(f"  Upgrade action: {upg.action} (score delta: {upg.score_delta:+.1f})")
         print(f"  Investment advice: {advice.recommendation}")
+    return 0
+
+
+def handle_intelligence_story(args: argparse.Namespace) -> int:
+    quests = get_story_quests()
+    if args.json:
+        print(json.dumps({"quests": [q.model_dump() for q in quests]}, indent=2))
+    else:
+        print("PoE2 Permanent Reward Story Quests:")
+        for q in quests:
+            status = "[x]" if q.completed else "[ ]"
+            print(f"  {status} Act {q.act}: {q.name} ({q.reward_type} - {q.reward_detail})")
+    return 0
+
+
+def handle_intelligence_economy(args: argparse.Namespace) -> int:
+    priorities = evaluate_economy_priorities(
+        character_level=args.level,
+        current_resists_capped=args.resists_capped,
+        weapon_dps_lagging=args.weapon_lagging,
+    )
+    if args.json:
+        print(json.dumps({"level": args.level, "priorities": [p.model_dump() for p in priorities]}, indent=2))
+    else:
+        print(f"Upgrade Prioritization & Economy Guidance (Level {args.level}):")
+        for p in priorities:
+            print(f"  [Tier {p.priority_tier}] Slot: {p.target_slot}")
+            print(f"    Action: {p.recommended_action}")
+            print(f"    Cost: {p.estimated_cost}")
+            print(f"    ROI: {p.roi_reason}")
+    return 0
+
+
+def handle_intelligence_audit(args: argparse.Namespace) -> int:
+    char_id = _resolve_char_id(args)
+    level = args.level or 1
+    act = args.act or 1
+
+    store = CharacterStateStore(args.runtime)
+    if args.level is None and char_id in store.list_characters():
+        try:
+            char_state = store.load_character(char_id)
+            level = char_state.level
+        except Exception:
+            pass
+
+    gear_state = load_gear_audit_state(args.runtime, char_id)
+
+    # 1. Survival rules
+    survival_adv = evaluate_survival_rules(panel_stats=None, character_level=level, current_act=act)
+
+    # 2. Gear rules
+    gear_adv = evaluate_gear_rules(gear_state=gear_state, character_level=level)
+
+    # 3. Troubleshooting rules
+    char_attrs = {"str": 50, "dex": 50, "int": 50}
+    trouble_adv = evaluate_troubleshooting_rules(
+        character_attributes=char_attrs,
+        required_attributes={"str": 50, "dex": 50, "int": 50},
+        current_mana=500,
+        unreserved_mana=150,
+        main_skill_cost=20,
+    )
+
+    # 4. Story rules
+    story_adv = evaluate_story_progression(current_act=act)
+
+    all_advisories = survival_adv + gear_adv + trouble_adv + story_adv
+
+    if args.json:
+        data = {
+            "character_id": char_id,
+            "level": level,
+            "act": act,
+            "advisories": [a.model_dump() for a in all_advisories],
+        }
+        print(json.dumps(data, indent=2))
+    else:
+        print(f"Expanded Intelligence Audit for Character '{char_id}' (Level {level}, Act {act}):")
+        print(f"  Total advisories: {len(all_advisories)}")
+        for a in all_advisories:
+            print(f"  [{a.severity.value}] [{a.category.value}] {a.title}: {a.description}")
+            print(f"    -> {a.recommendation}")
     return 0
 
 

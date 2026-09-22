@@ -52,6 +52,11 @@ from companion.sources.unpacker import unpack_source_archive
 from companion.sources.validator import validate_single_snapshot, validate_snapshots_directory
 from companion.state.history import JourneyHistoryLogger
 from companion.state.reconciliation import reconcile_observation
+from companion.vision.budget import VisionBudgetConfig, VisionBudgetTracker
+from companion.vision.classifier import classify_screen
+from companion.vision.parser import evaluate_verification_state, parse_character_panel
+from companion.vision.privacy import VisionPrivacyConfig, get_privacy_disclosure
+from companion.vision.schema import ScreenType, VisionExtractionResult
 from companion.state.schema import CharacterState
 from companion.state.store import CharacterStateStore
 
@@ -181,6 +186,18 @@ def build_parser() -> argparse.ArgumentParser:
     jlist_p.add_argument("--runtime", default="runtime", help="Runtime directory (default: runtime)")
     jlist_p.add_argument("--limit", type=int, default=20, help="Maximum number of history entries (default: 20)")
     jlist_p.add_argument("--json", action="store_true", help="Output history entries as JSON")
+
+    # vision subcommand group
+    vision_parser = subparsers.add_parser("vision", help="Read-only visual screen sensing and panel parsing")
+    vision_sub = vision_parser.add_subparsers(dest="vision_action", required=True)
+
+    vstat_p = vision_sub.add_parser("status", help="Inspect vision sensor budget and privacy status")
+    vstat_p.add_argument("--json", action="store_true", help="Output status as JSON")
+
+    vpanel_p = vision_sub.add_parser("parse-panel", help="Parse character panel text into defensive stats")
+    vpanel_p.add_argument("--file", help="Path to file containing character panel text")
+    vpanel_p.add_argument("--text", help="Raw character panel text")
+    vpanel_p.add_argument("--json", action="store_true", help="Output parsed stats as JSON")
 
     return parser
 
@@ -565,7 +582,78 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.subcommand == "journey":
         if args.journey_action == "list":
             return handle_journey_list(args)
+    elif args.subcommand == "vision":
+        if args.vision_action == "status":
+            return handle_vision_status(args)
+        elif args.vision_action == "parse-panel":
+            return handle_vision_parse_panel(args)
 
+    return 0
+
+
+def handle_vision_status(args: argparse.Namespace) -> int:
+    budget_cfg = VisionBudgetConfig()
+    tracker = VisionBudgetTracker(budget_cfg)
+    privacy_cfg = VisionPrivacyConfig()
+
+    status_data = {
+        "budget": {
+            "enabled": budget_cfg.enabled,
+            "max_calls_per_hour": budget_cfg.max_calls_per_hour,
+            "min_seconds_between_captures": budget_cfg.min_seconds_between_captures,
+            "calls_in_past_hour": tracker.calls_in_past_hour,
+            "screenshot_cache_max_mb": budget_cfg.screenshot_cache_max_mb,
+            "screenshot_cache_ttl_minutes": budget_cfg.screenshot_cache_ttl_minutes,
+        },
+        "privacy": {
+            "mode": privacy_cfg.mode,
+            "provider": privacy_cfg.provider,
+            "disclosure": get_privacy_disclosure(privacy_cfg),
+        },
+    }
+
+    if args.json:
+        print(json.dumps(status_data, indent=2))
+    else:
+        print(f"Vision Sensor: [{privacy_cfg.mode.upper()}] Provider: {privacy_cfg.provider}")
+        print(f"Budget: {status_data['budget']['calls_in_past_hour']}/{budget_cfg.max_calls_per_hour} calls/hr (Cooldown: {budget_cfg.min_seconds_between_captures}s)")
+        print(f"Privacy: {status_data['privacy']['disclosure']}")
+    return 0
+
+
+def handle_vision_parse_panel(args: argparse.Namespace) -> int:
+    text = ""
+    if args.file:
+        file_path = Path(args.file)
+        if not file_path.exists():
+            print(f"Error: file '{args.file}' not found.", file=sys.stderr)
+            return 1
+        text = file_path.read_text(encoding="utf-8")
+    elif args.text:
+        text = args.text
+    else:
+        print("Error: must provide --file or --text", file=sys.stderr)
+        return 1
+
+    screen_type, conf = classify_screen(text)
+    stats = parse_character_panel(text) if screen_type == ScreenType.CHARACTER_PANEL else None
+    stats_obj, ver_state = evaluate_verification_state([stats] if stats else [])
+
+    res = VisionExtractionResult(
+        screen_type=screen_type,
+        stats=stats_obj,
+        verification_state=ver_state,
+        confidence=conf,
+        raw_text=text[:200],
+    )
+
+    if args.json:
+        print(json.dumps(res.model_dump(), indent=2))
+    else:
+        print(f"Screen Type: {res.screen_type.value} (Confidence: {res.confidence:.2f})")
+        print(f"Verification State: {res.verification_state.value}")
+        if res.stats:
+            print(f"Stats: Life={res.stats.life}, Mana={res.stats.mana}, Fire={res.stats.fire_res}%, Cold={res.stats.cold_res}%, Lightning={res.stats.lightning_res}%, Chaos={res.stats.chaos_res}%")
     return 0
 
 

@@ -54,6 +54,23 @@ def reconcile_observation(
         proc_state = event.payload.get("state")
         state.session_active = (proc_state == "RUNNING")
 
+    elif event.event_type == ObservationEventType.STAT_OBSERVATION:
+        ver_state_str = event.payload.get("verification_state", "VERIFIED")
+        try:
+            ver_state = VerificationState(ver_state_str)
+        except ValueError:
+            ver_state = VerificationState.UNKNOWN
+
+        resists = event.payload.get("resistances", {})
+        for r_key, r_val in resists.items():
+            if r_val is not None and r_key in state.resistances:
+                state.resistances[r_key] = ProvenancedField.create(
+                    r_val,
+                    src,
+                    ver_state,
+                    observed_at=ts_iso,
+                )
+
     state.last_observed_at = ts_iso
     state.updated_at = datetime.now(timezone.utc).isoformat()
     return state

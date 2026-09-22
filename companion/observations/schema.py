@@ -27,6 +27,7 @@ class ObservationEventType(str, Enum):
     DEATH = "death"
     PROCESS_STATE_CHANGE = "process_state_change"
     OBJECTIVE_COMPLETED = "objective_completed"
+    STAT_OBSERVATION = "stat_observation"
     CUSTOM = "custom"
 
 

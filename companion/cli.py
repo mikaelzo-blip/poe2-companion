@@ -59,6 +59,19 @@ from companion.vision.privacy import VisionPrivacyConfig, get_privacy_disclosure
 from companion.vision.schema import ScreenType, VisionExtractionResult
 from companion.state.schema import CharacterState
 from companion.state.store import CharacterStateStore
+from companion.gear import (
+    EquippedItem,
+    GearAuditState,
+    ItemSlot,
+    compare_candidate_upgrade,
+    compare_equipped_against_target,
+    detect_mechanic_conflicts,
+    evaluate_gear_staleness,
+    generate_investment_advice,
+    load_gear_audit_state,
+    parse_item_tooltip,
+    record_slot_audit,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -198,6 +211,32 @@ def build_parser() -> argparse.ArgumentParser:
     vpanel_p.add_argument("--file", help="Path to file containing character panel text")
     vpanel_p.add_argument("--text", help="Raw character panel text")
     vpanel_p.add_argument("--json", action="store_true", help="Output parsed stats as JSON")
+
+    # gear subcommand group
+    gear_parser = subparsers.add_parser("gear", help="Gear auto-analysis and audit")
+    gear_sub = gear_parser.add_subparsers(dest="gear_action", required=True)
+
+    gstat_p = gear_sub.add_parser("status", help="Inspect equipped gear audit status and conflicts")
+    gstat_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    gstat_p.add_argument("--character-id", help="Character ID (defaults to active character or default)")
+    gstat_p.add_argument("--json", action="store_true", help="Output status as JSON")
+
+    gaudit_p = gear_sub.add_parser("audit", help="Audit or record an equipment slot")
+    gaudit_p.add_argument("--slot", required=True, help="Equipment slot to audit (e.g. boots, helmet)")
+    gaudit_p.add_argument("--file", help="Path to file containing tooltip text")
+    gaudit_p.add_argument("--text", help="Raw tooltip text")
+    gaudit_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    gaudit_p.add_argument("--character-id", help="Character ID")
+    gaudit_p.add_argument("--json", action="store_true", help="Output result as JSON")
+
+    gcomp_p = gear_sub.add_parser("compare", help="Compare equipped item or candidate upgrade")
+    gcomp_p.add_argument("--slot", required=True, help="Equipment slot (e.g. boots, helmet)")
+    gcomp_p.add_argument("--file", help="Path to candidate tooltip file")
+    gcomp_p.add_argument("--text", help="Candidate raw tooltip text")
+    gcomp_p.add_argument("--milestone", type=int, default=52, help="Upcoming progression milestone level")
+    gcomp_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    gcomp_p.add_argument("--character-id", help="Character ID")
+    gcomp_p.add_argument("--json", action="store_true", help="Output comparison as JSON")
 
     return parser
 
@@ -587,6 +626,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             return handle_vision_status(args)
         elif args.vision_action == "parse-panel":
             return handle_vision_parse_panel(args)
+    elif args.subcommand == "gear":
+        if args.gear_action == "status":
+            return handle_gear_status(args)
+        elif args.gear_action == "audit":
+            return handle_gear_audit(args)
+        elif args.gear_action == "compare":
+            return handle_gear_compare(args)
 
     return 0
 
@@ -654,6 +700,138 @@ def handle_vision_parse_panel(args: argparse.Namespace) -> int:
         print(f"Verification State: {res.verification_state.value}")
         if res.stats:
             print(f"Stats: Life={res.stats.life}, Mana={res.stats.mana}, Fire={res.stats.fire_res}%, Cold={res.stats.cold_res}%, Lightning={res.stats.lightning_res}%, Chaos={res.stats.chaos_res}%")
+    return 0
+
+
+def _resolve_char_id(args: argparse.Namespace) -> str:
+    if getattr(args, "character_id", None):
+        return args.character_id
+    store = CharacterStateStore(args.runtime)
+    active = store.get_active_character()
+    if active:
+        return active.character_id
+    return "default_char"
+
+
+def handle_gear_status(args: argparse.Namespace) -> int:
+    char_id = _resolve_char_id(args)
+    state = load_gear_audit_state(args.runtime, char_id)
+    all_conflicts = []
+    slots_summary = {}
+
+    for slot, item in state.slots.items():
+        staleness = evaluate_gear_staleness(item)
+        conflicts = detect_mechanic_conflicts(item)
+        all_conflicts.extend([c.model_dump() for c in conflicts])
+        slots_summary[slot.value] = {
+            "name": item.name,
+            "base_type": item.base_type,
+            "verification": staleness.value,
+            "item_hash": item.item_hash,
+            "observed_at": item.observed_at,
+        }
+
+    data = {
+        "character_id": char_id,
+        "slots": slots_summary,
+        "conflicts": all_conflicts,
+        "updated_at": state.updated_at,
+    }
+
+    if args.json:
+        print(json.dumps(data, indent=2))
+    else:
+        print(f"Gear Status for Character '{char_id}':")
+        print(f"  Audited slots: {len(slots_summary)}")
+        for s_name, s_info in slots_summary.items():
+            print(f"  - {s_name}: {s_info['name'] or s_info['base_type']} [{s_info['verification'].upper()}]")
+        if all_conflicts:
+            print(f"  Active conflicts: {len(all_conflicts)}")
+            for c in all_conflicts:
+                print(f"    * [{c['slot']}] {c['description']}")
+    return 0
+
+
+def handle_gear_audit(args: argparse.Namespace) -> int:
+    char_id = _resolve_char_id(args)
+    try:
+        slot = ItemSlot(args.slot.lower())
+    except ValueError:
+        print(f"Error: unknown slot '{args.slot}'", file=sys.stderr)
+        return 1
+
+    text = ""
+    if args.file:
+        p = Path(args.file)
+        if not p.exists():
+            print(f"Error: file '{args.file}' not found.", file=sys.stderr)
+            return 1
+        text = p.read_text(encoding="utf-8")
+    elif args.text:
+        text = args.text
+    else:
+        print("Error: must provide --file or --text for audit", file=sys.stderr)
+        return 1
+
+    item, ver_state, _ = record_slot_audit(args.runtime, char_id, slot, [text])
+    if item is None:
+        print("Audit failed: could not parse tooltip.", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(item.model_dump(), indent=2))
+    else:
+        print(f"Audited slot '{slot.value}':")
+        print(f"  Item: {item.name or item.base_type} ({item.rarity.value})")
+        print(f"  Verification: {item.verification.value}")
+        print(f"  Item hash: {item.item_hash}")
+    return 0
+
+
+def handle_gear_compare(args: argparse.Namespace) -> int:
+    char_id = _resolve_char_id(args)
+    try:
+        slot = ItemSlot(args.slot.lower())
+    except ValueError:
+        print(f"Error: unknown slot '{args.slot}'", file=sys.stderr)
+        return 1
+
+    text = ""
+    if args.file:
+        p = Path(args.file)
+        if not p.exists():
+            print(f"Error: file '{args.file}' not found.", file=sys.stderr)
+            return 1
+        text = p.read_text(encoding="utf-8")
+    elif args.text:
+        text = args.text
+    else:
+        print("Error: must provide --file or --text for candidate", file=sys.stderr)
+        return 1
+
+    candidate = parse_item_tooltip(text, slot=slot)
+    state = load_gear_audit_state(args.runtime, char_id)
+    equipped = state.slots.get(slot, candidate)
+
+    comp = compare_equipped_against_target(candidate, {})
+    advice = generate_investment_advice(candidate, upcoming_milestone_level=args.milestone)
+    upg = compare_candidate_upgrade(equipped, candidate)
+
+    res = {
+        "slot": slot.value,
+        "candidate": candidate.model_dump(),
+        "comparison": comp.model_dump(),
+        "advice": advice.model_dump(),
+        "upgrade_recommendation": upg.model_dump(),
+    }
+
+    if args.json:
+        print(json.dumps(res, indent=2))
+    else:
+        print(f"Gear Comparison for slot '{slot.value}':")
+        print(f"  Candidate: {candidate.name or candidate.base_type}")
+        print(f"  Upgrade action: {upg.action} (score delta: {upg.score_delta:+.1f})")
+        print(f"  Investment advice: {advice.recommendation}")
     return 0
 
 

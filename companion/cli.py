@@ -80,6 +80,13 @@ from companion.intelligence import (
     evaluate_troubleshooting_rules,
     get_story_quests,
 )
+from companion.api import (
+    ApiCircuitBreaker,
+    OAuthStatus,
+    Poe2ApiClient,
+    create_mock_character,
+    get_oauth_status,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -267,6 +274,18 @@ def build_parser() -> argparse.ArgumentParser:
     iecon_p.add_argument("--resists-capped", action="store_true", help="Flag indicating elemental resists are capped")
     iecon_p.add_argument("--weapon-lagging", action="store_true", help="Flag indicating weapon DPS is lagging")
     iecon_p.add_argument("--json", action="store_true", help="Output priorities as JSON")
+
+    # Milestone 10: Official API
+    api_parser = subparsers.add_parser("api", help="Official PoE2 Character API synchronization and PoB2 integration")
+    api_sub = api_parser.add_subparsers(dest="api_action", required=True)
+
+    astat_p = api_sub.add_parser("status", help="Inspect official API OAuth status and circuit breaker")
+    astat_p.add_argument("--json", action="store_true", help="Output status as JSON")
+
+    async_p = api_sub.add_parser("sync", help="Synchronize character from official API or local mock")
+    async_p.add_argument("--character-id", default="char_1", help="Character ID to synchronize")
+    async_p.add_argument("--mock", action="store_true", help="Use deterministic mock adapter")
+    async_p.add_argument("--json", action="store_true", help="Output synchronized character as JSON")
 
     return parser
 
@@ -670,6 +689,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             return handle_intelligence_story(args)
         elif args.intel_action == "economy":
             return handle_intelligence_economy(args)
+    elif args.subcommand == "api":
+        if args.api_action == "status":
+            return handle_api_status(args)
+        elif args.api_action == "sync":
+            return handle_api_sync(args)
 
     return 0
 
@@ -952,6 +976,54 @@ def handle_intelligence_audit(args: argparse.Namespace) -> int:
         for a in all_advisories:
             print(f"  [{a.severity.value}] [{a.category.value}] {a.title}: {a.description}")
             print(f"    -> {a.recommendation}")
+    return 0
+
+
+def handle_api_status(args: argparse.Namespace) -> int:
+    status = get_oauth_status()
+    client = Poe2ApiClient()
+    cb = client.circuit_breaker
+    live_ready = status == OAuthStatus.CONFIGURED and client.is_live_configured()
+    data = {
+        "oauth_status": status.value,
+        "circuit_breaker": cb.to_dict(),
+        "live_credentials_available": live_ready,
+        "status_note": (
+            "Ready for OAuth synchronization."
+            if live_ready
+            else "Live API synchronization requires POE2_CLIENT_ID, POE2_ACCESS_TOKEN, and POE2_API_URL. Offline/mock contracts fully functional."
+        ),
+    }
+    if args.json:
+        print(json.dumps(data, indent=2))
+    else:
+        print("PoE2 Official Character API Status:")
+        print(f"  OAuth Status: {status.value}")
+        print(f"  Circuit Breaker: {cb.state.value}")
+        print(f"  Note: {data['status_note']}")
+    return 0
+
+
+def handle_api_sync(args: argparse.Namespace) -> int:
+    char_id = args.character_id
+    mock_data = create_mock_character(character_id=char_id, level=70) if args.mock else None
+    client = Poe2ApiClient(mock_data=mock_data)
+
+    char, status_msg = client.sync_character(char_id)
+    if char is None:
+        if args.json:
+            print(json.dumps({"status": status_msg, "character": None}, indent=2))
+        else:
+            print(f"Sync failed: {status_msg}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps({"status": status_msg, "character": char.model_dump()}, indent=2))
+    else:
+        print(f"Synchronized Character '{char.name}' (Level {char.level} {char.class_name}):")
+        print(f"  Allocated Passives: {len(char.passives)}")
+        print(f"  Equipment Items: {len(char.equipment)}")
+        print(f"  Spirit Capacity: {char.quest_stats.spirit_capacity}")
     return 0
 
 

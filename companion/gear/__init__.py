@@ -21,6 +21,7 @@ from companion.gear.evaluator import (
 )
 from companion.gear.hasher import compute_item_hash
 from companion.gear.schema import (
+    ComparisonVerdict,
     EquippedItem,
     GearAuditState,
     ItemMod,
@@ -32,6 +33,7 @@ from companion.gear.tooltip import parse_item_tooltip, verify_tooltip_stability
 
 __all__ = [
     "ComparisonResult",
+    "ComparisonVerdict",
     "ConflictType",
     "ConflictWarning",
     "EquippedItem",

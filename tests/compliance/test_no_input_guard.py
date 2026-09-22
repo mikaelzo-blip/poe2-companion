@@ -104,3 +104,11 @@ def test_assert_no_input_compliance_raises_on_violations(tmp_path: Path) -> None
     with pytest.raises(ComplianceViolationError) as exc_info:
         assert_no_input_compliance(tmp_path)
     assert "keyboard" in str(exc_info.value)
+
+
+def test_vision_capture_module_strictly_compliant() -> None:
+    """companion/vision/capture.py must contain zero prohibited input/hooking imports."""
+    capture_file = Path(__file__).resolve().parent.parent.parent / "companion" / "vision" / "capture.py"
+    assert capture_file.exists()
+    violations = scan_file(capture_file)
+    assert violations == [], f"Expected clean capture module, got: {violations}"

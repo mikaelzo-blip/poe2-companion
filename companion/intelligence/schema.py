@@ -23,6 +23,14 @@ class AdvisorySeverity(str, Enum):
     CRITICAL = "CRITICAL"
 
 
+class ProvenanceCategory(str, Enum):
+    """Mutually exclusive provenance classification for intelligence rules."""
+    SOURCE_BACKED = "SOURCE_BACKED"
+    LABELED_INFERENCE = "LABELED_INFERENCE"
+    DEFERRED_BY_BLUEPRINT = "DEFERRED_BY_BLUEPRINT"
+    REMOVE = "REMOVE"
+
+
 class AdvisoryItem(BaseModel):
     """Discrete actionable recommendation or warning emitted by the advisory engine."""
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -34,6 +42,8 @@ class AdvisoryItem(BaseModel):
     recommendation: str
     code: str
     context: dict[str, Any] = Field(default_factory=dict)
+    is_inference: bool = False
+    provenance: ProvenanceCategory = ProvenanceCategory.SOURCE_BACKED
 
 
 class StoryQuest(BaseModel):

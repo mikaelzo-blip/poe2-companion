@@ -35,6 +35,16 @@ class ItemRarity(str, Enum):
     UNIQUE = "unique"
 
 
+class ComparisonVerdict(str, Enum):
+    """Semantic outcome of comparing candidate against verified target requirements."""
+
+    SATISFIES_MORE_VERIFIED_REQUIREMENTS = "SATISFIES_MORE_VERIFIED_REQUIREMENTS"
+    SATISFIES_FEWER_VERIFIED_REQUIREMENTS = "SATISFIES_FEWER_VERIFIED_REQUIREMENTS"
+    EQUIVALENT_FOR_KNOWN_REQUIREMENTS = "EQUIVALENT_FOR_KNOWN_REQUIREMENTS"
+    INCOMPARABLE = "INCOMPARABLE"
+    UNKNOWN = "UNKNOWN"
+
+
 class ModType(str, Enum):
     """Modifier classifications."""
 

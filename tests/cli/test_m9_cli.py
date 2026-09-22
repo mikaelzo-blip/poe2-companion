@@ -11,9 +11,9 @@ def test_intelligence_story_cli(capsys: pytest.CaptureFixture[str]) -> None:
     assert code == 0
     captured = capsys.readouterr()
     data = json.loads(captured.out)
-    assert "quests" in data
-    assert len(data["quests"]) >= 4
-    assert any("Spirit" in q["reward_type"] or "SPIRIT" in q["reward_type"] for q in data["quests"])
+    assert data["status"] == "DEFERRED_BY_BLUEPRINT"
+    assert data["feature"] == "story_progression"
+    assert "62" in data["blueprint_section"]
 
 
 def test_intelligence_economy_cli(capsys: pytest.CaptureFixture[str]) -> None:
@@ -21,9 +21,9 @@ def test_intelligence_economy_cli(capsys: pytest.CaptureFixture[str]) -> None:
     assert code == 0
     captured = capsys.readouterr()
     data = json.loads(captured.out)
-    assert "priorities" in data
-    assert len(data["priorities"]) >= 2
-    assert data["priorities"][0]["priority_tier"] == 1
+    assert data["status"] == "DEFERRED_BY_BLUEPRINT"
+    assert data["feature"] == "economy_prioritization"
+    assert "62" in data["blueprint_section"]
 
 
 def test_intelligence_audit_cli(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:

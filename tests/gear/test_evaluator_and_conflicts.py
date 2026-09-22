@@ -6,7 +6,7 @@ import pytest
 from companion.gear.advisor import compare_candidate_upgrade, generate_investment_advice
 from companion.gear.conflicts import ConflictType, detect_mechanic_conflicts
 from companion.gear.evaluator import compare_equipped_against_target, evaluate_gear_staleness
-from companion.gear.schema import EquippedItem, ItemMod, ItemRarity, ItemSlot
+from companion.gear.schema import ComparisonVerdict, EquippedItem, ItemMod, ItemSlot
 from companion.state.provenance import VerificationState
 
 
@@ -62,14 +62,18 @@ def test_investment_advice_and_upgrade_comparison() -> None:
         base_type="Plate Vest",
         level_req=10,
         explicit_mods=[ItemMod(raw_text="+20 to Maximum Life", key="life", value=20)],
+        verification=VerificationState.VERIFIED,
     )
 
-    # Next milestone is level 52; low level vest gets durability warning
-    advice = generate_investment_advice(equipped, upcoming_milestone_level=52)
+    # Missing verified target requirements
+    target_reqs = {"life": 50, "fire_res": 20}
+    advice = generate_investment_advice(equipped, target_requirements=target_reqs, upcoming_milestone_level=52)
     assert advice.needs_replacement is True
-    assert "durability" in advice.recommendation.lower()
+    assert "missing" in advice.recommendation.lower()
+    assert "life" in advice.missing_requirements
+    assert "fire_res" in advice.missing_requirements
 
-    # Compare candidate upgrade against equipped
+    # Candidate meeting requirements
     candidate = EquippedItem(
         slot=ItemSlot.BODY_ARMOUR,
         base_type="Full Plate",
@@ -78,10 +82,43 @@ def test_investment_advice_and_upgrade_comparison() -> None:
             ItemMod(raw_text="+75 to Maximum Life", key="life", value=75),
             ItemMod(raw_text="+30% to Fire Resistance", key="fire_res", value=30),
         ],
+        verification=VerificationState.VERIFIED,
     )
-    upg = compare_candidate_upgrade(equipped, candidate)
-    assert upg.action == "UPGRADE"
-    assert upg.score_delta > 0
+    advice_good = generate_investment_advice(candidate, target_requirements=target_reqs, upcoming_milestone_level=52)
+    assert advice_good.needs_replacement is False
+    assert "satisfies" in advice_good.recommendation.lower()
+
+    # Compare candidate upgrade against equipped with target requirements
+    upg = compare_candidate_upgrade(equipped, candidate, target_requirements=target_reqs)
+    assert upg.verdict == ComparisonVerdict.SATISFIES_MORE_VERIFIED_REQUIREMENTS
+    assert "life" in upg.candidate_satisfied
+    assert "fire_res" in upg.candidate_satisfied
+
+    # Candidate without target requirements yields UNKNOWN
+    upg_unknown = compare_candidate_upgrade(equipped, candidate, target_requirements={})
+    assert upg_unknown.verdict == ComparisonVerdict.UNKNOWN
+
+    # Candidate with unverified state yields UNKNOWN
+    unverified_cand = candidate.model_copy(update={"verification": VerificationState.UNKNOWN})
+    upg_unverified = compare_candidate_upgrade(equipped, unverified_cand, target_requirements=target_reqs)
+    assert upg_unverified.verdict == ComparisonVerdict.UNKNOWN
+
+    # Trade-off yields INCOMPARABLE
+    cand_tradeoff = EquippedItem(
+        slot=ItemSlot.BODY_ARMOUR,
+        base_type="Full Plate",
+        level_req=48,
+        explicit_mods=[
+            ItemMod(raw_text="+30% to Fire Resistance", key="fire_res", value=30),
+        ],
+        verification=VerificationState.VERIFIED,
+    )
+    upg_trade = compare_candidate_upgrade(
+        equipped, cand_tradeoff, target_requirements={"life": 10, "fire_res": 20}
+    )
+    assert upg_trade.verdict == ComparisonVerdict.INCOMPARABLE
+    assert "fire_res" in upg_trade.trade_offs.get("gained", "")
+    assert "life" in upg_trade.trade_offs.get("lost", "")
 
 
 def test_mechanic_conflict_detection() -> None:

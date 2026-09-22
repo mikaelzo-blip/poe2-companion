@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from companion.gear import (
+    ComparisonVerdict,
     ConflictType,
     EquippedItem,
     ItemSlot,
@@ -117,9 +118,15 @@ def test_m8_gear_end_to_end_pipeline(tmp_path: Path) -> None:
     cand_boots, _ = verify_tooltip_stability([CANDIDATE_BOOTS_UPGRADE], slot=ItemSlot.BOOTS)
     assert cand_boots is not None
 
-    upg = compare_candidate_upgrade(equipped_boots, cand_boots)
-    assert upg.action == "UPGRADE"
-    assert upg.score_delta > 0
+    target_reqs = {"life": 50, "cold_res": 20}
+    upg = compare_candidate_upgrade(equipped_boots, cand_boots, target_requirements=target_reqs)
+    assert upg.verdict == ComparisonVerdict.SATISFIES_MORE_VERIFIED_REQUIREMENTS
+    assert "life" in upg.candidate_satisfied
+    assert "cold_res" in upg.candidate_satisfied
+
+    # Without target requirements, verdict evaluates to UNKNOWN
+    upg_unknown = compare_candidate_upgrade(equipped_boots, cand_boots)
+    assert upg_unknown.verdict == ComparisonVerdict.UNKNOWN
 
     # 7. Mechanic conflict detection (attribute deficit)
     char_stats = {"str": 40, "dex": 50, "int": 50}

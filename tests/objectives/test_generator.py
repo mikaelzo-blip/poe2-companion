@@ -22,6 +22,7 @@ from companion.objectives.schema import (
     ObjectivePriority,
 )
 from companion.rules.schema import (
+    GuideRule,
     SourceVerificationStatus,
     TransitionRuleRole,
 )
@@ -230,3 +231,26 @@ def test_no_fabricated_survival_risk_without_authoritative_rule():
 
     candidates = generate_objective_candidates(delta, None, char, rules=[])
     assert not any(c.priority == ObjectivePriority.SURVIVAL_RISK for c in candidates)
+
+
+def test_unverified_heuristics_cannot_emit_gating_objectives():
+    """Labeled inferences or non-usable rules cannot generate high-severity objectives."""
+    char = _make_char_state(52)
+    delta = _make_empty_delta(char)
+    heuristic_rule = GuideRule(
+        id="heuristic_res_curve",
+        name="Heuristic Act Scaling",
+        source_status=SourceVerificationStatus.PENDING_SOURCE_VERIFICATION,
+        evaluable=True,
+        description="Invented resistance curve",
+    )
+    candidates = generate_objective_candidates(delta, None, char, rules=[heuristic_rule])
+    assert not any(
+        c.priority
+        in (
+            ObjectivePriority.CRITICAL_MECHANIC_BREAK,
+            ObjectivePriority.HARD_BLOCKER,
+            ObjectivePriority.SURVIVAL_RISK,
+        )
+        for c in candidates
+    )

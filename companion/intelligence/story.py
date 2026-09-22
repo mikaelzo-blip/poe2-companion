@@ -1,94 +1,57 @@
-"""Story quest progression tracking: permanent passive skill books and spirit capacity shrines."""
+"""Story quest progression tracking (DECOMMISSIONED per Blueprint Section 62).
+
+Story route planning and permanent quest reward guidance are explicitly deferred
+by Blueprint Section 62. This module returns structured deferred feature notices.
+"""
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Any, Iterable
 from companion.intelligence.schema import (
     AdvisoryCategory,
     AdvisoryItem,
     AdvisorySeverity,
+    ProvenanceCategory,
     StoryQuest,
 )
 
-CORE_STORY_QUESTS: list[StoryQuest] = [
-    StoryQuest(
-        quest_id="act1_caravan",
-        act=1,
-        name="The Lost Caravan",
-        reward_type="PASSIVE",
-        reward_detail="+1 Passive Skill Point (Book of Skill)",
-    ),
-    StoryQuest(
-        quest_id="act1_ogham_spirit",
-        act=1,
-        name="Ogham Spirit Shrine",
-        reward_type="SPIRIT",
-        reward_detail="+30 Permanent Spirit Capacity",
-    ),
-    StoryQuest(
-        quest_id="act2_bandit_lords",
-        act=2,
-        name="The Bandit Lords",
-        reward_type="BANDIT",
-        reward_detail="Bandit perk / passives",
-    ),
-    StoryQuest(
-        quest_id="act2_vaal_enclave_spirit",
-        act=2,
-        name="Vaal Enclave Shrine",
-        reward_type="SPIRIT",
-        reward_detail="+30 Permanent Spirit Capacity",
-    ),
-    StoryQuest(
-        quest_id="act3_catacombs",
-        act=3,
-        name="Aggorat Catacombs",
-        reward_type="PASSIVE",
-        reward_detail="+1 Passive Skill Point (Book of Skill)",
-    ),
-    StoryQuest(
-        quest_id="act3_tower_spirit",
-        act=3,
-        name="Tower of the Sun",
-        reward_type="SPIRIT",
-        reward_detail="+40 Permanent Spirit Capacity",
-    ),
-]
-
 
 def get_story_quests(completed_quest_ids: Iterable[str] | None = None) -> list[StoryQuest]:
-    """Retrieve full catalog of permanent reward quests with completion flags."""
-    completed = set(completed_quest_ids or [])
-    return [
-        quest.model_copy(update={"completed": quest.quest_id in completed})
-        for quest in CORE_STORY_QUESTS
-    ]
+    """Return empty list of story quests as feature is deferred."""
+    return []
+
+
+def get_story_deferred_notice() -> dict[str, Any]:
+    """Return explicit deferred notice for story quest guidance."""
+    return {
+        "status": "DEFERRED_BY_BLUEPRINT",
+        "feature": "story_progression",
+        "blueprint_section": "62",
+        "message": (
+            "Story route planning and permanent quest reward databases are deferred features "
+            "per Blueprint Section 62. In-game campaign tracker is the authoritative source."
+        ),
+    }
 
 
 def evaluate_story_progression(
     current_act: int,
     completed_quest_ids: Iterable[str] | None = None,
 ) -> list[AdvisoryItem]:
-    """Warn player if they entered higher acts without claiming earlier permanent rewards."""
-    completed = set(completed_quest_ids or [])
-    advisories: list[AdvisoryItem] = []
-
-    for quest in CORE_STORY_QUESTS:
-        if current_act > quest.act and quest.quest_id not in completed:
-            advisories.append(
-                AdvisoryItem(
-                    category=AdvisoryCategory.STORY,
-                    severity=AdvisorySeverity.WARNING,
-                    title=f"Unclaimed Permanent Reward: Act {quest.act}",
-                    description=f"You are in Act {current_act} but have not completed '{quest.name}' in Act {quest.act} ({quest.reward_detail}).",
-                    recommendation=f"Return to Act {quest.act} and complete '{quest.name}' to claim {quest.reward_detail}.",
-                    code="STORY_MISSED_PERMANENT_REWARD",
-                    context={
-                        "quest_id": quest.quest_id,
-                        "act": quest.act,
-                        "reward_type": quest.reward_type,
-                    },
-                )
-            )
-
-    return advisories
+    """Return non-authoritative deferred advisory per Blueprint Section 62."""
+    return [
+        AdvisoryItem(
+            category=AdvisoryCategory.STORY,
+            severity=AdvisorySeverity.INFO,
+            title="Story Route Guidance Deferred",
+            description=(
+                "Story route planning and permanent quest reward guidance are deferred "
+                "features per Blueprint Section 62."
+            ),
+            recommendation="Refer to the official in-game quest log for story objectives.",
+            code="STORY_FEATURE_DEFERRED",
+            is_inference=False,
+            provenance=ProvenanceCategory.DEFERRED_BY_BLUEPRINT,
+            context={"blueprint_section": "62", "deferred": True},
+        )
+    ]

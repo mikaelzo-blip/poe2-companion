@@ -23,6 +23,9 @@ def _extract_int_field(patterns: list[str], text: str) -> int | None:
 
 def parse_character_panel(text: str) -> CharacterPanelStats:
     """Parse defensive attributes and resistances from character panel text."""
+    if not isinstance(text, str):
+        raise TypeError(f"parse_character_panel expects a str, got {type(text).__name__}")
+
     life = _extract_int_field(
         [
             r"(?:Maximum\s+)?Life:\s*([0-9,]+)",

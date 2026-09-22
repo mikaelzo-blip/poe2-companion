@@ -78,6 +78,8 @@ from companion.intelligence import (
     evaluate_story_progression,
     evaluate_survival_rules,
     evaluate_troubleshooting_rules,
+    get_economy_deferred_notice,
+    get_story_deferred_notice,
     get_story_quests,
 )
 from companion.api import (
@@ -891,38 +893,34 @@ def handle_gear_compare(args: argparse.Namespace) -> int:
     else:
         print(f"Gear Comparison for slot '{slot.value}':")
         print(f"  Candidate: {candidate.name or candidate.base_type}")
-        print(f"  Upgrade action: {upg.action} (score delta: {upg.score_delta:+.1f})")
+        print(f"  Upgrade verdict: {upg.verdict.value}")
+        if upg.candidate_satisfied:
+            print(f"  Candidate satisfied: {', '.join(upg.candidate_satisfied)}")
+        if upg.candidate_missing:
+            print(f"  Candidate missing: {', '.join(upg.candidate_missing)}")
+        if upg.trade_offs:
+            print(f"  Trade-offs: {upg.trade_offs}")
         print(f"  Investment advice: {advice.recommendation}")
     return 0
 
 
 def handle_intelligence_story(args: argparse.Namespace) -> int:
-    quests = get_story_quests()
+    notice = get_story_deferred_notice()
     if args.json:
-        print(json.dumps({"quests": [q.model_dump() for q in quests]}, indent=2))
+        print(json.dumps(notice, indent=2))
     else:
-        print("PoE2 Permanent Reward Story Quests:")
-        for q in quests:
-            status = "[x]" if q.completed else "[ ]"
-            print(f"  {status} Act {q.act}: {q.name} ({q.reward_type} - {q.reward_detail})")
+        print("PoE2 Permanent Reward Story Quests: [DEFERRED]")
+        print(f"  Notice: {notice['message']}")
     return 0
 
 
 def handle_intelligence_economy(args: argparse.Namespace) -> int:
-    priorities = evaluate_economy_priorities(
-        character_level=args.level,
-        current_resists_capped=args.resists_capped,
-        weapon_dps_lagging=args.weapon_lagging,
-    )
+    notice = get_economy_deferred_notice()
     if args.json:
-        print(json.dumps({"level": args.level, "priorities": [p.model_dump() for p in priorities]}, indent=2))
+        print(json.dumps(notice, indent=2))
     else:
-        print(f"Upgrade Prioritization & Economy Guidance (Level {args.level}):")
-        for p in priorities:
-            print(f"  [Tier {p.priority_tier}] Slot: {p.target_slot}")
-            print(f"    Action: {p.recommended_action}")
-            print(f"    Cost: {p.estimated_cost}")
-            print(f"    ROI: {p.roi_reason}")
+        print(f"Upgrade Prioritization & Economy Guidance (Level {args.level}): [DEFERRED]")
+        print(f"  Notice: {notice['message']}")
     return 0
 
 

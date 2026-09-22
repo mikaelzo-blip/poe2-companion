@@ -39,7 +39,7 @@ _ZONE_GENERATE_RE = re.compile(
 )
 _ZONE_ENTER_RE = re.compile(r':\s+Entered area\s+"(?P<zone>[^"]+)"')
 _LEVEL_UP_RE = re.compile(
-    r':\s+(?P<char>[a-zA-Z0-9_\u00C0-\u017F-]+)\s+is now level\s+(?P<level>\d+)'
+    r':\s+(?P<char>[a-zA-Z0-9_\u00C0-\u017F-]+)(?:\s+\((?P<class>[a-zA-Z0-9_\s-]+)\))?\s+is now level\s+(?P<level>\d+)'
 )
 _DEATH_RE = re.compile(
     r':\s+(?P<char>[a-zA-Z0-9_\u00C0-\u017F-]+)\s+has been slain'
@@ -101,10 +101,14 @@ def parse_log_line(line: str) -> ParsedLogEvent | None:
     if m_lvl:
         char = m_lvl.group("char")
         lvl = int(m_lvl.group("level"))
+        cls_tok = m_lvl.group("class")
+        payload: dict[str, Any] = {"character_name": char, "level": lvl}
+        if cls_tok:
+            payload["character_class"] = cls_tok
         return ParsedLogEvent(
             event_type=ParsedLogEventType.LEVEL_UP,
             timestamp=ts,
-            payload={"character_name": char, "level": lvl},
+            payload=payload,
         )
 
     m_death = _DEATH_RE.search(clean)
@@ -146,30 +150,33 @@ class ClientLogTailer:
             self._offset = 0
             self._partial_buffer = ""
 
+        if max_lines <= 0:
+            return []
+
         events: list[ParsedLogEvent] = []
+        last_consumed_offset = self._offset
+        consumed_count = 0
+
         try:
-            with open(self.log_path, "r", encoding="utf-8", errors="replace") as f:
+            with open(self.log_path, "rb") as f:
                 f.seek(self._offset)
-                chunk = f.read()
-                self._offset = f.tell()
+                while consumed_count < max_lines:
+                    line_bytes = f.readline()
+                    if not line_bytes:
+                        break
+                    if not line_bytes.endswith(b"\n"):
+                        # Incomplete trailing line: do not advance past start of this line
+                        break
 
-            if not chunk:
-                return []
+                    last_consumed_offset = f.tell()
+                    consumed_count += 1
 
-            full_text = self._partial_buffer + chunk
-            lines = full_text.split("\n")
+                    line_str = line_bytes.decode("utf-8", errors="replace")
+                    ev = parse_log_line(line_str)
+                    if ev is not None:
+                        events.append(ev)
 
-            # If the last element does not end with newline, buffer it
-            if not full_text.endswith("\n"):
-                self._partial_buffer = lines.pop()
-            else:
-                self._partial_buffer = ""
-
-            for line in lines[:max_lines]:
-                ev = parse_log_line(line)
-                if ev is not None:
-                    events.append(ev)
-
+            self._offset = last_consumed_offset
         except OSError:
             return []
 

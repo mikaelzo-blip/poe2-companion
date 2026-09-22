@@ -7,7 +7,8 @@ from companion.gear.advisor import compare_candidate_upgrade, generate_investmen
 from companion.gear.conflicts import ConflictType, detect_mechanic_conflicts
 from companion.gear.evaluator import compare_equipped_against_target, evaluate_gear_staleness
 from companion.gear.schema import ComparisonVerdict, EquippedItem, ItemMod, ItemSlot
-from companion.state.provenance import VerificationState
+from companion.intelligence.troubleshooting import OperandEvidence
+from companion.state.provenance import ProvenancedField, VerificationState
 
 
 def test_gear_staleness_ttl() -> None:
@@ -122,13 +123,18 @@ def test_investment_advice_and_upgrade_comparison() -> None:
 
 
 def test_mechanic_conflict_detection() -> None:
-    char_stats = {"str": 40, "dex": 80, "int": 50}
+    char_stats = {
+        "str": ProvenancedField[int].create(40, source="test", verification_state=VerificationState.VERIFIED),
+        "dex": ProvenancedField[int].create(80, source="test", verification_state=VerificationState.VERIFIED),
+        "int": ProvenancedField[int].create(50, source="test", verification_state=VerificationState.VERIFIED),
+    }
 
     # Item requires 70 Str, character has 40
     item = EquippedItem(
         slot=ItemSlot.MAIN_HAND,
         base_type="Two Handed Axe",
         required_str=70,
+        verification=VerificationState.VERIFIED,
     )
 
     conflicts = detect_mechanic_conflicts(
@@ -141,3 +147,114 @@ def test_mechanic_conflict_detection() -> None:
     types = [c.conflict_type for c in conflicts]
     assert ConflictType.UNMET_ATTRIBUTE in types
     assert ConflictType.WEAPON_ARCHETYPE_MISMATCH in types
+
+
+def test_unprovenanced_raw_numeric_rejected_as_factual_evidence() -> None:
+    # Verified item requiring 70 Str
+    item = EquippedItem(
+        slot=ItemSlot.MAIN_HAND,
+        base_type="Two Handed Axe",
+        required_str=70,
+        verification=VerificationState.VERIFIED,
+    )
+
+    # {"str": 0} as an unprovenanced raw number must NOT become a verified factual Strength observation
+    conflicts_zero = detect_mechanic_conflicts(item, character_attributes={"str": 0})
+    unmet_zero = [c for c in conflicts_zero if c.conflict_type == ConflictType.UNMET_ATTRIBUTE]
+    assert len(unmet_zero) == 0
+
+    # {"str": 40} raw int must NOT be treated as verified evidence
+    conflicts_raw = detect_mechanic_conflicts(item, character_attributes={"str": 40})
+    unmet_raw = [c for c in conflicts_raw if c.conflict_type == ConflictType.UNMET_ATTRIBUTE]
+    assert len(unmet_raw) == 0
+
+    # Missing character_attributes must evaluate to insufficient evidence / UNKNOWN
+    conflicts_none = detect_mechanic_conflicts(item, character_attributes=None)
+    unmet_none = [c for c in conflicts_none if c.conflict_type == ConflictType.UNMET_ATTRIBUTE]
+    assert len(unmet_none) == 0
+
+
+def test_unknown_and_stale_attributes_suppress_unmet_conflicts() -> None:
+    item = EquippedItem(
+        slot=ItemSlot.MAIN_HAND,
+        base_type="Two Handed Axe",
+        required_str=70,
+        verification=VerificationState.VERIFIED,
+    )
+
+    # ProvenancedField with UNKNOWN
+    unknown_attr = {
+        "str": ProvenancedField[int].create(
+            40, source="character_sheet", verification_state=VerificationState.UNKNOWN
+        )
+    }
+    conflicts = detect_mechanic_conflicts(item, character_attributes=unknown_attr)
+    assert not any(c.conflict_type == ConflictType.UNMET_ATTRIBUTE for c in conflicts)
+
+    # ProvenancedField with STALE
+    stale_attr = {
+        "str": ProvenancedField[int].create(
+            40, source="character_sheet", verification_state=VerificationState.VERIFIED
+        ).as_stale()
+    }
+    conflicts_stale = detect_mechanic_conflicts(item, character_attributes=stale_attr)
+    assert not any(c.conflict_type == ConflictType.UNMET_ATTRIBUTE for c in conflicts_stale)
+
+    # OperandEvidence with UNKNOWN
+    unknown_op = {"str": OperandEvidence(value=40, verification_state=VerificationState.UNKNOWN)}
+    conflicts_op_unk = detect_mechanic_conflicts(item, character_attributes=unknown_op)
+    assert not any(c.conflict_type == ConflictType.UNMET_ATTRIBUTE for c in conflicts_op_unk)
+
+    # OperandEvidence with is_stale=True
+    stale_op = {"str": OperandEvidence(value=40, is_stale=True)}
+    conflicts_op_stale = detect_mechanic_conflicts(item, character_attributes=stale_op)
+    assert not any(c.conflict_type == ConflictType.UNMET_ATTRIBUTE for c in conflicts_op_stale)
+
+
+def test_insufficient_item_requirement_evidence_suppresses_conflict() -> None:
+    # Character has verified 40 Str
+    char_attrs = {
+        "str": ProvenancedField[int].create(
+            40, source="character_sheet", verification_state=VerificationState.VERIFIED
+        )
+    }
+
+    # Item requirement is UNKNOWN / unverified
+    item_unverified = EquippedItem(
+        slot=ItemSlot.MAIN_HAND,
+        base_type="Two Handed Axe",
+        required_str=70,
+        verification=VerificationState.UNKNOWN,
+    )
+    conflicts = detect_mechanic_conflicts(item_unverified, character_attributes=char_attrs)
+    assert not any(c.conflict_type == ConflictType.UNMET_ATTRIBUTE for c in conflicts)
+
+
+def test_verified_operands_emit_factual_unmet_attribute_conflict() -> None:
+    char_attrs = {
+        "str": ProvenancedField[int].create(
+            40, source="character_sheet", verification_state=VerificationState.VERIFIED
+        )
+    }
+    item_verified = EquippedItem(
+        slot=ItemSlot.MAIN_HAND,
+        base_type="Two Handed Axe",
+        required_str=70,
+        verification=VerificationState.VERIFIED,
+    )
+
+    # 40 Str < 70 Str -> emits factual conflict
+    conflicts = detect_mechanic_conflicts(item_verified, character_attributes=char_attrs)
+    unmet = [c for c in conflicts if c.conflict_type == ConflictType.UNMET_ATTRIBUTE]
+    assert len(unmet) == 1
+    assert "70 Str" in unmet[0].description
+    assert "40 Str" in unmet[0].description
+
+    # 80 Str >= 70 Str -> no conflict
+    char_attrs_sufficient = {
+        "str": ProvenancedField[int].create(
+            80, source="character_sheet", verification_state=VerificationState.VERIFIED
+        )
+    }
+    conflicts_ok = detect_mechanic_conflicts(item_verified, character_attributes=char_attrs_sufficient)
+    assert not any(c.conflict_type == ConflictType.UNMET_ATTRIBUTE for c in conflicts_ok)

@@ -97,3 +97,109 @@ def test_tailer_rotation_handling(tmp_path: Path) -> None:
     evs2 = tailer.poll()
     assert len(evs2) == 1
     assert evs2[0].payload.get("zone") == "New Map"
+
+
+def test_tailer_backlog_large_file_sequential_polls(tmp_path: Path) -> None:
+    log_file = tmp_path / "Client.txt"
+    total_records = 2500
+    with open(log_file, "wb") as f:
+        for i in range(1, total_records + 1):
+            f.write(f"2026/09/22 10:00:00 123456 [INFO Client 1234] : Player_{i} is now level {i}\n".encode("utf-8"))
+
+    tailer = ClientLogTailer(log_file)
+
+    # Poll 1: exactly 1000 lines
+    evs1 = tailer.poll(max_lines=1000)
+    assert len(evs1) == 1000
+    assert evs1[0].payload["level"] == 1
+    assert evs1[-1].payload["level"] == 1000
+
+    # Poll 2: next 1000 lines (lines 1001-2000)
+    evs2 = tailer.poll(max_lines=1000)
+    assert len(evs2) == 1000
+    assert evs2[0].payload["level"] == 1001
+    assert evs2[-1].payload["level"] == 2000
+
+    # Poll 3: remaining 500 lines (lines 2001-2500)
+    evs3 = tailer.poll(max_lines=1000)
+    assert len(evs3) == 500
+    assert evs3[0].payload["level"] == 2001
+    assert evs3[-1].payload["level"] == 2500
+
+    # Poll 4: nothing left
+    evs4 = tailer.poll(max_lines=1000)
+    assert len(evs4) == 0
+
+    all_levels = [e.payload["level"] for e in (evs1 + evs2 + evs3)]
+    assert all_levels == list(range(1, total_records + 1))
+
+
+def test_tailer_binary_decoding_and_malformed_bytes(tmp_path: Path) -> None:
+    log_file = tmp_path / "Client.txt"
+    with open(log_file, "wb") as f:
+        # Non-ASCII UTF-8
+        f.write("2026/09/22 10:00:00 123456 [INFO Client 1234] : Jörn_Exile is now level 10\n".encode("utf-8"))
+        # Corrupted / invalid UTF-8 byte sequence
+        f.write(b"2026/09/22 10:01:00 123456 [INFO Client 1234] : \xff\xfe\x80 Corrupted Bytes\n")
+        # Valid subsequent line
+        f.write(b"2026/09/22 10:02:00 123456 [INFO Client 1234] : Entered area \"Clear Fell\"\n")
+
+    tailer = ClientLogTailer(log_file)
+    events = tailer.poll(max_lines=100)
+
+    # 1st event is valid non-ASCII level up
+    assert len(events) == 2
+    assert events[0].event_type == ParsedLogEventType.LEVEL_UP
+    assert events[0].payload["character_name"] == "Jörn_Exile"
+    assert events[0].payload["level"] == 10
+
+    # 2nd event is the subsequent valid line (corrupted line safely discarded without crash/offset issue)
+    assert events[1].event_type == ParsedLogEventType.ZONE_ENTER
+    assert events[1].payload["zone"] == "Clear Fell"
+
+
+def test_tailer_partial_trailing_byte_line_across_growth(tmp_path: Path) -> None:
+    log_file = tmp_path / "Client.txt"
+    # Write complete line 1, incomplete line 2
+    with open(log_file, "wb") as f:
+        f.write(b"2026/09/22 10:00:00 123456 [INFO Client 1234] : Entered area \"Town 1\"\n")
+        f.write(b"2026/09/22 10:01:00 123456 [INFO Client 1234] : Entered area \"Incomp")
+
+    tailer = ClientLogTailer(log_file)
+    evs1 = tailer.poll()
+    assert len(evs1) == 1
+    assert evs1[0].payload["zone"] == "Town 1"
+
+    # Complete line 2 and add line 3
+    with open(log_file, "ab") as f:
+        f.write(b"lete Town\"\n")
+        f.write(b"2026/09/22 10:02:00 123456 [INFO Client 1234] : Entered area \"Town 3\"\n")
+
+    evs2 = tailer.poll()
+    assert len(evs2) == 2
+    assert evs2[0].payload["zone"] == "Incomplete Town"
+    assert evs2[1].payload["zone"] == "Town 3"
+
+
+def test_parse_poe2_level_up_with_class_token() -> None:
+    # Real PoE2 format with parenthetical class token
+    line_poe2 = "2026/09/22 10:00:00 123456 [INFO Client 1234] : BOMSHAK (Mercenary) is now level 11"
+    ev_poe2 = parse_log_line(line_poe2)
+    assert ev_poe2 is not None
+    assert ev_poe2.event_type == ParsedLogEventType.LEVEL_UP
+    assert ev_poe2.payload["character_name"] == "BOMSHAK"
+    assert ev_poe2.payload.get("character_class") == "Mercenary"
+    assert ev_poe2.payload["level"] == 11
+
+    # Legacy format without class token
+    line_legacy = "2026/09/22 10:00:00 123456 [INFO Client 1234] : Mercenary_Exile is now level 52"
+    ev_legacy = parse_log_line(line_legacy)
+    assert ev_legacy is not None
+    assert ev_legacy.event_type == ParsedLogEventType.LEVEL_UP
+    assert ev_legacy.payload["character_name"] == "Mercenary_Exile"
+    assert "character_class" not in ev_legacy.payload
+    assert ev_legacy.payload["level"] == 52
+
+    # Chat line disguised as level-up must be rejected
+    line_chat = "2026/09/22 10:00:00 123456 [INFO Client 1234] @From Player: BOMSHAK (Mercenary) is now level 11"
+    assert parse_log_line(line_chat) is None

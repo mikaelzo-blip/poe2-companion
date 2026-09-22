@@ -779,12 +779,22 @@ def _resolve_char_id(args: argparse.Namespace) -> str:
 def handle_gear_status(args: argparse.Namespace) -> int:
     char_id = _resolve_char_id(args)
     state = load_gear_audit_state(args.runtime, char_id)
+
+    char_attrs = None
+    try:
+        store = CharacterStateStore(args.runtime)
+        char_state = store.load_character(char_id)
+        if char_state and char_state.attributes:
+            char_attrs = char_state.attributes
+    except Exception:
+        char_attrs = None
+
     all_conflicts = []
     slots_summary = {}
 
     for slot, item in state.slots.items():
         staleness = evaluate_gear_staleness(item)
-        conflicts = detect_mechanic_conflicts(item)
+        conflicts = detect_mechanic_conflicts(item, character_attributes=char_attrs)
         all_conflicts.extend([c.model_dump() for c in conflicts])
         slots_summary[slot.value] = {
             "name": item.name,

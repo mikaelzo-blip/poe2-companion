@@ -25,7 +25,7 @@ from companion.observations.schema import (
     ObservationEventType,
     ObservationSource,
 )
-from companion.state.provenance import VerificationState
+from companion.state.provenance import ProvenancedField, VerificationState
 
 
 TOOLTIP_HELMET = """
@@ -129,7 +129,11 @@ def test_m8_gear_end_to_end_pipeline(tmp_path: Path) -> None:
     assert upg_unknown.verdict == ComparisonVerdict.UNKNOWN
 
     # 7. Mechanic conflict detection (attribute deficit)
-    char_stats = {"str": 40, "dex": 50, "int": 50}
+    char_stats = {
+        "str": ProvenancedField[int].create(40, source="character_sheet", verification_state=VerificationState.VERIFIED),
+        "dex": ProvenancedField[int].create(50, source="character_sheet", verification_state=VerificationState.VERIFIED),
+        "int": ProvenancedField[int].create(50, source="character_sheet", verification_state=VerificationState.VERIFIED),
+    }
     conflicts = detect_mechanic_conflicts(equipped_boots, character_attributes=char_stats)
     assert len(conflicts) == 1
     assert conflicts[0].conflict_type == ConflictType.UNMET_ATTRIBUTE

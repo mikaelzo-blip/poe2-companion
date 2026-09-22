@@ -21,10 +21,7 @@ htmlcov/
 .env
 
 # Local runtime state and rolling backups
-runtime/characters/
-runtime/backups/
-runtime/*.lock
-runtime/*.json
+/runtime/
 *.tmp.*
 
 # Future screenshot caches

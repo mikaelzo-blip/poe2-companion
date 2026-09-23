@@ -263,6 +263,111 @@ def build_parser() -> argparse.ArgumentParser:
     gcomp_p.add_argument("--character-id", help="Character ID")
     gcomp_p.add_argument("--json", action="store_true", help="Output comparison as JSON")
 
+    # Equipment Intelligence gear subparsers
+    gclip_p = gear_sub.add_parser("inspect-clipboard", help="Inspect and evaluate item from clipboard")
+    gclip_p.add_argument("--slot", help="Target equipment slot")
+    gclip_p.add_argument("--weapon-set", help="Target weapon set (e.g. set_1, set_2)")
+    gclip_p.add_argument("--stage", default="EARLY_ENDGAME", help="Build progression stage (PRE_SWAP, EARLY_ENDGAME, PINNACLE_ENDGAME)")
+    gclip_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    gclip_p.add_argument("--character-id", help="Character ID")
+    gclip_p.add_argument("--json", action="store_true", help="Output recommendation as JSON")
+
+    geval_p = gear_sub.add_parser("evaluate", help="Evaluate candidate item from file")
+    geval_p.add_argument("--file", required=True, help="Path to item text file")
+    geval_p.add_argument("--slot", help="Target equipment slot")
+    geval_p.add_argument("--weapon-set", help="Target weapon set (e.g. set_1, set_2)")
+    geval_p.add_argument("--stage", default="EARLY_ENDGAME", help="Build progression stage")
+    geval_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    geval_p.add_argument("--character-id", help="Character ID")
+    geval_p.add_argument("--json", action="store_true", help="Output recommendation as JSON")
+
+    gbase_p = gear_sub.add_parser("baseline", help="Manage character stat baseline")
+    base_sub = gbase_p.add_subparsers(dest="baseline_action", required=True)
+
+    bset_p = base_sub.add_parser("set", help="Set or record character stat baseline")
+    bset_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    bset_p.add_argument("--character-id", help="Character ID")
+    bset_p.add_argument("--life", type=int, help="Character maximum Life")
+    bset_p.add_argument("--armour", type=int, help="Character total Armour")
+    bset_p.add_argument("--evasion", type=int, help="Character total Evasion")
+    bset_p.add_argument("--energy-shield", type=int, help="Character Energy Shield")
+    bset_p.add_argument("--fire-res", type=int, help="Effective Fire Resistance")
+    bset_p.add_argument("--fire-raw", type=int, help="Raw Uncapped Fire Resistance")
+    bset_p.add_argument("--max-fire-res", type=int, help="Max Fire Resistance")
+    bset_p.add_argument("--cold-res", type=int, help="Effective Cold Resistance")
+    bset_p.add_argument("--cold-raw", type=int, help="Raw Uncapped Cold Resistance")
+    bset_p.add_argument("--max-cold-res", type=int, help="Max Cold Resistance")
+    bset_p.add_argument("--lightning-res", type=int, help="Effective Lightning Resistance")
+    bset_p.add_argument("--lightning-raw", type=int, help="Raw Uncapped Lightning Resistance")
+    bset_p.add_argument("--max-lightning-res", type=int, help="Max Lightning Resistance")
+    bset_p.add_argument("--chaos-res", type=int, help="Effective Chaos Resistance")
+    bset_p.add_argument("--chaos-raw", type=int, help="Raw Uncapped Chaos Resistance")
+    bset_p.add_argument("--max-chaos-res", type=int, help="Max Chaos Resistance")
+    bset_p.add_argument("--str", type=int, help="Character Strength")
+    bset_p.add_argument("--dex", type=int, help="Character Dexterity")
+    bset_p.add_argument("--int", type=int, help="Character Intelligence")
+    bset_p.add_argument("--ms", type=int, help="Character Movement Speed %")
+
+    bshow_p = base_sub.add_parser("show", help="Show current character stat baseline")
+    bshow_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    bshow_p.add_argument("--character-id", help="Character ID")
+
+    bref_p = base_sub.add_parser("refresh", help="Refresh baseline anchoring to current revision")
+    bref_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    bref_p.add_argument("--character-id", help="Character ID")
+    bref_p.add_argument("--life", type=int, help="Character maximum Life")
+    bref_p.add_argument("--armour", type=int, help="Character total Armour")
+    bref_p.add_argument("--evasion", type=int, help="Character total Evasion")
+    bref_p.add_argument("--energy-shield", type=int, help="Character Energy Shield")
+    bref_p.add_argument("--fire-res", type=int, help="Effective Fire Resistance")
+    bref_p.add_argument("--fire-raw", type=int, help="Raw Uncapped Fire Resistance")
+    bref_p.add_argument("--max-fire-res", type=int, help="Max Fire Resistance")
+    bref_p.add_argument("--cold-res", type=int, help="Effective Cold Resistance")
+    bref_p.add_argument("--cold-raw", type=int, help="Raw Uncapped Cold Resistance")
+    bref_p.add_argument("--max-cold-res", type=int, help="Max Cold Resistance")
+    bref_p.add_argument("--lightning-res", type=int, help="Effective Lightning Resistance")
+    bref_p.add_argument("--lightning-raw", type=int, help="Raw Uncapped Lightning Resistance")
+    bref_p.add_argument("--max-lightning-res", type=int, help="Max Lightning Resistance")
+    bref_p.add_argument("--chaos-res", type=int, help="Effective Chaos Resistance")
+    bref_p.add_argument("--chaos-raw", type=int, help="Raw Uncapped Chaos Resistance")
+    bref_p.add_argument("--max-chaos-res", type=int, help="Max Chaos Resistance")
+    bref_p.add_argument("--str", type=int, help="Character Strength")
+    bref_p.add_argument("--dex", type=int, help="Character Dexterity")
+    bref_p.add_argument("--int", type=int, help="Character Intelligence")
+    bref_p.add_argument("--ms", type=int, help="Character Movement Speed %")
+
+    gload_p = gear_sub.add_parser("loadout", help="Manage equipped gear loadout")
+    loadout_sub = gload_p.add_subparsers(dest="loadout_action", required=True)
+
+    lset_p = loadout_sub.add_parser("set-clipboard", help="Set loadout slot from clipboard or file")
+    lset_p.add_argument("--slot", required=True, help="Slot name (e.g. boots, helmet, ring1)")
+    lset_p.add_argument("--weapon-set", help="Weapon set (e.g. weapon_set_1, weapon_set_2)")
+    lset_p.add_argument("--file", help="Path to item text file (optional fallback for clipboard)")
+    lset_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    lset_p.add_argument("--character-id", help="Character ID")
+
+    lfin_p = loadout_sub.add_parser("finalize", help="Finalize draft loadout and initialize revision 1")
+    lfin_p.add_argument("--loadout-id", help="Optional loadout ID")
+    lfin_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    lfin_p.add_argument("--character-id", help="Character ID")
+
+    lshow_p = loadout_sub.add_parser("show", help="Show current equipped loadout")
+    lshow_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    lshow_p.add_argument("--character-id", help="Character ID")
+
+    lclr_p = loadout_sub.add_parser("clear", help="Clear equipped loadout slot")
+    lclr_p.add_argument("--slot", required=True, help="Slot name")
+    lclr_p.add_argument("--weapon-set", help="Weapon set")
+    lclr_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    lclr_p.add_argument("--character-id", help="Character ID")
+
+    lprom_p = loadout_sub.add_parser("promote-candidate", help="Promote candidate item into loadout")
+    lprom_p.add_argument("--slot", required=True, help="Slot name")
+    lprom_p.add_argument("--weapon-set", help="Weapon set")
+    lprom_p.add_argument("--file", help="Path to candidate file (or uses clipboard)")
+    lprom_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    lprom_p.add_argument("--character-id", help="Character ID")
+
     # Milestone 9: Intelligence
     intel_parser = subparsers.add_parser("intelligence", help="Expanded build intelligence and diagnostic advisory")
     intel_sub = intel_parser.add_subparsers(dest="intel_action", required=True)
@@ -778,6 +883,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             return handle_gear_audit(args)
         elif args.gear_action == "compare":
             return handle_gear_compare(args)
+        elif args.gear_action == "inspect-clipboard":
+            return handle_gear_inspect_clipboard(args)
+        elif args.gear_action == "evaluate":
+            return handle_gear_evaluate(args)
+        elif args.gear_action == "baseline":
+            return handle_gear_baseline(args)
+        elif args.gear_action == "loadout":
+            return handle_gear_loadout(args)
     elif args.subcommand == "intelligence":
         if args.intel_action == "audit":
             return handle_intelligence_audit(args)
@@ -1030,6 +1143,197 @@ def handle_gear_compare(args: argparse.Namespace) -> int:
             print(f"  Trade-offs: {upg.trade_offs}")
         print(f"  Investment advice: {advice.recommendation}")
     return 0
+
+
+def handle_gear_inspect_clipboard(args: argparse.Namespace) -> int:
+    from companion.equipment.clipboard import run_inspect_clipboard
+    from companion.equipment.rules import BuildProgressionStage
+
+    char_id = _resolve_char_id(args)
+    stage = BuildProgressionStage(getattr(args, "stage", "EARLY_ENDGAME"))
+    try:
+        report, rec = run_inspect_clipboard(
+            runtime_dir=args.runtime,
+            character_id=char_id,
+            slot_name=getattr(args, "slot", None),
+            weapon_set_name=getattr(args, "weapon_set", None),
+            stage=stage,
+        )
+        if getattr(args, "json", False):
+            print(rec.model_dump_json(indent=2))
+        else:
+            print(report)
+        return 0
+    except Exception as exc:
+        sys.stderr.write(f"Error inspecting clipboard: {exc}\n")
+        return 1
+
+
+def handle_gear_evaluate(args: argparse.Namespace) -> int:
+    from companion.equipment.clipboard import run_evaluate_file
+    from companion.equipment.rules import BuildProgressionStage
+
+    char_id = _resolve_char_id(args)
+    stage = BuildProgressionStage(getattr(args, "stage", "EARLY_ENDGAME"))
+    try:
+        report, rec = run_evaluate_file(
+            runtime_dir=args.runtime,
+            file_path=args.file,
+            character_id=char_id,
+            slot_name=getattr(args, "slot", None),
+            weapon_set_name=getattr(args, "weapon_set", None),
+            stage=stage,
+        )
+        if getattr(args, "json", False):
+            print(rec.model_dump_json(indent=2))
+        else:
+            print(report)
+        return 0
+    except Exception as exc:
+        sys.stderr.write(f"Error evaluating candidate file: {exc}\n")
+        return 1
+
+
+def handle_gear_baseline(args: argparse.Namespace) -> int:
+    from companion.equipment.baseline_cli import (
+        run_baseline_refresh,
+        run_baseline_set,
+        run_baseline_show,
+    )
+
+    char_id = _resolve_char_id(args)
+    if args.baseline_action == "set":
+        base = run_baseline_set(
+            runtime_dir=args.runtime,
+            character_id=char_id,
+            life=getattr(args, "life", None),
+            armour=getattr(args, "armour", None),
+            evasion=getattr(args, "evasion", None),
+            energy_shield=getattr(args, "energy_shield", None),
+            fire_res=getattr(args, "fire_res", None),
+            fire_raw=getattr(args, "fire_raw", None),
+            max_fire_res=getattr(args, "max_fire_res", None),
+            cold_res=getattr(args, "cold_res", None),
+            cold_raw=getattr(args, "cold_raw", None),
+            max_cold_res=getattr(args, "max_cold_res", None),
+            lightning_res=getattr(args, "lightning_res", None),
+            lightning_raw=getattr(args, "lightning_raw", None),
+            max_lightning_res=getattr(args, "max_lightning_res", None),
+            chaos_res=getattr(args, "chaos_res", None),
+            chaos_raw=getattr(args, "chaos_raw", None),
+            max_chaos_res=getattr(args, "max_chaos_res", None),
+            strength=getattr(args, "str", None),
+            dexterity=getattr(args, "dex", None),
+            intelligence=getattr(args, "int", None),
+            movement_speed=getattr(args, "ms", None),
+        )
+        print(run_baseline_show(runtime_dir=args.runtime, character_id=char_id))
+        return 0
+    elif args.baseline_action == "refresh":
+        base = run_baseline_refresh(
+            runtime_dir=args.runtime,
+            character_id=char_id,
+            life=getattr(args, "life", None),
+            armour=getattr(args, "armour", None),
+            evasion=getattr(args, "evasion", None),
+            energy_shield=getattr(args, "energy_shield", None),
+            fire_res=getattr(args, "fire_res", None),
+            fire_raw=getattr(args, "fire_raw", None),
+            max_fire_res=getattr(args, "max_fire_res", None),
+            cold_res=getattr(args, "cold_res", None),
+            cold_raw=getattr(args, "cold_raw", None),
+            max_cold_res=getattr(args, "max_cold_res", None),
+            lightning_res=getattr(args, "lightning_res", None),
+            lightning_raw=getattr(args, "lightning_raw", None),
+            max_lightning_res=getattr(args, "max_lightning_res", None),
+            chaos_res=getattr(args, "chaos_res", None),
+            chaos_raw=getattr(args, "chaos_raw", None),
+            max_chaos_res=getattr(args, "max_chaos_res", None),
+            strength=getattr(args, "str", None),
+            dexterity=getattr(args, "dex", None),
+            intelligence=getattr(args, "int", None),
+            movement_speed=getattr(args, "ms", None),
+        )
+        print(run_baseline_show(runtime_dir=args.runtime, character_id=char_id))
+        return 0
+    elif args.baseline_action == "show":
+        print(run_baseline_show(runtime_dir=args.runtime, character_id=char_id))
+        return 0
+    return 1
+
+
+def handle_gear_loadout(args: argparse.Namespace) -> int:
+    from companion.equipment.clipboard import read_item_input
+    from companion.equipment.baseline_cli import load_baseline, save_baseline
+    from companion.equipment.loadout_cli import (
+        load_loadout,
+        run_loadout_clear,
+        run_loadout_finalize,
+        run_loadout_set_item,
+        run_loadout_show,
+        save_loadout,
+    )
+    from companion.equipment.loadout_promotion import promote_candidate_to_loadout
+    from companion.equipment.parser import parse_item_text
+    from companion.equipment.schema import SlotType, WeaponSetContext
+
+    char_id = _resolve_char_id(args)
+
+    if args.loadout_action == "set-clipboard":
+        raw_text = read_item_input(getattr(args, "file", None))
+        run_loadout_set_item(
+            runtime_dir=args.runtime,
+            character_id=char_id,
+            slot_name=args.slot,
+            item_text=raw_text,
+            weapon_set_name=getattr(args, "weapon_set", None),
+        )
+        print(f"Slot '{args.slot}' updated in loadout draft for character '{char_id}'.")
+        return 0
+    elif args.loadout_action == "finalize":
+        l = run_loadout_finalize(
+            runtime_dir=args.runtime,
+            character_id=char_id,
+            loadout_id=getattr(args, "loadout_id", None),
+        )
+        print(f"Loadout finalized with revision {l.revision} ({len(l.known_slots)} known slots, {len(l.unknown_slots)} unknown slots).")
+        return 0
+    elif args.loadout_action == "show":
+        print(run_loadout_show(runtime_dir=args.runtime, character_id=char_id))
+        return 0
+    elif args.loadout_action == "clear":
+        run_loadout_clear(
+            runtime_dir=args.runtime,
+            character_id=char_id,
+            slot_name=args.slot,
+            weapon_set_name=getattr(args, "weapon_set", None),
+        )
+        print(f"Slot '{args.slot}' cleared from loadout.")
+        return 0
+    elif args.loadout_action == "promote-candidate":
+        raw_text = read_item_input(getattr(args, "file", None))
+        slot = SlotType.from_str(args.slot)
+        wset = WeaponSetContext.from_val(getattr(args, "weapon_set", None)) if getattr(args, "weapon_set", None) else None
+        candidate = parse_item_text(raw_text, target_slot=slot, target_weapon_set=wset)
+
+        loadout = load_loadout(args.runtime, char_id)
+        baseline = load_baseline(args.runtime, char_id)
+
+        new_loadout, new_baseline = promote_candidate_to_loadout(
+            loadout=loadout,
+            candidate=candidate,
+            slot=slot,
+            baseline=baseline,
+            weapon_set=wset,
+        )
+        save_loadout(args.runtime, new_loadout)
+        if new_baseline:
+            save_baseline(args.runtime, new_baseline)
+
+        print(f"Candidate '{candidate.name}' promoted to slot '{slot.value}'. Revision advanced to {new_loadout.revision}.")
+        return 0
+    return 1
+
 
 
 def handle_intelligence_story(args: argparse.Namespace) -> int:

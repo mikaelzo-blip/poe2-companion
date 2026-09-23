@@ -31,11 +31,18 @@ _CREDENTIAL_PATTERNS = [
     re.compile(r"-----BEGIN\s+.*PRIVATE KEY-----", re.IGNORECASE),
 ]
 
-# Approved engine/system debug envelopes
-_APPROVED_ENVELOPES = [
-    re.compile(r"\[(?:ENGINE|SYSTEM|SHADER|DEBUG|DEVICE|TEXTURE|AUDIO|PHYSICS|NETWORK|GRAPHICS|RENDER|CLIENT|SCRIPT|CACHE)\]", re.IGNORECASE),
-    re.compile(r"\b(?:Async loading|Connecting to|Connected to|Generating level|Entering area|Abnormal termination|DirectX|Vulkan|Websocket)\b", re.IGNORECASE),
-]
+# Only complete, structurally known messages can retain representative text.
+# Unknown debug tags and free-form suffixes are signatures without samples.
+_SAFE_SAMPLE_LINES = (
+    re.compile(
+        r"^(?:\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} )?(?:\d+ )?(?:[a-f0-9]+ )?"
+        r"\[ENGINE\] Resource loaded at 0x[0-9a-fA-F]+ with id \d+$"
+    ),
+    re.compile(
+        r"^(?:\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} )?(?:\d+ )?(?:[a-f0-9]+ )?"
+        r"\[ENGINE\] Texture allocation failed code \d{1,4} at 0x[0-9a-fA-F]+$"
+    ),
+)
 
 # Dynamic value sanitizers
 _HEX_RE = re.compile(r"0x[0-9a-fA-F]+")
@@ -64,10 +71,7 @@ class PrivacyFilter:
 
     def is_approved_envelope(self, line: str) -> bool:
         """Check if line matches an approved non-chat debug/engine envelope."""
-        for pattern in _APPROVED_ENVELOPES:
-            if pattern.search(line):
-                return True
-        return False
+        return any(pattern.fullmatch(line) for pattern in _SAFE_SAMPLE_LINES)
 
     def sanitize(self, line: str) -> str:
         """Strip dynamic timestamps, addresses, and IDs from log line."""
@@ -115,13 +119,18 @@ class PrivacyFilter:
         sanitized = self.sanitize(clean)
 
         if approved:
+            sample = (
+                "[ENGINE] Resource loaded at <HEX> with id <ID>"
+                if "Resource loaded at " in clean
+                else "[ENGINE] Texture allocation failed code <CODE> at <HEX>"
+            )
             return PrivacyResult(
                 is_safe=True,
                 is_chat=False,
                 has_credentials=False,
                 is_approved_envelope=True,
                 uncertain=False,
-                sanitized_text=sanitized,
+                sanitized_text=sample,
             )
 
         # Unapproved or ambiguous lines: fail-closed safety uncertainty

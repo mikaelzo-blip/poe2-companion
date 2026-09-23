@@ -91,8 +91,27 @@ def test_anomaly_grouper_samples_approved_envelope_up_to_cap():
     sig = signatures[0]
     assert sig.occurrence_count == 5
     assert sig.privacy_sample_withheld is False
-    # Capped at 3 samples
-    assert len(sig.sanitized_samples) == 3
+    assert sig.sanitized_samples == ["[ENGINE] Texture allocation failed code <CODE> at <HEX>"]
+    assert len(sig.sanitized_samples) <= grouper.MAX_SAMPLES_PER_SIGNATURE
+
+
+@pytest.mark.parametrize("line,private", [
+    ('2026/09/23 14:00:00 [DEBUG] note="my arbitrary private diary"', "my arbitrary private diary"),
+    ("2026/09/23 14:00:00 [SYSTEM] contact user@example.test", "user@example.test"),
+    ("2026/09/23 14:00:00 [ENGINE] path C:/Users/PrivatePerson/save.txt", "PrivatePerson"),
+    ("2026/09/23 14:00:00 [ENGINE] fetch https://example.test/?q=privateword", "privateword"),
+    ("2026/09/23 14:00:00 [DEBUG] raw opaqueTokenXYZ123456789", "opaqueTokenXYZ"),
+    ("2026/09/23 14:00:00 [INFO] user said Connecting to [ENGINE] something", "user said"),
+    ("2026/09/23 14:00:00 [ENGINE] Resource loaded at 0xabc with id 12345 extra privateword", "privateword"),
+])
+def test_unstructured_debug_samples_are_withheld(line, private):
+    result = PrivacyFilter().evaluate_line(line)
+    assert result.uncertain or not result.is_safe
+    rec = LogAnomalyGrouper().record_line(line)
+    if rec is not None:
+        assert rec.privacy_sample_withheld is True
+        assert rec.sanitized_samples == []
+        assert private not in str(rec.model_dump())
 
 
 def test_anomaly_grouper_signature_cap_at_100():

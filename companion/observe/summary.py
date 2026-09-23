@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from companion.observe.manifest import ManifestManager
+from companion.observe.manifest import ManifestManager, SessionManifest
 
 
 class SessionSummaryGenerator:
@@ -16,18 +16,27 @@ class SessionSummaryGenerator:
         self.session_dir = session_dir
 
     def _read_jsonl(self, filename: str) -> list[dict[str, Any]]:
-        path = self.session_dir / filename
-        if not path.exists():
-            return []
+        stem = filename.removesuffix(".jsonl")
+        paths = [self.session_dir / filename]
+        paths.extend(
+            sorted(
+                (p for p in self.session_dir.glob(f"{stem}.*.jsonl")
+                 if p.name.removeprefix(f"{stem}.").removesuffix(".jsonl").isdigit()),
+                key=lambda p: int(p.name.removeprefix(f"{stem}.").removesuffix(".jsonl")),
+            )
+        )
         items = []
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    try:
-                        items.append(json.loads(line))
-                    except Exception:
-                        pass
+        for path in paths:
+            if not path.exists():
+                continue
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        try:
+                            items.append(json.loads(line))
+                        except Exception:
+                            pass
         return items
 
     def _read_json(self, filename: str) -> dict[str, Any]:
@@ -39,14 +48,12 @@ class SessionSummaryGenerator:
         except Exception:
             return {}
 
-    def generate(self) -> dict[str, Any]:
-        manifest_file = self.session_dir / "session_manifest.json"
-        manifest_data = {}
-        if manifest_file.exists():
-            mgr = ManifestManager(manifest_file)
-            manifest = mgr.load()
-            if manifest:
-                manifest_data = manifest.model_dump()
+    def generate(self, manifest: SessionManifest | None = None) -> dict[str, Any]:
+        if manifest is None:
+            manifest_file = self.session_dir / "session_manifest.json"
+            if manifest_file.exists():
+                manifest = ManifestManager(manifest_file).load()
+        manifest_data = manifest.model_dump(mode="json") if manifest else {}
 
         session_id = manifest_data.get("session_id", self.session_dir.name)
         status = manifest_data.get("status", "UNKNOWN")
@@ -79,7 +86,7 @@ class SessionSummaryGenerator:
                 candidates.append({
                     "category": "PARSER_GAP_CANDIDATE",
                     "signature": sig,
-                    "details": anom.get("sample_message", ""),
+                    "details": "Sample withheld",
                     "count": anom.get("occurrence_count", 0),
                 })
 

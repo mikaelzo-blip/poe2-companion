@@ -40,30 +40,18 @@ def generate_development_observation_report(
                     except Exception:
                         pass
 
-    # Segregate anomalies into strong (defects/gaps) and weak (single occurrence, uncorroborated)
-    likely_defects = []
+    # Anomaly signatures alone cannot establish a defect.
     weak_evidence = []
-    data_gaps = []
 
     for sig, a in anomalies.items():
         occ = a.get("occurrence_count", 1)
-        evt_id = a.get("first_seen_event_id", "unknown")
-        msg = a.get("sample_message", "")
-        time_win = f"{a.get('first_seen_timestamp')} to {a.get('last_seen_timestamp')}"
-
-        if occ == 1:
-            weak_evidence.append({
-                "description": msg,
-                "event_id": evt_id,
-                "reason": "Single occurrence without corroborating failure or invariant violation",
-            })
-        else:
-            likely_defects.append({
-                "description": msg,
-                "event_id": evt_id,
-                "occurrence_count": occ,
-                "window": time_win,
-            })
+        evt_id = a.get("first_seen_event_id") or "unavailable"
+        time_win = f"{a.get('first_seen_at') or a.get('first_seen_timestamp') or 'unknown'} to {a.get('last_seen_at') or a.get('last_seen_timestamp') or 'unknown'}"
+        weak_evidence.append({
+            "description": f"Anomaly signature {sig}: Sample withheld; {occ} occurrence(s), window {time_win}",
+            "event_id": evt_id,
+            "reason": "Unparsed line is not a confirmed parser gap or invariant violation",
+        })
 
     # Check backpressure drops in manifest
     if manifest and manifest.dropped_event_count > 0:
@@ -89,20 +77,14 @@ def generate_development_observation_report(
         "## 2. Likely Defects",
     ]
 
-    if likely_defects:
-        for d in likely_defects:
-            lines.append(f"- **[CITED: {d['event_id']}]** {d['description']} (Occurrences: {d['occurrence_count']}, Window: {d['window']})")
-    else:
-        lines.append("- No confirmed defects identified.")
-
     lines.extend([
+        "- No confirmed defects identified.",
         "",
         "## 3. Usability Findings",
     ])
     if markers:
         for m in markers:
-            p = m.get("payload", {})
-            lines.append(f"- **[USER MARKER {m.get('event_id', 'unknown')}]** {p.get('note', '')}")
+            lines.append(f"- **[USER MARKER {m.get('event_id', 'unknown')}]** Note withheld")
     else:
         lines.append("- No explicit usability findings noted during this session.")
 
@@ -110,13 +92,8 @@ def generate_development_observation_report(
         "",
         "## 4. Data Gaps",
     ])
-    if data_gaps:
-        for g in data_gaps:
-            lines.append(f"- {g}")
-    else:
-        lines.append("- No missing observation sources identified.")
-
     lines.extend([
+        "- No missing observation sources identified.",
         "",
         "## 5. Feature Opportunities",
         "- Expand telemetry to track area-level zone difficulty curves.",

@@ -403,7 +403,6 @@ class ContinuousRuntimeOrchestrator:
                             selected_objective_id=top_obj.id if top_obj else None,
                             selection_reasons=[top_obj.rationale] if (top_obj and top_obj.rationale) else [],
                             suppressed_candidates=suppressed,
-                            objective_changed=True,
                         )
 
                     if top_obj is not None:

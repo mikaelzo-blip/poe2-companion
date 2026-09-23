@@ -1,6 +1,7 @@
 """Tests for DevelopmentObserver orderly bounded shutdown and queue drain."""
 
 from pathlib import Path
+import json
 import time
 import pytest
 
@@ -38,6 +39,18 @@ def test_clean_shutdown_drains_queue_and_marks_closed(tmp_path: Path):
     assert manifest.persisted_event_count + manifest.dropped_event_count == manifest.sequence_high_watermark
     assert manifest.sequence_high_watermark == 10
     assert observer.is_stopped is True
+    _assert_summary_matches_manifest(observer, manifest)
+
+
+def _assert_summary_matches_manifest(observer, manifest):
+    summary = json.loads((observer.session_dir / "session_summary.json").read_text(encoding="utf-8"))
+    stored = json.loads((observer.session_dir / "session_manifest.json").read_text(encoding="utf-8"))
+    assert summary["status"] == stored["status"] == manifest.status.value
+    assert summary["ended_at"] == stored["ended_at"] == manifest.ended_at
+    assert summary["manifest"] == stored
+    assert f"**Status**: {manifest.status.value}" in (
+        observer.session_dir / "session_summary.md"
+    ).read_text(encoding="utf-8")
 
 
 def test_shutdown_timeout_aborts_drain_and_marks_incomplete(tmp_path: Path):
@@ -80,3 +93,4 @@ def test_shutdown_timeout_aborts_drain_and_marks_incomplete(tmp_path: Path):
         + manifest.pending_event_count
         == manifest.sequence_high_watermark
     )
+    _assert_summary_matches_manifest(observer, manifest)

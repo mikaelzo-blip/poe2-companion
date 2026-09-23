@@ -71,7 +71,56 @@ def test_generate_development_observation_report_structure(tmp_path: Path):
 
     # Check evidence citations and weak anomaly handling
     assert "evt_anom_1" in content
-    assert "Transient network jitter" in content
+    assert "Sample withheld" in content
     # Weak anomaly must be under section 6
     sec6 = content.split("## 6. Not Enough Evidence / Missing Evidence")[1]
-    assert "Transient network jitter" in sec6
+    assert "Sample withheld" in sec6
+    assert "Transient network jitter" not in content
+
+
+def test_review_omits_untrusted_anomaly_samples(tmp_path: Path):
+    sdir = tmp_path / "obs_private_review"
+    sdir.mkdir()
+    ManifestManager(sdir / "session_manifest.json").save_atomic(SessionManifest(
+        session_id=sdir.name, runtime_run_id="run", started_at="2026-09-23T10:00:00Z",
+    ))
+    (sdir / "anomalies.json").write_text(json.dumps({
+        "safe_signature": {"occurrence_count": 2, "sample_message": "private-canary-note"},
+    }), encoding="utf-8")
+    report = generate_development_observation_report(sdir, tmp_path / "review.md")
+    assert "private-canary-note" not in report.read_text(encoding="utf-8")
+
+
+def test_review_does_not_promote_uncited_repeated_anomaly(tmp_path: Path):
+    sdir = tmp_path / "obs_uncited"
+    sdir.mkdir()
+    ManifestManager(sdir / "session_manifest.json").save_atomic(SessionManifest(
+        session_id=sdir.name, runtime_run_id="run", started_at="2026-09-23T10:00:00Z",
+    ))
+    (sdir / "anomalies.json").write_text(json.dumps({
+        "a1b2c3d4e5f60708": {
+            "occurrence_count": 3, "first_seen_at": "2026-09-23T10:00:00Z",
+            "last_seen_at": "2026-09-23T10:01:00Z", "privacy_sample_withheld": True,
+        },
+    }), encoding="utf-8")
+    report = generate_development_observation_report(sdir, tmp_path / "review.md").read_text(encoding="utf-8")
+    defects = report.split("## 2. Likely Defects")[1].split("## 3. Usability Findings")[0]
+    assert "[CITED: unknown]" not in defects
+    assert "2026-09-23T10:00:00Z" in report
+    assert "None to None" not in report
+    assert "Not Enough Evidence" in report
+
+
+def test_review_withholds_private_marker_notes(tmp_path: Path):
+    sdir = tmp_path / "obs_private_marker"
+    sdir.mkdir()
+    ManifestManager(sdir / "session_manifest.json").save_atomic(SessionManifest(
+        session_id=sdir.name, runtime_run_id="run", started_at="2026-09-23T10:00:00Z",
+    ))
+    (sdir / "markers.jsonl").write_text(json.dumps({
+        "event_id": "evt_mark_1", "payload": {"note": "private-canary-note"},
+    }) + "\n", encoding="utf-8")
+    report = generate_development_observation_report(sdir, tmp_path / "review.md")
+    content = report.read_text(encoding="utf-8")
+    assert "evt_mark_1" in content
+    assert "private-canary-note" not in content

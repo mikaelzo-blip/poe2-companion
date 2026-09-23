@@ -103,6 +103,50 @@ openspec status --change poe2-companion-development-observation-mode --json
 
 ---
 
-## 5. Status
+## 5. Pre-soak status
 
-**READY FOR 60–120 MINUTE REAL SOAK**
+**READY FOR 60–120 MINUTE REAL SOAK** (pre-soak verification only; not a long-soak acceptance verdict).
+
+---
+
+## 6. Post-gameplay observation audit (newer session)
+
+Full evidence and caveats: [`DEVELOPMENT_OBSERVATION_REPORT.md`](../../DEVELOPMENT_OBSERVATION_REPORT.md). This is **not** the earlier short validation session `obs_20260923_081450_ff5ba4`.
+
+| Acceptance item | Actual result |
+|---|---|
+| 1. Observation session ID | `obs_20260923_083942_be4853`; runtime run `be485306562b4176a8876b497baf2a63` |
+| 2. Actual duration | 41m 39.429086s; 08:39:42.482773–09:21:21.911859 UTC, **below 60-minute minimum** |
+| 3. Manifest status | `CLOSED`; 0 pending; 2,140 persisted + 0 dropped = 2,140 high watermark; all six streams have unique contiguous sequences 1–2,140 |
+| 4. Observer health | `HEALTHY` |
+| 5. Persisted events | 2,140 across events 20, state deltas 20, objectives 20, notifications 20, telemetry 2,057, markers 3 |
+| 6. Dropped events | 0, including high-priority 0; unexplained gaps 0 |
+| 7. Queue high watermark | 2 |
+| 8. Worker errors | 0 |
+| 9. Privacy verdict | Pattern checks: 0 whisper/chat markers, 0 bearer/OAuth/credential matches in persisted anomaly samples; 34 uncertain signatures withheld samples; screenshots 0. **Conditional**: cannot certify no arbitrary private text in 66 approved-debug samples by pattern checks alone; report withholds player names and marker notes. |
+| 10. Zone transitions | 17 `LOG_ZONE_GENERATE` (#27–#2032) |
+| 11. Level-ups | 3: levels 12, 13, 14 (#354, #952, #1685) |
+| 12. Deaths | NOT OBSERVED |
+| 13. Objective evaluations | 20 (#29–#2034) |
+| 14. Objective changes | 0 observed selected-ID transitions; 20/20 traces flag `objective_changed=true` (**INVALIDATED BY DEFECT / DO NOT USE FOR DEVELOPMENT PRIORITIZATION**); first selection has no prior comparison |
+| 15. Notification dispositions | DELIVERED 1; QUEUED 15; DEDUPED 0; SUPPRESSED 0; additional `COOLDOWN_DROPPED` 4 (#1139, #1921, #1972, #2020) |
+| 16. Parser anomaly count | 100 signatures / 103 occurrences; two repeated withheld signatures (3 and 2 occurrences), no confirmed parser gap |
+| 17. Persistent UNKNOWN findings | Passive `UNOBSERVED_SUBSYSTEM` suppressed 400 candidate appearances across 20 evaluations; skill incomplete/stale 122; equipment incomplete/unobserved 135. At least 38m46s between first/last affected evaluations (#29–#2034); exact per-field UNKNOWN windows not recorded. |
+| 18. User marker count | 3 (#2089, #2101, #2111), with no explicit correlation refs; all after final gameplay #2032 |
+| 19. Storage size | 1,614,532 bytes, complete session directory including metadata; telemetry `storage_bytes` uniformly 0, so growth not measured |
+| 20. Top evidence-backed findings | Manifest sequences reconcile; final summary contradicts final manifest (`OPEN`, null end, zero high watermark); selected objective unchanged despite change flags; same semantic notification key across 20 traces; all supported by #29, #2034, #2035 and final manifest. |
+| 21. Visual-extraction evidence verdict | NOT ENOUGH EVIDENCE to recommend OCR; passive/skill/equipment data gaps are candidates for comparing manual input with visual extraction only after feasibility/privacy validation. |
+| 22. Defects requiring remediation | Summary finalization ordering (`companion/observe/observer.py:546-590`); unconditional changed flag (`companion/runtime/orchestrator.py:399-407`); source-time offset mismatch to investigate (#27, #2032). No fixes in this audit. |
+| 23. Acceptance status | **NOT ACCEPTED as 60–120-minute long soak**: actual duration short, final summary stale, privacy verdict conditional. Event-sequence integrity PASS. |
+
+Operational limits: sampled loop duration 179.562–672.309 ms; CPU/memory, real writer/enqueue latency and checkpoint recovery are NOT RECORDED. Process lifecycle/relaunch and runtime recoverable-error events are NOT OBSERVED in these traces. Exact total Client.txt lines consumed is unknown; 20 parsed records and 103 anomaly occurrences are not a complete line count. Do not reinterpret absence as proof of non-occurrence.
+
+---
+
+## 7. Short remediation retest (separate real session)
+
+Session `obs_20260923_100559_7b08e7` observed live PoE2 with screenshots disabled. Graceful shutdown produced matching `CLOSED` manifest, JSON summary, embedded manifest, and end timestamp. The manifest reconciles 223 persisted + 0 dropped = 223 high watermark, 0 pending, `HEALTHY`; all six stream counts match the manifest (events 4, state deltas 4, objective traces 4, notification traces 4, telemetry 207, markers 0).
+
+Four objective reevaluations selected one stable ID: flags `[true, false, false, false]`. The initial `None → ID` selection is counted once; three subsequent same-ID reevaluations are not changes. A genuine `X → Y` transition was **NOT OBSERVED** in this session (covered by deterministic regression tests). All 44 anomaly signatures withheld representative samples; 0 stored samples. This verifies fail-closed behavior for observed lines, not an exhaustive proof for every possible input; adversarial structural tests cover free-form, email, path, URL, and token-like text.
+
+This short retest is **not** the second long soak and is not combined with the first session to claim 60 minutes. The first session's historical artifacts remain unchanged and its `objective_changed` metric remains invalidated.

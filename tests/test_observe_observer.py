@@ -208,11 +208,37 @@ def test_objective_decision_tracing(tmp_path: Path):
         selected_objective_id="obj_opt_1",
         selection_reasons=["Highest priority"],
         suppressed_candidates={"obj_opt_2": "STALE_SOURCE"},
-        objective_changed=True,
     )
     assert trace.selected_objective_id == "obj_opt_1"
     assert trace.objective_changed is True
     assert observer.sequence_high_watermark == 1
+
+
+def test_objective_trace_distinguishes_reevaluation_from_selection_change(tmp_path: Path):
+    observer = DevelopmentObserver(
+        base_dir=tmp_path / "observations",
+        session_id="obs_obj_transitions",
+        runtime_run_id="run_1",
+        auto_start=False,
+    )
+
+    def evaluate(selected, candidates, reason):
+        return observer.record_objective_evaluation(
+            triggers=["zone_enter"],
+            state_delta_refs=[],
+            candidate_ids=candidates,
+            selected_objective_id=selected,
+            selection_reasons=[reason],
+            suppressed_candidates={},
+        )
+
+    assert evaluate(None, [], "no choice").objective_changed is False
+    assert evaluate("obj_a", ["obj_a"], "initial").objective_changed is True
+    assert evaluate("obj_a", ["obj_a"], "new evidence").objective_changed is False
+    assert evaluate("obj_a", ["obj_a", "obj_b"], "candidate changed").objective_changed is False
+    assert evaluate("obj_b", ["obj_a", "obj_b"], "new top").objective_changed is True
+    assert evaluate(None, [], "no eligible choice").objective_changed is True
+    assert observer.sequence_high_watermark == 6
 
 
 def test_notification_outcome_tracing(tmp_path: Path):

@@ -63,6 +63,29 @@ def test_session_summary_generator_clean_session(tmp_path: Path):
     assert (sdir / "session_summary.md").exists()
 
 
+def test_session_summary_counts_rotated_segments(tmp_path: Path):
+    sdir = tmp_path / "obs_rotated"
+    _setup_mock_session(sdir)
+    (sdir / "objective_traces.1.jsonl").write_text(
+        '{"event_id": "evt_obj_2", "payload": {"selected_objective_id": "obj_1"}}\n',
+        encoding="utf-8",
+    )
+    data = SessionSummaryGenerator(sdir).generate()
+    assert data["counts"]["objective_evaluations"] == 2
+    assert "Objective Evaluations: 2" in (sdir / "session_summary.md").read_text(encoding="utf-8")
+
+
+def test_session_summary_omits_untrusted_anomaly_text(tmp_path: Path):
+    sdir = tmp_path / "obs_private_summary"
+    _setup_mock_session(sdir)
+    (sdir / "anomalies.json").write_text(json.dumps({
+        "safe_signature": {"occurrence_count": 2, "sample_message": "private-canary-note"},
+    }), encoding="utf-8")
+    SessionSummaryGenerator(sdir).generate()
+    assert "private-canary-note" not in (sdir / "session_summary.json").read_text(encoding="utf-8")
+    assert "private-canary-note" not in (sdir / "session_summary.md").read_text(encoding="utf-8")
+
+
 def test_session_summary_generator_partial_session(tmp_path: Path):
     sdir = tmp_path / "runtime" / "observations" / "obs_partial_summary"
     _setup_mock_session(sdir, ManifestStatus.INCOMPLETE)

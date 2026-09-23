@@ -83,6 +83,7 @@ class DevelopmentObserver:
         self.dropped_event_ids: set[str] = set()
         self._last_state_delta_ids: list[str] = []
         self._last_objective_eval_id: str | None = None
+        self._selected_objective_id: str | None = None
 
         self._accepting_events: bool = True
         self._worker_thread: threading.Thread | None = None
@@ -386,9 +387,11 @@ class DevelopmentObserver:
         selected_objective_id: str | None,
         selection_reasons: list[str],
         suppressed_candidates: dict[str, str],
-        objective_changed: bool,
     ) -> ObjectiveDecisionTrace:
-        """Record objective decision trace without altering priority logic."""
+        """Record a reevaluation; initial None is the selection baseline."""
+        with self._lock:
+            objective_changed = self._selected_objective_id != selected_objective_id
+            self._selected_objective_id = selected_objective_id
         trace = ObjectiveDecisionTrace(
             triggers=triggers,
             state_delta_refs=state_delta_refs,
@@ -531,7 +534,7 @@ class DevelopmentObserver:
         # Step 4: Close streams
         self.storage_manager.close_streams()
 
-        # Step 4.5: Persist anomalies
+        # Persist anomalies before building the final summary.
         try:
             import json
             anom_path = self.session_dir / "anomalies.json"
@@ -543,14 +546,7 @@ class DevelopmentObserver:
         except Exception as e:
             logger.error(f"Failed to persist anomalies on shutdown: {e}")
 
-        # Step 5: Generate session summary
-        try:
-            from companion.observe.summary import SessionSummaryGenerator
-            SessionSummaryGenerator(self.session_dir).generate()
-        except Exception as e:
-            logger.error(f"Failed to generate session summary on shutdown: {e}")
-
-        # Step 6: Determine status and reconcile counters
+        # Determine terminal status and reconcile counters before summarizing.
         now_iso = datetime.now(timezone.utc).isoformat()
 
         # Calculate artifact / stream counts via public storage contract
@@ -586,6 +582,11 @@ class DevelopmentObserver:
                 artifact_counts=artifact_counts,
             )
 
-        # Step 7 & 8: Atomically update manifest
+        try:
+            from companion.observe.summary import SessionSummaryGenerator
+            SessionSummaryGenerator(self.session_dir).generate(manifest=manifest)
+        except Exception as e:
+            logger.error(f"Failed to generate session summary on shutdown: {e}")
+
         self.manifest_manager.save_atomic(manifest)
         return manifest

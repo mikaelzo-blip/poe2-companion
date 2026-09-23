@@ -91,6 +91,10 @@ def test_suite_worker_failure_transitions_to_failed(tmp_path: Path):
     assert manifest.artifact_counts["events"] == 0
     assert manifest.persisted_event_count + manifest.dropped_event_count == manifest.sequence_high_watermark
     assert ManifestManager(obs.manifest_manager.manifest_path).load() == manifest
+    summary = json.loads((obs.session_dir / "session_summary.json").read_text(encoding="utf-8"))
+    assert summary["status"] == "INCOMPLETE"
+    assert summary["ended_at"] == manifest.ended_at
+    assert summary["manifest"] == json.loads(obs.manifest_manager.manifest_path.read_text(encoding="utf-8"))
 
 
 def test_suite_screenshot_worker_degradation_without_state_mutation(tmp_path: Path):

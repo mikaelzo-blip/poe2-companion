@@ -5,16 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 from companion.equipment.baseline_cli import load_baseline
+from companion.equipment.baseline_gate import check_baseline_consistency
 from companion.equipment.build_breaker import evaluate_candidate_build_safety
+from companion.equipment.contextual_value import evaluate_loadout_contextual_analysis
+from companion.equipment.data_sufficiency import analyze_data_sufficiency
 from companion.equipment.loadout_cli import load_loadout
 from companion.equipment.parser import parse_item_text
 from companion.equipment.partial_projection import project_candidate_on_loadout
-from companion.equipment.precedence import Verdict, evaluate_verdict_precedence
+from companion.equipment.precedence import Verdict, evaluate_contextual_verdict
 from companion.equipment.recommendation import EquipmentRecommendation
 from companion.equipment.requirements import GemRequirement, validate_requirement_cascades
 from companion.equipment.rules import BuildProgressionStage
 from companion.equipment.schema import ItemCandidate, SlotType, WeaponSetContext
-from companion.equipment.slots import get_slot_weights
 
 
 class EquipmentIntelligenceEngine:
@@ -58,7 +60,14 @@ class EquipmentIntelligenceEngine:
         resolved_wset = res_wset or candidate.weapon_set
 
         loadout = load_loadout(self.runtime_dir, character_id)
-        baseline = load_baseline(self.runtime_dir, character_id)
+        raw_baseline = load_baseline(self.runtime_dir, character_id)
+
+        # Baseline consistency check against loadout revision
+        if raw_baseline is not None and loadout is not None:
+            consistency_result = check_baseline_consistency(raw_baseline, loadout.revision)
+            baseline = consistency_result.reconciled_baseline
+        else:
+            baseline = raw_baseline
 
         # 1. Build-breaker safety evaluation
         safety_eval = evaluate_candidate_build_safety(
@@ -87,53 +96,41 @@ class EquipmentIntelligenceEngine:
             critical_gems=critical_gems,
         )
 
-        # 4. Score delta calculation using slot weights
-        weights = get_slot_weights(resolved_slot)
-        score_delta = 0.0
-        score_delta += projection.life.delta * weights.life_weight
-        score_delta += (
-            projection.fire_res.delta
-            + projection.cold_res.delta
-            + projection.lightning_res.delta
-            + projection.chaos_res.delta
-        ) * weights.res_weight
-        score_delta += projection.movement_speed.delta * weights.movement_speed_weight
-        score_delta += (
-            projection.local_armour_delta
-            + projection.local_evasion_delta
-            + projection.local_energy_shield_delta
-        ) * weights.defense_weight
-        score_delta += (
-            projection.strength.delta
-            + projection.dexterity.delta
-            + projection.intelligence.delta
-        ) * weights.attribute_weight
-
-        # Check for unmitigated resistance deficits
-        unmitigated_deficit = False
-        for res_proj in (projection.fire_res, projection.cold_res, projection.lightning_res):
-            if res_proj.projected_absolute is not None and res_proj.projected_absolute < 75:
-                if res_proj.delta < 0:
-                    unmitigated_deficit = True
-
-        # 5. Non-scalar verdict precedence
-        verdict, reason, flags = evaluate_verdict_precedence(
-            score_delta=score_delta,
+        # 4. Data sufficiency analysis
+        sufficiency = analyze_data_sufficiency(
+            baseline=baseline,
+            loadout=loadout,
+            candidate=candidate,
+            slot=resolved_slot,
             safety_eval=safety_eval,
-            cascade_result=cascade_result,
-            unmitigated_resistance_deficit=unmitigated_deficit,
         )
 
-        # 6. Actionable guidance
+        # 5. Loadout contextual analysis (deficiencies, marginal value tiers)
+        contextual_analysis = evaluate_loadout_contextual_analysis(
+            baseline=baseline,
+            projection=projection,
+        )
+
+        # 6. Non-scalar contextual verdict precedence
+        verdict, reason, flags = evaluate_contextual_verdict(
+            safety_eval=safety_eval,
+            cascade_result=cascade_result,
+            contextual_analysis=contextual_analysis,
+            data_sufficiency=sufficiency,
+        )
+
+        # 7. Actionable guidance
         guidance: list[str] = []
         if verdict == Verdict.EQUIP_NOW:
             guidance.append(f"Safe direct upgrade. Promote via 'companion gear loadout promote-candidate --slot {resolved_slot.value}'.")
         elif verdict == Verdict.CONDITIONAL_UPGRADE:
             guidance.append("Solve requirement/resistance deficits elsewhere before equipping.")
-        elif verdict == Verdict.STASH_FOR_LATER:
+        elif verdict == Verdict.KEEP_FOR_LATER:
             guidance.append("Keep in stash for future gear reshuffling.")
         elif verdict == Verdict.REJECT:
             guidance.append("Do not equip: harms character progression or violates build mechanics.")
+        elif verdict == Verdict.INSUFFICIENT_DATA:
+            guidance.append("Capture missing baseline or loadout facts before making equip decision.")
 
         return EquipmentRecommendation(
             character_id=character_id,
@@ -147,6 +144,7 @@ class EquipmentIntelligenceEngine:
             verdict=verdict,
             verdict_reason=reason,
             flags=flags,
-            score_delta=score_delta,
+            sufficiency=sufficiency,
+            contextual_analysis=contextual_analysis,
             actionable_guidance=guidance,
         )

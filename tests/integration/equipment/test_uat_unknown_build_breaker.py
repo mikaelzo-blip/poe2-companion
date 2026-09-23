@@ -1,4 +1,4 @@
-"""UAT Scenario 6: Unknown fire modifier blocks EQUIP_NOW and triggers High-Risk Unknown Gate."""
+"""FIXTURE-BASED INTEGRATION TESTS Scenario 6: Unknown fire modifier blocks EQUIP_NOW and triggers High-Risk Unknown Gate."""
 
 from pathlib import Path
 import pytest

@@ -306,7 +306,7 @@ def build_parser() -> argparse.ArgumentParser:
     bset_p.add_argument("--str", type=int, help="Character Strength")
     bset_p.add_argument("--dex", type=int, help="Character Dexterity")
     bset_p.add_argument("--int", type=int, help="Character Intelligence")
-    bset_p.add_argument("--ms", type=int, help="Character Movement Speed %")
+    bset_p.add_argument("--ms", type=int, help="Character Movement Speed %%")
 
     bshow_p = base_sub.add_parser("show", help="Show current character stat baseline")
     bshow_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
@@ -334,7 +334,7 @@ def build_parser() -> argparse.ArgumentParser:
     bref_p.add_argument("--str", type=int, help="Character Strength")
     bref_p.add_argument("--dex", type=int, help="Character Dexterity")
     bref_p.add_argument("--int", type=int, help="Character Intelligence")
-    bref_p.add_argument("--ms", type=int, help="Character Movement Speed %")
+    bref_p.add_argument("--ms", type=int, help="Character Movement Speed %%")
 
     gload_p = gear_sub.add_parser("loadout", help="Manage equipped gear loadout")
     loadout_sub = gload_p.add_subparsers(dest="loadout_action", required=True)

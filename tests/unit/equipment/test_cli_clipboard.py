@@ -25,9 +25,27 @@ def test_cli_inspect_clipboard(tmp_path: Path):
     runtime_dir = tmp_path / "runtime"
     char_id = "test_clip_char"
 
-    # Setup baseline and loadout
+    # Setup baseline and loadout with old boots
+    old_boots = """Item Class: Boots
+Rarity: Normal
+Iron Greaves
+--------
+"""
+    run_loadout_set_item(runtime_dir, char_id, "boots", old_boots)
     run_loadout_finalize(runtime_dir, char_id)
-    run_baseline_set(runtime_dir, char_id, life=2000, lightning_res=70, lightning_raw=70)
+    run_baseline_set(
+        runtime_dir,
+        char_id,
+        life=2000,
+        fire_res=75,
+        fire_raw=75,
+        cold_res=75,
+        cold_raw=75,
+        lightning_res=70,
+        lightning_raw=70,
+        chaos_res=0,
+        chaos_raw=0,
+    )
 
     with patch("companion.equipment.clipboard._read_os_clipboard", return_value=BOOTS_ITEM):
         report, rec = run_inspect_clipboard(

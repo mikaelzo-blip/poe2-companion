@@ -1,4 +1,4 @@
-"""UAT Scenario 5: Two-handed staff replaces set-1 MH and OH while set-2 crossbow remains intact."""
+"""FIXTURE-BASED INTEGRATION TESTS Scenario 5: Two-handed staff replaces set-1 MH and OH while set-2 crossbow remains intact."""
 
 from pathlib import Path
 import pytest

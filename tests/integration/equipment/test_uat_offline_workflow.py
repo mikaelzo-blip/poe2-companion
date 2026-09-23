@@ -1,4 +1,4 @@
-"""UAT Scenario 7: Complete offline workflow from capture to promotion and reanchoring."""
+"""FIXTURE-BASED INTEGRATION TESTS Scenario 7: Complete offline workflow from capture to promotion and reanchoring."""
 
 from pathlib import Path
 import pytest

@@ -1,4 +1,4 @@
-"""UAT Scenario 4: Flameblast staff with fire spell damage is NOT rejected under staff exception."""
+"""FIXTURE-BASED INTEGRATION TESTS Scenario 4: Flameblast staff with fire spell damage is NOT rejected under staff exception."""
 
 from pathlib import Path
 import pytest

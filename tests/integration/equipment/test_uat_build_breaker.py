@@ -1,4 +1,4 @@
-"""UAT Scenario 3: Shared ring with flat fire damage to attacks triggering build breaker REJECT."""
+"""FIXTURE-BASED INTEGRATION TESTS Scenario 3: Shared ring with flat fire damage to attacks triggering build breaker REJECT."""
 
 from pathlib import Path
 import pytest

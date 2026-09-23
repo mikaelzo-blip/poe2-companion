@@ -121,3 +121,19 @@ def test_item_candidate_model():
     assert item.required_str == 50
     assert item.local_armour == 120
     assert len(item.modifiers) == 1
+
+
+def test_public_verdict_contract_exact_members():
+    from companion.equipment.precedence import Verdict
+
+    expected_members = {
+        "EQUIP_NOW",
+        "CONDITIONAL_UPGRADE",
+        "KEEP_FOR_LATER",
+        "REJECT",
+        "INSUFFICIENT_DATA",
+    }
+    actual_members = {v.value for v in Verdict}
+    assert actual_members == expected_members
+    assert "SIDEGRADE" not in actual_members
+    assert "STASH_FOR_LATER" not in actual_members

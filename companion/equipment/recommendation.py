@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
+from companion.equipment.contextual_value import (
+    DeficiencyImpact,
+    LoadoutContextualAnalysis,
+)
+from companion.equipment.data_sufficiency import DataSufficiencyResult
 from companion.equipment.partial_projection import PartialLoadoutProjection, StatProjection
 from companion.equipment.precedence import Verdict
 from companion.equipment.requirements import RequirementCascadeResult
@@ -24,7 +29,8 @@ class EquipmentRecommendation(BaseModel):
     verdict: Verdict
     verdict_reason: str
     flags: list[str] = Field(default_factory=list)
-    score_delta: float = 0.0
+    sufficiency: DataSufficiencyResult | None = None
+    contextual_analysis: LoadoutContextualAnalysis | None = None
     actionable_guidance: list[str] = Field(default_factory=list)
 
     @property
@@ -47,12 +53,109 @@ def format_recommendation_report(rec: EquipmentRecommendation) -> str:
         f"Slot: {rec.slot.value.upper()}" + (f" ({rec.target_weapon_set.value})" if rec.target_weapon_set else ""),
         f"Base: {rec.candidate.base_type} (Rarity: {rec.candidate.rarity.capitalize()})",
         "============================================================",
-        f"VERDICT: {rec.verdict.value}",
-        f"Reason:  {rec.verdict_reason}",
+        "--- VERDICT ---",
+        f"  Verdict: {rec.verdict.value}",
     ]
-
     if rec.flags:
-        lines.append(f"Flags:   {', '.join(rec.flags)}")
+        lines.append(f"  Flags:   {', '.join(rec.flags)}")
+
+    lines.append("")
+    lines.append("--- WHY ---")
+    lines.append(f"  {rec.verdict_reason}")
+
+    # Helper lists for deficiency categorization
+    crit_deficiencies: list[str] = []
+    deficiencies_resolved: list[str] = []
+    deficiencies_remaining: list[str] = []
+    new_deficiencies: list[str] = []
+
+    if rec.contextual_analysis is not None:
+        ca = rec.contextual_analysis
+        for res_type, r_ana in ca.resistances.items():
+            r_name = res_type.value.capitalize()
+            if r_ana.deficit_before > 0:
+                crit_deficiencies.append(
+                    f"{r_name} Resistance: {r_ana.deficit_before}% deficit before (target {r_ana.target}%)"
+                )
+            if r_ana.impact == DeficiencyImpact.RESOLVES:
+                deficiencies_resolved.append(
+                    f"{r_name} Resistance: Deficit fully resolved (+{r_ana.delta:g}%, projected {r_ana.projected_effective}%)"
+                )
+            elif r_ana.impact == DeficiencyImpact.IMPROVES:
+                deficiencies_resolved.append(
+                    f"{r_name} Resistance: Deficit reduced from {r_ana.deficit_before}% to {r_ana.deficit_after}%"
+                )
+            elif r_ana.impact == DeficiencyImpact.UNCHANGED and r_ana.deficit_before > 0:
+                deficiencies_remaining.append(
+                    f"{r_name} Resistance: Deficit unchanged at {r_ana.deficit_before}% short of {r_ana.target}%"
+                )
+            elif r_ana.impact == DeficiencyImpact.WORSENS:
+                new_deficiencies.append(
+                    f"{r_name} Resistance: Deficit worsened by {abs(r_ana.delta):g}% (now {r_ana.deficit_after}% short)"
+                )
+            elif r_ana.impact == DeficiencyImpact.CREATES_NEW_DEFICIENCY:
+                new_deficiencies.append(
+                    f"{r_name} Resistance: New deficit created ({r_ana.deficit_after}% short of {r_ana.target}%)"
+                )
+
+        for attr_name, a_ana in ca.attributes.items():
+            aname_cap = attr_name.capitalize()
+            if a_ana.deficit_before > 0:
+                crit_deficiencies.append(
+                    f"{aname_cap} Attribute: {a_ana.deficit_before} deficit before (required {a_ana.highest_required})"
+                )
+            if a_ana.impact == DeficiencyImpact.RESOLVES:
+                deficiencies_resolved.append(
+                    f"{aname_cap} Attribute: Requirement met (+{a_ana.delta:g}, projected {a_ana.projected_value})"
+                )
+            elif a_ana.impact == DeficiencyImpact.IMPROVES:
+                deficiencies_resolved.append(
+                    f"{aname_cap} Attribute: Deficit reduced from {a_ana.deficit_before} to {a_ana.deficit_after}"
+                )
+            elif a_ana.impact == DeficiencyImpact.UNCHANGED and a_ana.deficit_before > 0:
+                deficiencies_remaining.append(
+                    f"{aname_cap} Attribute: Deficit unchanged at {a_ana.deficit_before} short of {a_ana.highest_required}"
+                )
+            elif a_ana.impact == DeficiencyImpact.WORSENS:
+                new_deficiencies.append(
+                    f"{aname_cap} Attribute: Deficit worsened by {abs(a_ana.delta):g} (now {a_ana.deficit_after} short)"
+                )
+            elif a_ana.impact == DeficiencyImpact.CREATES_NEW_DEFICIENCY:
+                new_deficiencies.append(
+                    f"{aname_cap} Attribute: New deficit created ({a_ana.deficit_after} short of {a_ana.highest_required})"
+                )
+
+    lines.append("")
+    lines.append("--- CRITICAL DEFICIENCIES ---")
+    if crit_deficiencies:
+        for c in crit_deficiencies:
+            lines.append(f"  * {c}")
+    else:
+        lines.append("  None identified.")
+
+    lines.append("")
+    lines.append("--- DEFICIENCIES RESOLVED ---")
+    if deficiencies_resolved:
+        for r in deficiencies_resolved:
+            lines.append(f"  * {r}")
+    else:
+        lines.append("  None.")
+
+    lines.append("")
+    lines.append("--- DEFICIENCIES REMAINING ---")
+    if deficiencies_remaining:
+        for rm in deficiencies_remaining:
+            lines.append(f"  * {rm}")
+    else:
+        lines.append("  None.")
+
+    lines.append("")
+    lines.append("--- NEW DEFICIENCIES ---")
+    if new_deficiencies:
+        for nd in new_deficiencies:
+            lines.append(f"  * {nd}")
+    else:
+        lines.append("  None.")
 
     lines.append("")
     if rec.displaced_items:
@@ -62,7 +165,7 @@ def format_recommendation_report(rec: EquipmentRecommendation) -> str:
         lines.append("Displaced Item(s): None (Empty slot)")
 
     lines.append("")
-    lines.append("--- STAT COMPARISON (KNOWN DELTAS vs PROJECTED ABSOLUTES) ---")
+    lines.append("--- KNOWN STAT DELTAS (KNOWN DELTAS vs PROJECTED ABSOLUTES) ---")
     p = rec.projection
     lines.append(format_stat_delta("Life", p.life))
     lines.append(format_stat_delta("Fire Res", p.fire_res, "%"))
@@ -83,27 +186,42 @@ def format_recommendation_report(rec: EquipmentRecommendation) -> str:
         ])) + " | Total Char Defenses: ISOLATED (Not Fabricated)")
 
     lines.append("")
-    if rec.safety_eval.certainty == BuildBreakerCertainty.VERIFIED_BUILD_BREAKER:
-        lines.append("--- BUILD-BREAKER SAFETY: VERIFIED_BUILD_BREAKER [BUILD BREAKER DETECTED] ---")
-    elif rec.safety_eval.certainty == BuildBreakerCertainty.UNKNOWN_APPLICABILITY:
-        lines.append("--- BUILD-BREAKER SAFETY: UNKNOWN_APPLICABILITY [HIGH RISK UNKNOWN WARNING] ---")
-    else:
-        lines.append(f"--- BUILD-BREAKER SAFETY: {rec.safety_eval.certainty.value} ---")
-    lines.append(f"  {rec.safety_eval.reason}")
-
-    lines.append("")
-    lines.append("--- REQUIREMENT CASCADES ---")
+    lines.append("--- REQUIREMENT EFFECT ---")
     lines.append(f"  {rec.cascade_result.summary}")
     for d in rec.cascade_result.loadout_cascading_deficiencies:
         lines.append(f"  * Warning: Replaces Dex/Str needed by {d.target_name} (Shortfall: {d.shortfall})")
     for d in rec.cascade_result.gem_cascading_deficiencies:
         lines.append(f"  * Warning: Replaces attribute needed by socketed gem {d.target_name} (Shortfall: {d.shortfall})")
 
+    lines.append("")
+    if rec.safety_eval.certainty == BuildBreakerCertainty.VERIFIED_BUILD_BREAKER:
+        lines.append("--- BUILD-MECHANIC SAFETY: VERIFIED_BUILD_BREAKER [BUILD BREAKER DETECTED] ---")
+    elif rec.safety_eval.certainty == BuildBreakerCertainty.UNKNOWN_APPLICABILITY:
+        lines.append("--- BUILD-MECHANIC SAFETY: UNKNOWN_APPLICABILITY [HIGH RISK UNKNOWN WARNING] ---")
+    else:
+        lines.append(f"--- BUILD-MECHANIC SAFETY: {rec.safety_eval.certainty.value} ---")
+    lines.append(f"  {rec.safety_eval.reason}")
+
+    lines.append("")
+    lines.append("--- UNCERTAINTIES ---")
+    if rec.sufficiency is not None and rec.sufficiency.unobserved_critical_facts:
+        for u in rec.sufficiency.unobserved_critical_facts:
+            lines.append(f"  * {u}")
+    elif rec.sufficiency is not None and rec.sufficiency.reasons:
+        for r in rec.sufficiency.reasons:
+            lines.append(f"  * {r}")
+    else:
+        lines.append("  None identified.")
+
+    lines.append("")
+    lines.append("--- TRADEOFFS ---")
+    tradeoffs: list[str] = []
     if rec.actionable_guidance:
-        lines.append("")
-        lines.append("--- ACTIONABLE GUIDANCE ---")
-        for g in rec.actionable_guidance:
-            lines.append(f"  * {g}")
+        tradeoffs.extend(rec.actionable_guidance)
+    if not tradeoffs:
+        tradeoffs.append("No adverse tradeoffs detected.")
+    for t in tradeoffs:
+        lines.append(f"  * {t}")
 
     lines.append("============================================================")
     return "\n".join(lines)

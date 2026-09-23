@@ -1,4 +1,4 @@
-"""UAT Scenario 2: High-life ring removing 40% Lightning Res causing unmitigated deficit."""
+"""FIXTURE-BASED INTEGRATION TESTS Scenario 2: High-life ring removing 40% Lightning Res causing unmitigated deficit."""
 
 from pathlib import Path
 import pytest

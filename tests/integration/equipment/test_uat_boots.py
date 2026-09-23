@@ -1,4 +1,4 @@
-"""UAT Scenario 1: Boots upgrade with life, res deficit reduction, and movement speed."""
+"""FIXTURE-BASED INTEGRATION TESTS Scenario 1: Boots upgrade with life, res deficit reduction, and movement speed."""
 
 from pathlib import Path
 import pytest

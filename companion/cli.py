@@ -331,6 +331,20 @@ def build_parser() -> argparse.ArgumentParser:
     ostat_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
     ostat_p.add_argument("--session-id", default=None, help="Target observation session ID (default: latest)")
     ostat_p.add_argument("--json", action="store_true", help="Output status as JSON")
+    ostat_p.add_argument("--live", action="store_true", help="Display multi-tier live status")
+
+    # observe live-status
+    olive_stat_p = observe_sub.add_parser("live-status", help="Inspect multi-tier live observation and review status")
+    olive_stat_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    olive_stat_p.add_argument("--session-id", default=None, help="Target observation session ID (default: latest)")
+    olive_stat_p.add_argument("--json", action="store_true", help="Output status as JSON")
+
+    # observe analyze-live
+    oanalyze_p = observe_sub.add_parser("analyze-live", help="Execute deterministic local live analysis step")
+    oanalyze_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    oanalyze_p.add_argument("--session-id", default=None, help="Target observation session ID (default: latest)")
+    oanalyze_p.add_argument("--max-events", type=int, default=None, help="Maximum events to consume this step")
+    oanalyze_p.add_argument("--json", action="store_true", help="Output step result as JSON")
 
     # observe summary
     osum_p = observe_sub.add_parser("summary", help="Inspect or generate session summary metrics")
@@ -785,7 +799,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.observe_action == "mark":
             return handle_observe_mark(args)
         elif args.observe_action == "status":
+            if getattr(args, "live", False):
+                return handle_observe_live_status(args)
             return handle_observe_status(args)
+        elif args.observe_action == "live-status":
+            return handle_observe_live_status(args)
+        elif args.observe_action == "analyze-live":
+            return handle_observe_analyze_live(args)
         elif args.observe_action == "summary":
             return handle_observe_summary(args)
         elif args.observe_action == "review":
@@ -1227,6 +1247,157 @@ def handle_observe_status(args: argparse.Namespace) -> int:
         print(f"  Persisted Events: {manifest.persisted_event_count}")
         print(f"  Dropped Events: {manifest.dropped_event_count} (High Priority: {manifest.dropped_high_priority_count})")
         print(f"  Health State: {manifest.health_state.value}")
+    return 0
+
+
+def handle_observe_analyze_live(args: argparse.Namespace) -> int:
+    from companion.observe.analyst import LocalLiveAnalyst
+    runtime_dir = Path(args.runtime)
+    sdir = _find_session_dir(runtime_dir, args.session_id)
+    if not sdir:
+        sys.stderr.write("No observation session found\n")
+        return 1
+
+    session_id = sdir.name
+    analyst = LocalLiveAnalyst(session_dir=sdir, session_id=session_id)
+    signals = analyst.step()
+
+    if getattr(args, "json", False):
+        out = {
+            "session_id": session_id,
+            "contiguous_frontier": analyst.reader.contiguous_frontier,
+            "read_ahead_saturated": analyst.reader.read_ahead_saturated,
+            "signals_derived": len(signals),
+            "signals": [s.model_dump() for s in signals],
+        }
+        print(json.dumps(out, indent=2))
+    else:
+        print(f"Analysis step complete for session {session_id}. Frontier: {analyst.reader.contiguous_frontier}. Derived {len(signals)} local signals.")
+    return 0
+
+
+def handle_observe_live_status(args: argparse.Namespace) -> int:
+    from companion.observe.cursor import ReviewCursorManager, compute_reader_lag, compute_review_lag
+    from companion.observe.journal import ReviewJournalManager
+    from companion.observe.manifest import ManifestManager
+    from companion.observe.reader import IncrementalStreamReader
+
+    runtime_dir = Path(args.runtime)
+    sdir = _find_session_dir(runtime_dir, args.session_id)
+    if not sdir:
+        sys.stderr.write("No observation session found\n")
+        return 1
+
+    session_id = sdir.name
+    manifest_mgr = ManifestManager(sdir / "session_manifest.json")
+    manifest = manifest_mgr.load()
+    if not manifest:
+        sys.stderr.write("Session manifest not found or unreadable\n")
+        return 1
+
+    reader = IncrementalStreamReader(session_dir=sdir, session_id=session_id)
+    review_cursor_mgr = ReviewCursorManager(
+        cursor_path=sdir / "live_analysis" / "hermes_review_cursor.json",
+        session_id=session_id,
+    )
+    journal_mgr = ReviewJournalManager(session_dir=sdir, session_id=session_id)
+
+    obs_latest = manifest.sequence_high_watermark
+    reader_frontier = reader.contiguous_frontier
+    review_frontier = review_cursor_mgr.review_contiguous_frontier
+
+    reader_lag = compute_reader_lag(obs_latest, reader_frontier)
+    review_lag = compute_review_lag(reader_frontier, review_frontier)
+
+    # Check Hermes review heartbeat
+    status_file = sdir / "live_analysis" / "hermes_review_status.json"
+    hermes_active = False
+    heartbeat_str = "never"
+    if status_file.exists():
+        try:
+            status_data = json.loads(status_file.read_text(encoding="utf-8"))
+            last_hb_str = status_data.get("last_heartbeat")
+            state_val = status_data.get("state", "OFFLINE")
+            if last_hb_str and state_val == "ACTIVE":
+                last_hb = datetime.fromisoformat(last_hb_str)
+                now = datetime.now(timezone.utc)
+                diff_s = (now - last_hb).total_seconds()
+                if diff_s <= 30.0:
+                    hermes_active = True
+                    heartbeat_str = f"{int(max(0, diff_s))}s ago"
+                else:
+                    heartbeat_str = f"stale ({int(diff_s)}s ago)"
+            else:
+                heartbeat_str = state_val
+        except Exception:
+            pass
+
+    hermes_status_label = "ACTIVE" if hermes_active else "OFFLINE / INACTIVE / STALE"
+
+    signals_count = 0
+    signals_file = sdir / "live_analysis" / "local_signals.jsonl"
+    if signals_file.exists():
+        try:
+            with open(signals_file, "r", encoding="utf-8") as f:
+                signals_count = sum(1 for line in f if line.strip())
+        except Exception:
+            pass
+
+    findings = journal_mgr.get_findings()
+    completed_batches_count = len(review_cursor_mgr.completed_review_batches)
+    pending_batches_count = len(review_cursor_mgr.pending_review_batches)
+    pending_markers_count = len(reader.pending_marker_ids)
+
+    if getattr(args, "json", False):
+        out = {
+            "session_id": session_id,
+            "observation": {
+                "status": manifest.status.value,
+                "observer_health": manifest.health_state.value,
+                "latest_sequence": obs_latest,
+                "persisted_events": manifest.persisted_event_count,
+                "dropped_events": manifest.dropped_event_count,
+            },
+            "local_analysis": {
+                "reader_contiguous_sequence": reader_frontier,
+                "reader_lag": reader_lag,
+                "read_ahead_saturated": reader.read_ahead_saturated,
+                "factual_signals_count": signals_count,
+            },
+            "hermes_review": {
+                "status": hermes_status_label,
+                "heartbeat": heartbeat_str,
+                "reviewed_contiguous_sequence": review_frontier,
+                "review_lag": review_lag,
+                "review_batches_completed": completed_batches_count,
+                "review_batches_pending": pending_batches_count,
+                "findings_count": len(findings),
+                "pending_markers_count": pending_markers_count,
+            },
+        }
+        print(json.dumps(out, indent=2))
+        return 0
+
+    print(f"Observation Session: {session_id}")
+    print("[OBSERVATION]")
+    print(f"  Status: {manifest.status.value}")
+    print(f"  Observer Health: {manifest.health_state.value}")
+    print(f"  Latest Sequence: {obs_latest}")
+    print()
+    print("[LOCAL ANALYSIS]")
+    print(f"  Reader Contiguous Sequence: {reader_frontier} (Reader Lag: {reader_lag} events)")
+    sat_label = "SATURATED (ANALYST_READ_AHEAD_SATURATED)" if reader.read_ahead_saturated else "HEALTHY"
+    print(f"  Reader Saturation: {sat_label}")
+    print(f"  Factual Signals: {signals_count} active")
+    print()
+    print("[HERMES REVIEW]")
+    print(f"  Status: {hermes_status_label} (Heartbeat: {heartbeat_str})")
+    print(f"  Reviewed Contiguous Sequence: {review_frontier} (Review Lag: {review_lag} events)")
+    print(f"  Review Batches: {completed_batches_count} completed, {pending_batches_count} pending")
+    print(f"  Active Findings: {len(findings)} candidate(s)")
+    for f in findings[:5]:
+        print(f"    - [{f.status.value}] {f.title}")
+    print(f"  Pending Markers: {pending_markers_count} unreviewed")
     return 0
 
 

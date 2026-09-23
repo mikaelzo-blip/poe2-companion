@@ -47,6 +47,29 @@ Verify:
 - `dropped_event_count` remains 0 under normal load.
 - If queue depth temporarily spikes during heavy area transitions, verify priority shedding drops LOW events before MEDIUM or HIGH.
 
+### Real-Time Live Review & Interruption Verification Protocol
+Executed WHILE GAME IS STILL RUNNING:
+1. Observer evidence sequence advances monotonically.
+2. Local incremental reader advances and can temporarily lag safely.
+3. Review batch result (`review_batches/<batch_id>.json`) exists before `hermes_review_cursor.json` advances.
+4. Hermes reviews at least one batch while game is running.
+5. Review cursor advances only after durable review output/accounting.
+6. User creates a marker via atomic inbox (`companion observe mark "<note>"`).
+7. Marker appears in persisted observation evidence (`markers.jsonl`).
+8. Hermes reviews/correlates that marker while game is running if Hermes is active.
+9. Intentionally interrupt Hermes/provider after one completed review batch.
+10. Continuous runtime and observer continue running completely unaffected.
+11. New evidence accumulates while Hermes is stopped.
+12. Local reader continues indexing new evidence.
+13. Restart/resume Hermes review.
+14. Verify already completed review batch is not re-reviewed unnecessarily (skipped via durable result).
+15. Verify no duplicate logical finding or revision upon resume.
+16. Pending evidence and offline marker are reviewed (marker prioritized on resume).
+17. New evidence after resume produces a new review batch normally.
+18. Hermes advances from review cursor.
+19. Live status (`companion observe live-status`) accurately reflects `ACTIVE` vs `OFFLINE`, saturation state, batch counts, and both lag values (`reader_lag`, `review_lag`).
+Confirming that the 30-minute rule remains solely the dataset acceptance duration threshold and not an analysis delay.
+
 ## 4. Post-Session Verification & Watermark Reconciliation
 
 1. **Orderly Graceful Termination**:

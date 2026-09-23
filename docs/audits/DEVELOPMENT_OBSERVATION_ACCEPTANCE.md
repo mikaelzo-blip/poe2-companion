@@ -17,7 +17,48 @@
 
 Real gameplay: 11 zone events, two level-ups (16, 17), one death (#1583); 11 objective reevaluations with zero genuine selected-ID transitions (one initial change flag, ten unchanged); notifications DELIVERED 2, QUEUED 4, COOLDOWN_DROPPED 5. One marker (#139) lacks causal refs; 100 withheld anomaly signatures occurred at startup and do not prove parser gaps. Telemetry gives 1,564 loop samples and queue high watermark 2 but no usable writer/enqueue/poll latency, storage-growth, CPU or memory measurement. Visual extraction/OCR **not supported** by this evidence; consider source feasibility/privacy review first.
 
-**Current validation:** `uv run pytest -W error`: 615 passed; `uv run pytest tests/compliance/test_no_input_guard.py -v`: 10 passed; `git diff --check`: clean (line-ending conversion notices only); strict OpenSpec validation: `valid: true`, zero issues. Historical baseline counts below remain unchanged.
+**Current validation:** `uv run pytest -W error`: 657 passed (including 42 new real-time observation, cursor, analyst, journal, and live review tests); `uv run pytest tests/compliance/test_no_input_guard.py -v`: 10 passed; `git diff --check`: clean; strict OpenSpec validation: `valid: true`, zero issues. Historical baseline counts below remain unchanged.
+
+---
+
+## Real-Time Development Observation Mode & Live Review Verification
+
+The real-time incremental observation architecture (`poe2-companion-development-observation-mode`) provides decoupled multi-stream log ingestion, dual cursor management, deterministic local factual analysis, durable review batch journaling, and CLI inspection commands:
+
+1. **Incremental Stream Reader (`IncrementalStreamReader`)**:
+   - Multi-stream sequence accounting across 6 typed streams (`events`, `state_deltas`, `objective_traces`, `notification_traces`, `telemetry`, `markers`).
+   - Distinguishes physical per-stream read positions (`byte_offset`, `last_processed_sequence`) from the contiguous analyzed frontier (`contiguous_frontier`).
+   - Compact `accounted_ahead_ranges` (`[[start, end], ...]`) in `reader_state.json` ensures crash-safe read-ahead reconstruction.
+   - Deterministic `seen_ahead` capacity saturation policy (max 1000 ahead sequences): halts read-ahead without blocking runtime or observer (`ANALYST_READ_AHEAD_SATURATED`), clearing saturation upon missing sequence arrival.
+   - Tested in `tests/test_observe_reader.py` (9 tests passed).
+
+2. **Decoupled Dual Cursor Management (`AnalysisCursorManager`, `ReviewCursorManager`)**:
+   - `reader_cursor` (`reader_state.json`) and `review_cursor` (`hermes_review_cursor.json`) operate independently with atomic fsync-backed writes.
+   - Contiguous sequence frontier tracking (`contiguous_frontier`, `review_contiguous_frontier`).
+   - Distinct lag reporting: `reader_lag = observer_sequence - reader_contiguous_frontier`, `review_lag = reader_contiguous_frontier - review_contiguous_frontier`.
+   - Tested in `tests/test_observe_cursor.py` (6 tests passed).
+
+3. **Local Live Analysis Data Plane (`LocalLiveAnalyst`)**:
+   - Deterministic factual signal derivation with stable signal IDs: `sig:<session_id>:<type>:<sha256>`.
+   - Bounded raw reading from `Client.txt` with zero private chat or credential leakage.
+   - Automatic high-priority user marker escalation.
+   - Tested in `tests/test_observe_analyst.py` (7 tests passed) and `tests/test_observe_analyst_privacy.py` (3 tests passed).
+
+4. **Hermes Live Review Engine & Journal (`ReviewJournalManager`, `LiveReviewEngine`)**:
+   - Two-part finding identity (`find:<session_id>:<category>:<key>`) with finding lifecycle states (`WATCHING` -> `POSSIBLE_PATTERN` -> `CORROBORATED` -> `LIKELY_DEFECT`).
+   - Deterministic review batch ID generation independent of model text.
+   - Durable review batch results saved to `live_analysis/review_batches/<batch_id>.json` before advancing review cursor.
+   - 4-case crash recovery (Case A retry, Case B batch replay, Case C cursor catch-up, Case D NO_FINDING batch).
+   - Telemetry heartbeat in `hermes_review_status.json` reporting `ACTIVE` vs `OFFLINE/STALE` honestly.
+   - Tested in `tests/test_observe_journal.py` (7 tests passed) and `tests/test_observe_live_reviewer.py` (2 tests passed).
+
+5. **Multi-Tier CLI Commands**:
+   - `companion observe live-status` (and `status --live`): Structured multi-tier output (`[OBSERVATION]`, `[LOCAL ANALYSIS]`, `[HERMES REVIEW]`) with contiguous lag metrics and heartbeat telemetry.
+   - `companion observe analyze-live`: Incremental local step command.
+   - Tested in `tests/test_cli_observe_live.py` (4 tests passed).
+
+6. **Comprehensive End-to-End Integration**:
+   - 9 integration scenarios verified in `tests/test_observe_live_integration.py` covering reader saturation, review batch idempotency, finding lifecycle evolution, multi-stream accounting, crash consistency, heartbeat reporting, and marker delivery.
 
 ---
 

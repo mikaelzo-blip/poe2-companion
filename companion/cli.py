@@ -308,10 +308,54 @@ def build_parser() -> argparse.ArgumentParser:
     rstart_p.add_argument("--poll-interval", type=float, default=1.0, help="Polling interval in seconds")
     rstart_p.add_argument("--backfill", action="store_true", help="Catch up historical backlog without live notifications")
     rstart_p.add_argument("--verbose", action="store_true", help="Enable verbose diagnostic console logging")
+    rstart_p.add_argument("--observe-dev", action="store_true", help="Enable subordinate development observation mode")
+    rstart_p.add_argument("--observe-screens", action="store_true", help="Enable opt-in asynchronous screenshot evidence capture")
+    rstart_p.add_argument("--observe-display", type=int, default=1, help="Monitor index to capture (default: 1)")
 
     rstat_p = runtime_sub.add_parser("status", help="Inspect local runtime process status and heartbeats")
     rstat_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
     rstat_p.add_argument("--json", action="store_true", help="Output runtime status as JSON")
+
+    # observe subcommand
+    observe_p = subparsers.add_parser("observe", help="Development observation mode operations")
+    observe_sub = observe_p.add_subparsers(dest="observe_action", required=True)
+
+    # observe mark <note>
+    omark_p = observe_sub.add_parser("mark", help="Record manual engineer or player marker")
+    omark_p.add_argument("note", help="Observation note text")
+    omark_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    omark_p.add_argument("--session-id", default=None, help="Target observation session ID (optional)")
+
+    # observe status
+    ostat_p = observe_sub.add_parser("status", help="Inspect observation session status")
+    ostat_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    ostat_p.add_argument("--session-id", default=None, help="Target observation session ID (default: latest)")
+    ostat_p.add_argument("--json", action="store_true", help="Output status as JSON")
+
+    # observe summary
+    osum_p = observe_sub.add_parser("summary", help="Inspect or generate session summary metrics")
+    osum_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    osum_p.add_argument("--session-id", default=None, help="Target observation session ID (default: latest)")
+    osum_p.add_argument("--json", action="store_true", help="Output summary as JSON")
+
+    # observe review
+    orev_p = observe_sub.add_parser("review", help="Generate DEVELOPMENT_OBSERVATION_REPORT.md")
+    orev_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    orev_p.add_argument("--session-id", default=None, help="Target observation session ID (default: latest)")
+    orev_p.add_argument("--output", default="DEVELOPMENT_OBSERVATION_REPORT.md", help="Output markdown path")
+
+    # observe cleanup
+    oclean_p = observe_sub.add_parser("cleanup", help="Enforce observation retention boundaries")
+    oclean_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    oclean_p.add_argument("--prune", action="store_true", help="Perform pruning of old sessions")
+    oclean_p.add_argument("--quota-bytes", type=int, default=500 * 1024 * 1024, help="Disk quota in bytes (default: 500MB)")
+    oclean_p.add_argument("--keep-sessions", type=int, default=20, help="Maximum sessions to retain (default: 20)")
+
+    # Top-level mark alias for observe mark
+    mark_p = subparsers.add_parser("mark", help="Record manual engineer or player marker (alias for observe mark)")
+    mark_p.add_argument("note", help="Observation note text")
+    mark_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    mark_p.add_argument("--session-id", default=None, help="Target observation session ID (optional)")
 
     return parser
 
@@ -737,6 +781,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             return handle_runtime_start(args)
         elif args.runtime_action == "status":
             return handle_runtime_status(args)
+    elif args.subcommand == "observe":
+        if args.observe_action == "mark":
+            return handle_observe_mark(args)
+        elif args.observe_action == "status":
+            return handle_observe_status(args)
+        elif args.observe_action == "summary":
+            return handle_observe_summary(args)
+        elif args.observe_action == "review":
+            return handle_observe_review(args)
+        elif args.observe_action == "cleanup":
+            return handle_observe_cleanup(args)
+    elif args.subcommand == "mark":
+        return handle_observe_mark(args)
 
     return 0
 
@@ -1085,6 +1142,9 @@ def handle_runtime_start(args: argparse.Namespace) -> int:
             poll_interval=args.poll_interval,
             backfill=args.backfill,
             verbose=args.verbose,
+            observe_dev=getattr(args, "observe_dev", False),
+            observe_screens=getattr(args, "observe_screens", False),
+            observe_display=getattr(args, "observe_display", 1),
         )
         orchestrator = ContinuousRuntimeOrchestrator(cfg)
         orchestrator.run_forever()
@@ -1113,6 +1173,119 @@ def handle_runtime_status(args: argparse.Namespace) -> int:
         print(f"  Writer Lock Held: {summary.writer_lock_held}")
         if summary.message:
             print(f"  Message: {summary.message}")
+    return 0
+
+
+def _find_session_dir(runtime_dir: Path, session_id: str | None = None) -> Path | None:
+    obs_dir = runtime_dir / "observations"
+    if not obs_dir.exists():
+        return None
+    if session_id:
+        sdir = obs_dir / session_id
+        return sdir if sdir.exists() else None
+    sessions = [d for d in obs_dir.iterdir() if d.is_dir() and d.name != "marker_inbox"]
+    if not sessions:
+        return None
+    sessions.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+    return sessions[0]
+
+
+def handle_observe_mark(args: argparse.Namespace) -> int:
+    from companion.observe.markers import write_marker, is_session_active
+    runtime_dir = Path(args.runtime)
+    inbox_dir = runtime_dir / "observations" / "marker_inbox"
+    marker_path, marker_id = write_marker(args.note, inbox_dir, session_id=args.session_id)
+    if not is_session_active(runtime_dir):
+        print(f"Warning: No active observation session found; marker saved unattached to {marker_path.name}")
+    else:
+        print(f"Marker recorded: {marker_id}")
+    return 0
+
+
+def handle_observe_status(args: argparse.Namespace) -> int:
+    from companion.observe.manifest import ManifestManager
+    runtime_dir = Path(args.runtime)
+    sdir = _find_session_dir(runtime_dir, args.session_id)
+    if not sdir:
+        sys.stderr.write("No observation session found\n")
+        return 1
+
+    manifest_mgr = ManifestManager(sdir / "session_manifest.json")
+    manifest = manifest_mgr.load()
+    if not manifest:
+        sys.stderr.write("Session manifest not found or unreadable\n")
+        return 1
+
+    if args.json:
+        print(manifest.model_dump_json(indent=2))
+    else:
+        print(f"Observation Session: {manifest.session_id} [{manifest.status.value}]")
+        print(f"  Started: {manifest.started_at}")
+        if manifest.ended_at:
+            print(f"  Ended: {manifest.ended_at}")
+        print(f"  High Watermark: {manifest.sequence_high_watermark}")
+        print(f"  Persisted Events: {manifest.persisted_event_count}")
+        print(f"  Dropped Events: {manifest.dropped_event_count} (High Priority: {manifest.dropped_high_priority_count})")
+        print(f"  Health State: {manifest.health_state.value}")
+    return 0
+
+
+def handle_observe_summary(args: argparse.Namespace) -> int:
+    from companion.observe.summary import SessionSummaryGenerator
+    runtime_dir = Path(args.runtime)
+    sdir = _find_session_dir(runtime_dir, args.session_id)
+    if not sdir:
+        sys.stderr.write("No observation session found\n")
+        return 1
+
+    gen = SessionSummaryGenerator(sdir)
+    summary = gen.generate()
+    if args.json:
+        print(json.dumps(summary, indent=2))
+    else:
+        summary_md = sdir / "session_summary.md"
+        if summary_md.exists():
+            print(summary_md.read_text(encoding="utf-8"))
+        else:
+            print(json.dumps(summary, indent=2))
+    return 0
+
+
+def handle_observe_review(args: argparse.Namespace) -> int:
+    from companion.observe.review import generate_development_observation_report
+    runtime_dir = Path(args.runtime)
+    sdir = _find_session_dir(runtime_dir, args.session_id)
+    if not sdir:
+        sys.stderr.write("No observation session found\n")
+        return 1
+
+    out_path = Path(args.output)
+    res_path = generate_development_observation_report(sdir, out_path)
+    print(f"Observation review report generated at: {res_path}")
+    return 0
+
+
+def handle_observe_cleanup(args: argparse.Namespace) -> int:
+    from companion.observe.retention import RetentionManager
+    runtime_dir = Path(args.runtime)
+    obs_dir = runtime_dir / "observations"
+    if not obs_dir.exists():
+        print("No observation directory found.")
+        return 0
+
+    mgr = RetentionManager(
+        obs_dir,
+        max_sessions=args.keep_sessions,
+        quota_bytes=args.quota_bytes,
+    )
+    evicted = mgr.clean_storage()
+    if getattr(args, "json", False):
+        print(json.dumps({"evicted_sessions": evicted}, indent=2))
+    else:
+        print(f"Observation Cleanup {'(Executed)' if args.prune else '(Dry Run)'}:")
+        print(f"  Sessions Evicted: {len(evicted)}")
+        for e in evicted:
+            print(f"  - Evicted {e}")
     return 0
 
 

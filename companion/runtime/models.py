@@ -88,6 +88,9 @@ class RuntimeConfig(BaseModel):
     poll_interval: float = 1.0
     backfill: bool = False
     verbose: bool = False
+    observe_dev: bool = False
+    observe_screens: bool = False
+    observe_display: int = 1
 
 
 class RuntimeEvent(BaseModel):

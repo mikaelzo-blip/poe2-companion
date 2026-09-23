@@ -22,6 +22,9 @@ def test_cli_parser_runtime_start_arguments() -> None:
         "--poll-interval", "2.5",
         "--backfill",
         "--verbose",
+        "--observe-dev",
+        "--observe-screens",
+        "--observe-display", "2",
     ])
 
     assert args.subcommand == "runtime"
@@ -32,6 +35,9 @@ def test_cli_parser_runtime_start_arguments() -> None:
     assert args.poll_interval == 2.5
     assert args.backfill is True
     assert args.verbose is True
+    assert args.observe_dev is True
+    assert args.observe_screens is True
+    assert args.observe_display == 2
 
 
 def test_cli_parser_runtime_status_arguments() -> None:

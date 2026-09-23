@@ -90,6 +90,7 @@ class ContinuousRuntimeOrchestrator:
         self._shutdown_requested: bool = False
         self._active_character: CharacterState | None = None
         self._started_at_iso = datetime.now(timezone.utc).isoformat()
+        self.observer: Any | None = None
 
     @property
     def client_log_path(self) -> Path:
@@ -178,10 +179,34 @@ class ContinuousRuntimeOrchestrator:
             stream_epoch=self.stream_epoch,
         )
 
+        # 7. Optional Development Observation Mode tap
+        if getattr(self.config, "observe_dev", False):
+            from companion.observe.observer import DevelopmentObserver
+            from companion.observe.storage import ObservationStorageManager
+            from companion.observe.retention import RetentionManager
+
+            obs_dir = self.runtime_dir / "observations"
+            obs_dir.mkdir(parents=True, exist_ok=True)
+            ObservationStorageManager.recover_unfinalized_sessions(obs_dir)
+
+            session_id = f"obs_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{self.run_id[:6]}"
+            retention = RetentionManager(base_dir=obs_dir)
+            retention.clean_storage(protected_session_ids={session_id})
+
+            self.observer = DevelopmentObserver(
+                base_dir=obs_dir,
+                session_id=session_id,
+                runtime_run_id=self.run_id,
+                observe_screens=getattr(self.config, "observe_screens", False),
+                observe_display=getattr(self.config, "observe_display", 1),
+                auto_start=True,
+            )
+
         self._publish_status()
 
     def poll_tick(self) -> None:
         """Execute one complete poll cycle."""
+        tick_start = time.perf_counter()
         # 1. Update diagnostic telemetry
         self.lease_manager.heartbeat()
         self._publish_status()
@@ -205,6 +230,34 @@ class ContinuousRuntimeOrchestrator:
 
         # 3. Read log batch
         self._consume_log_batch()
+
+        # 4. Consume manual marker inbox if observation mode active
+        if self.observer is not None:
+            from companion.observe.markers import MarkerInboxManager
+            from companion.observe.models import FactKind, EvidencePriority
+            inbox = MarkerInboxManager(self.runtime_dir / "observations" / "marker_inbox")
+            markers = inbox.consume_markers()
+            for marker in markers:
+                self.observer.emit_event(
+                    event_type="USER_MARKER",
+                    taxonomy=FactKind.OBSERVED_FACT,
+                    priority=EvidencePriority.HIGH,
+                    payload=marker.model_dump(),
+                )
+                if getattr(self.config, "observe_screens", False):
+                    self.observer.trigger_screenshot(
+                        event_type="USER_MARKER",
+                        correlation_ref=marker.marker_id,
+                    )
+
+            # Record periodic operational telemetry
+            loop_duration_ms = (time.perf_counter() - tick_start) * 1000.0
+            self.observer.record_telemetry(
+                loop_duration_ms=loop_duration_ms,
+                log_poll_latency_ms=getattr(self, "_last_log_poll_ms", 0.0),
+                observer_queue_depth=self.observer.queue_depth,
+                queue_high_watermark=self.observer.queue_high_watermark,
+            )
 
     def _consume_log_batch(self, max_lines: int = 500) -> int:
         """Read and process newly appended lines from Client.txt in strictly read-only mode."""
@@ -231,6 +284,7 @@ class ContinuousRuntimeOrchestrator:
         lines_read = 0
         consumed_offset = self.current_offset
         previous_char_state = self._active_character.model_copy(deep=True) if self._active_character else None
+        batch_log_env_ids: list[str] = []
 
         try:
             with open(log_path, "rb") as f:
@@ -281,6 +335,19 @@ class ContinuousRuntimeOrchestrator:
                         # Deduplicated journey history append
                         self.history_logger.record_event(obs_event)
 
+                        # Development observation tap for parsed log event
+                        if self.observer is not None:
+                            from companion.observe.models import FactKind
+                            log_env = self.observer.emit_event(
+                                event_type=f"LOG_{parsed.event_type.value.upper()}",
+                                taxonomy=FactKind.OBSERVED_FACT,
+                                source_ref=f"{self.source_stream_id}:{line_start}-{line_end}",
+                                source_timestamp=parsed.timestamp.isoformat(),
+                                payload=parsed.payload,
+                            )
+                            if log_env is not None:
+                                batch_log_env_ids.append(log_env.event_id)
+
                         # Observability logging
                         if parsed.event_type.value == "level_up":
                             cname = parsed.payload.get("character_name", "Character")
@@ -295,6 +362,8 @@ class ContinuousRuntimeOrchestrator:
                                 flushed = self.notification_manager.on_zone_entered(zname)
                                 for alert in flushed:
                                     self.console.log(self.console.format_notify(f"[FLUSH] {alert.title}: {alert.message}"))
+                    elif self.observer is not None:
+                        self.observer.record_unparsed_line(line_str)
 
         except (OSError, PermissionError) as e:
             logger.warning(f"Transient log read error: {e}")
@@ -304,6 +373,14 @@ class ContinuousRuntimeOrchestrator:
 
         # Consolidated state change derivation
         if lines_read > 0 and self._active_character is not None:
+            if self.observer is not None:
+                self.observer.record_state_change(
+                    previous_char_state,
+                    self._active_character,
+                    source=f"log_batch:{consumed_offset}",
+                    correlation_refs=batch_log_env_ids,
+                )
+
             self.change_tracker.compute_delta(previous_char_state, self._active_character)
             if self.change_tracker.should_reevaluate_objectives():
                 try:
@@ -312,6 +389,23 @@ class ContinuousRuntimeOrchestrator:
                         obj_result, self.runtime_dir / "CURRENT_OBJECTIVE.json"
                     )
                     top_obj = obj_result.primary_objective
+                    if self.observer is not None:
+                        cand_ids = [c.id for c in obj_result.all_objectives]
+                        suppressed = {
+                            c.id: (c.rationale or "UNSELECTED")
+                            for c in obj_result.all_objectives
+                            if c.id != (top_obj.id if top_obj else None)
+                        }
+                        self.observer.record_objective_evaluation(
+                            triggers=[t.value for t in self.change_tracker.active_triggers],
+                            state_delta_refs=self.observer.last_state_delta_ids,
+                            candidate_ids=cand_ids,
+                            selected_objective_id=top_obj.id if top_obj else None,
+                            selection_reasons=[top_obj.rationale] if (top_obj and top_obj.rationale) else [],
+                            suppressed_candidates=suppressed,
+                            objective_changed=True,
+                        )
+
                     if top_obj is not None:
                         self.console.log(self.console.format_objective(top_obj.title))
                         payload = NotificationPayload.create(
@@ -327,6 +421,18 @@ class ContinuousRuntimeOrchestrator:
                             else None
                         )
                         dispatch_status = self.notification_manager.dispatch(payload, current_zone)
+                        if self.observer is not None:
+                            notif_corr = [self.observer.last_objective_eval_id] if self.observer.last_objective_eval_id else []
+                            self.observer.record_notification(
+                                notification_id=f"notif_{uuid.uuid4().hex[:8]}",
+                                category=payload.category.value,
+                                severity=payload.severity.value,
+                                safe_zone=bool(current_zone and self.notification_manager._policy.is_safe_zone(current_zone)),
+                                dispatch_status=dispatch_status,
+                                queue_depth=self.notification_manager.queue_depth,
+                                cooldown_key=payload.dedupe_key,
+                                correlation_refs=notif_corr,
+                            )
                         if dispatch_status == "DELIVERED":
                             self.console.log(self.console.format_notify(f"{payload.title}: {payload.message}"))
                 except Exception as e:
@@ -442,6 +548,17 @@ class ContinuousRuntimeOrchestrator:
         # Release lifetime OS writer lock
         self.lease_manager.release()
         self._publish_status(exited=True)
+
+        # Stop development observer and enforce retention boundary
+        if self.observer is not None:
+            try:
+                manifest = self.observer.stop(timeout=5.0)
+                from companion.observe.retention import RetentionManager
+                retention = RetentionManager(base_dir=self.runtime_dir / "observations")
+                retention.clean_storage(protected_session_ids={manifest.session_id})
+            except Exception as e:
+                logger.error(f"Observer shutdown error: {e}")
+
         self.console.log(self.console.format_session("Shutdown complete. Writer lock released."))
 
     def _publish_status(self, exited: bool = False) -> None:

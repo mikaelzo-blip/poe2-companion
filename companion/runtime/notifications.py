@@ -74,6 +74,10 @@ class RuntimeNotificationManager:
     def queued_alerts(self) -> list[NotificationPayload]:
         return self._queue.peek_all()
 
+    @property
+    def queue_depth(self) -> int:
+        return len(self._queue)
+
     def add_sink(self, sink: NotificationSink) -> None:
         self._sinks.append(sink)
 

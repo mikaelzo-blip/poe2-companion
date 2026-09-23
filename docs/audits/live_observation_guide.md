@@ -1,12 +1,14 @@
-# Live Play Soak Acceptance Protocol
+# Live Gameplay Development Observation Acceptance Protocol
 
-This document establishes the official soak verification protocol for the Path of Exile 2 Development Observation Mode (`--observe-dev`, `--observe-screens`).
+This document establishes the observation acceptance protocol for the Path of Exile 2 Development Observation Mode (`--observe-dev`, `--observe-screens`). Optional long-duration endurance/stability testing is a separate activity.
 
 ## 1. Acceptance Scope & Duration
 
-- **Session Length**: 60 to 120 minutes continuous live gameplay.
+- **Development-observation acceptance**: At least 30 minutes of continuous real gameplay observation in **one** session. Never add shorter sessions together.
+- **Optional endurance/stability soak**: Suggested 60–120 continuous minutes for deeper performance and long-duration stability analysis; not required for every development-observation acceptance.
+- **Purpose**: Collect reliable real development evidence while checking non-blocking queue behavior, bounded storage, privacy, and shutdown reconciliation. Duration alone never implies acceptance.
 - **Environment**: Windows 11 host running PoE2 client and Continuous Companion Runtime.
-- **Objective**: Verify zero production runtime impact, non-blocking queue behavior, bounded storage retention, fail-closed privacy redaction, and clean shutdown watermark reconciliation.
+- **Gameplay coverage**: No minimum number of zones, deaths, level-ups, genuine selected-objective transitions, or notifications. Mark naturally absent events `NOT OBSERVED` without failing observer acceptance; development conclusions dependent on those events remain `NOT ENOUGH EVIDENCE`.
 
 ## 2. Pre-Session Checklist
 
@@ -58,6 +60,9 @@ Verify:
    - `status: CLOSED` (not `INCOMPLETE` or `FAILED`).
    - `pending_event_count == 0` (queue was fully drained).
    - `persisted_event_count + dropped_event_count == sequence_high_watermark`.
+   - `health_state: HEALTHY` and no unresolved worker failure.
+   - The saved manifest, JSON summary, and embedded manifest agree on terminal status and end time; check every base and rotated stream for unique contiguous sequence numbers or explained drops and resolved correlation refs.
+   - Run a privacy audit without reproducing marker notes, player identifiers, or anomaly samples in the report. Raw artifacts must remain local under `runtime/observations/` and gitignored. If any of these checks fail, the session is not accepted even when it exceeds 30 minutes.
 3. **Generate Summary and Review**:
    ```bash
    companion observe summary

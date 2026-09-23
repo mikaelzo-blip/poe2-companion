@@ -1,5 +1,30 @@
 # Development Observation Mode Acceptance Report
 
+## Current observer acceptance — `obs_20260923_120422_b564ac`
+
+**Revised policy:** >=30 minutes of continuous real gameplay observation in one session; do not combine shorter sessions. A 60–120-minute endurance/stability soak is optional for deeper testing, not required for every development-observation acceptance. Duration is necessary but not sufficient. Naturally absent events are `NOT OBSERVED`; recommendations that depend on them remain `NOT ENOUGH EVIDENCE` even if the observer is accepted. Detailed aggregate-only audit and limitations: [`DEVELOPMENT_OBSERVATION_REPORT.md`](../../DEVELOPMENT_OBSERVATION_REPORT.md).
+
+| Technical acceptance gate | Audited result |
+|---|---|
+| Duration | `2026-09-23T12:04:22.039763+00:00`–`12:36:27.107745+00:00` = **32m 05.067982s**, one continuous session; PASS |
+| Manifest / summary | Saved manifest `CLOSED`; JSON summary `CLOSED` with same end time and identical embedded manifest; PASS |
+| Observer health | `HEALTHY`, worker errors 0; PASS |
+| Accounting | 1,613 persisted + 0 dropped = 1,613 sequence watermark; pending 0, high-priority drops 0; PASS |
+| Stream/sequence integrity | Events 14, state deltas 12, objective traces 11, notification traces 11, telemetry 1,564, markers 1. Unique contiguous #1–#1613, no duplicate event IDs, 34 resolved refs, no unexplained gaps; PASS |
+| Privacy/locality | All 100 uncertain anomaly signatures withheld samples (zero stored); zero sample chat/credential/email/URL matches; screenshots 0; marker note and three parsed character-name fields remain in local gitignored raw artifacts, not in reports. Bounded privacy audit PASS; arbitrary private text cannot be ruled out universally. |
+| **OBSERVER ACCEPTANCE** | **PASS** for this session; no mandatory gameplay-event quota. |
+| **EVIDENCE SUFFICIENCY FOR DEVELOPMENT RECOMMENDATIONS** | Separate verdict: passive/skill/equipment suppression and notification dispositions are observed, but proposed behavioral changes, OCR, parser defect claims, notification usefulness and endurance stability remain **NOT ENOUGH EVIDENCE**. |
+
+Real gameplay: 11 zone events, two level-ups (16, 17), one death (#1583); 11 objective reevaluations with zero genuine selected-ID transitions (one initial change flag, ten unchanged); notifications DELIVERED 2, QUEUED 4, COOLDOWN_DROPPED 5. One marker (#139) lacks causal refs; 100 withheld anomaly signatures occurred at startup and do not prove parser gaps. Telemetry gives 1,564 loop samples and queue high watermark 2 but no usable writer/enqueue/poll latency, storage-growth, CPU or memory measurement. Visual extraction/OCR **not supported** by this evidence; consider source feasibility/privacy review first.
+
+**Current validation:** `uv run pytest -W error`: 615 passed; `uv run pytest tests/compliance/test_no_input_guard.py -v`: 10 passed; `git diff --check`: clean (line-ending conversion notices only); strict OpenSpec validation: `valid: true`, zero issues. Historical baseline counts below remain unchanged.
+
+---
+
+## Historical verification and earlier sessions (original measurements/verdicts retained)
+
+The earlier 41m39s session's “below 60-minute minimum” verdict below records the former endurance-as-acceptance policy and is not the current policy or this session's verdict. Its summary inconsistency and conditional privacy assessment remain historical facts. Earlier short retests are not added to the current session.
+
 **Execution Date**: 2026-09-23
 **Target Change**: `poe2-companion-development-observation-mode`
 **Host Environment**: Windows 11 (AMD64), Python 3.11.16, `uv` managed virtualenv

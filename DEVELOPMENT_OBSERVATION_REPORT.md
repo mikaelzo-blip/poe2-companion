@@ -1,5 +1,38 @@
 # Development Observation — post-session audit
 
+## Current acceptance audit: `obs_20260923_120422_b564ac`
+
+**Policy:** observer acceptance requires >=30 minutes of continuous real gameplay in one session *and* terminal manifest/summary agreement, `HEALTHY`, reconciled counts and sequences, zero pending/unresolved worker failures, passing privacy audit, and local gitignored raw artifacts. The 60–120-minute endurance/stability soak is optional, not an acceptance prerequisite. Observer acceptance does not certify evidence sufficient for each development recommendation. This session is not combined with any earlier session. Times below are UTC as recorded. Private marker notes, player identifiers, and raw anomaly samples are withheld.
+
+### OBSERVED FACTS — observer acceptance
+
+- `runtime_run_id=b564acf0cdc546a2b97bac8d93d2046d`; manifest start `2026-09-23T12:04:22.039763+00:00`, end `2026-09-23T12:36:27.107745+00:00`: **32m 05.067982s**, one continuous session, above 30 minutes. Final manifest `CLOSED`, observer `HEALTHY`, worker errors 0; JSON summary terminal status, end time, and embedded manifest match the saved manifest exactly.
+- Watermark **1,613 = 1,613 persisted + 0 dropped**; pending 0; high-priority drops 0; six complete JSONL streams: events 14, state deltas 12, objective traces 11, notification traces 11, telemetry 1,564, markers 1. Sequence numbers 1–1,613 are unique and contiguous; event IDs unique, 34 correlation references resolved, no backpressure-missing flags or unexplained gaps. Raw session directory is local and gitignored; 1,223,973 bytes including metadata, screenshots 0.
+- **Privacy audit PASS for persisted samples and reporting boundary:** all 100 uncertain anomaly signatures withheld representative samples (zero stored); therefore sample checks find zero chat-marker, credential, email or URL matches. Three parsed events contain a character-name field and one private manual marker contains a note **inside local ignored artifacts**; neither content is copied here. No screenshots. This is a bounded audit of stored structures and known patterns, not a guarantee against arbitrary private text in every possible input.
+- Parsed gameplay events (not total Client.txt lines): 11 zone-generation records (#36–#1595), two level-ups to 16 and 17 (#740, #1192), and one death (#1583). Twelve VERIFIED state deltas: zone 9, level 2, death count 1. A zone log need not produce a state delta if the canonical zone remains unchanged. Process restart, genuine selected-objective transition, and event-specific player reaction: **NOT OBSERVED**.
+- Objectives: 11 reevaluations (zone triggers 9, level triggers 2), #57–#1545. One initial `objective_changed=true`, then ten false; selected ID remains the same across all evaluations (zero observed selected-ID transitions). Candidate appearances: passive 391, skill 77, equipment 82. Suppression appearances: passive `UNOBSERVED_SUBSYSTEM` 380; skill incomplete/stale 72 plus future-stage ineligible 5; equipment incomplete/unobserved 82. The affected evaluation window spans **29m 27.236764s**, not a measured per-field UNKNOWN duration. No objective reevaluation on the observed death is recorded; do not infer one was required.
+- Notifications: 11 `OPTIMIZATION` traces against one cooldown key: DELIVERED 2 (#58, #612), QUEUED 4 (#199, #743, #869, #1195), COOLDOWN_DROPPED 5 (#429, #490, #677, #1471, #1546); DEDUPED/SUPPRESSED 0. Safe-zone deliveries 2 and cooldown drops 2; outside safe zones queued 4 and cooldown drops 3. Recorded queue depth at most 1. No delivery link or residence time for queued items, so notification usefulness and delayed delivery remain unproven.
+- Anomalies: 100 signatures, 100 occurrences, all `UNCERTAIN_NON_CHAT`, all withheld with zero samples. Their recorded first/last timestamps are 12:04:31.553909–12:04:31.564448 UTC, before the first parsed gameplay event #36. No repeated signatures or causal event IDs prove a parser gap. The one marker `marker_92622eff76dd45be9fbc5f1cd8384240` (#139, 12:07:14.305822 UTC) has zero correlation refs and no correlated sequence; nearby events #55 and #196 do not establish what the note meant.
+- Operations: 1,564 telemetry records; loop samples 179.488–693.195 ms, queue depth 0–1, reported high watermark up to 2; worker errors and drops 0. `writer_latency_ms`, `enqueue_latency_ms`, `log_poll_latency_ms`, and `storage_bytes` are all zero and **not usable measurements** of latency or storage growth. CPU/memory and checkpoint/restart behavior are **NOT RECORDED**.
+
+### LIKELY DEFECTS / USABILITY FINDINGS
+
+- No new observer integrity defect is established by this session: unlike the older audit below, final summary and manifest agree and objective-change flags match selected-ID stability (#57–#1545). Historical defects and remediation observations remain historical, not claims about this session.
+- The 4 queued and 5 cooldown-dropped notification decisions under one semantic key merit a disposition/queue-to-delivery usability review (#199–#1546), but there is **NOT ENOUGH EVIDENCE** of spam, late delivery, or player dissatisfaction; marker #139 has no causal link.
+
+### DATA GAPS / FEATURE OPPORTUNITIES
+
+- Repeated passive suppression (380 appearances across #57–#1545), skill incomplete/stale (72), and equipment incomplete/unobserved (82) justify more precise field-level provenance and UNKNOWN-vs-STALE accounting. These are candidate appearances, not unique user problems or proof of per-field persistence. Consider manual input or a privacy/feasibility study for visual extraction; **automatic OCR/visual extraction is NOT supported by this session's evidence**.
+- Measure queue-to-delivery links and operational latency/CPU/memory in a separate targeted investigation if those recommendations matter. No artificial death, level-up, notification, transition, or fixed zone count is required to accept the observer.
+
+### NOT ENOUGH EVIDENCE — development recommendations
+
+- Whether passive, skill, or gear recommendations should change; whether any anomaly is a parser defect; whether the queued notices reached the player promptly; what marker #139 referred to; whether screenshots/OCR would help; sustained 60–120-minute endurance behavior; restart recovery. **Observer acceptance: PASS. Recommendation sufficiency: limited/NOT ENOUGH EVIDENCE for these claims.**
+
+## Historical audit (retained unchanged as recorded under the former 60-minute soak policy)
+
+The following earlier session's **41m 39.429086s** duration and original verdict are historical. Its former “below 60 minutes” conclusion describes the superseded endurance-as-acceptance policy; it is not the verdict for the current session. Historical artifact defects/privacy caveats still stand and must not be retroactively erased.
+
 Session: `obs_20260923_083942_be4853` (`runtime_run_id=be485306562b4176a8876b497baf2a63`). Evidence: `runtime/observations/obs_20260923_083942_be4853/` (local, gitignored). All times below UTC as *recorded*; the game log's `source_timestamp` appears to carry local wall-clock time with a UTC offset and must not be used for causal ordering without correction. Private marker notes, player name and anomaly samples are intentionally omitted.
 
 ## OBSERVED FACTS

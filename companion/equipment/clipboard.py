@@ -7,6 +7,7 @@ import subprocess
 import sys
 from typing import Any
 from companion.equipment.engine import EquipmentIntelligenceEngine
+from companion.equipment.parser import InvalidItemClipboardError, validate_poe2_item_envelope
 from companion.equipment.recommendation import EquipmentRecommendation
 from companion.equipment.rules import BuildProgressionStage
 
@@ -63,8 +64,7 @@ def run_inspect_clipboard(
     stage: BuildProgressionStage = BuildProgressionStage.EARLY_ENDGAME,
 ) -> tuple[str, EquipmentRecommendation]:
     raw_text = get_clipboard_text()
-    if not raw_text or not raw_text.strip():
-        raise ValueError("Clipboard is empty or contains no valid item text.")
+    validate_poe2_item_envelope(raw_text)
 
     engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)
     rec = engine.evaluate_candidate(
@@ -86,8 +86,7 @@ def run_evaluate_file(
     stage: BuildProgressionStage = BuildProgressionStage.EARLY_ENDGAME,
 ) -> tuple[str, EquipmentRecommendation]:
     raw_text = read_item_input(file_path=file_path)
-    if not raw_text or not raw_text.strip():
-        raise ValueError(f"File '{file_path}' is empty or contains no valid item text.")
+    validate_poe2_item_envelope(raw_text)
 
     engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)
     rec = engine.evaluate_candidate(

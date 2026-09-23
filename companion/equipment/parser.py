@@ -28,6 +28,68 @@ RE_REQ_DEX = re.compile(r"^\s*Dex(?:terity)?:\s*(\d+)", re.IGNORECASE)
 RE_REQ_INT = re.compile(r"^\s*Int(?:elligence)?:\s*(\d+)", re.IGNORECASE)
 
 
+class InvalidItemClipboardError(ValueError):
+    """Raised when clipboard or input text does not contain recognizable PoE2 item structure."""
+    pass
+
+
+VALID_ITEM_RARITIES = {"normal", "magic", "rare", "unique"}
+
+
+def validate_poe2_item_envelope(raw_text: str) -> None:
+    """Validate that raw_text conforms to the standard PoE2 item clipboard envelope.
+
+    In PoE2, an item copied from the game begins with an Item Class line,
+    a Rarity line, and the item name and/or base type before section separators.
+
+    Raises:
+        InvalidItemClipboardError: If text is empty or does not contain recognizable
+            PoE2 item structure.
+    """
+    if not raw_text or not raw_text.strip():
+        raise InvalidItemClipboardError("Clipboard does not contain recognizable PoE2 item text.")
+
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+    if len(lines) < 3:
+        raise InvalidItemClipboardError("Clipboard does not contain recognizable PoE2 item text.")
+
+    # Check the header block (lines before the first separator)
+    header_lines: list[str] = []
+    for line in lines:
+        if line.startswith("---") or line.startswith("==="):
+            break
+        header_lines.append(line)
+
+    if not header_lines:
+        raise InvalidItemClipboardError("Clipboard does not contain recognizable PoE2 item text.")
+
+    item_class: str | None = None
+    rarity: str | None = None
+    rem_names: list[str] = []
+
+    for line in header_lines:
+        m_cls = RE_ITEM_CLASS.match(line)
+        if m_cls:
+            item_class = m_cls.group(1).strip()
+            continue
+        m_rar = RE_RARITY.match(line)
+        if m_rar:
+            rarity = m_rar.group(1).strip().lower()
+            continue
+        rem_names.append(line)
+
+    # Both Item Class and Rarity are mandatory for a valid PoE2 item clipboard
+    if not item_class:
+        raise InvalidItemClipboardError("Clipboard does not contain recognizable PoE2 item text.")
+
+    if not rarity or rarity not in VALID_ITEM_RARITIES:
+        raise InvalidItemClipboardError("Clipboard does not contain recognizable PoE2 item text.")
+
+    # Must have at least one name / base_type line in the header
+    if not rem_names:
+        raise InvalidItemClipboardError("Clipboard does not contain recognizable PoE2 item text.")
+
+
 def parse_slot_topology_for_base(
     item_class: str,
     base_type: str,
@@ -165,9 +227,9 @@ def parse_item_text(
     target_weapon_set: WeaponSetContext | None = None,
 ) -> ItemCandidate:
     """Parse standard PoE2 item clipboard text into ItemCandidate."""
+    validate_poe2_item_envelope(raw_text)
+
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
-    if not lines:
-        raise ValueError("Cannot parse empty item text")
 
     # Group sections delimited by dashed lines
     sections: list[list[str]] = []

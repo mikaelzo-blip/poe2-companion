@@ -1274,22 +1274,26 @@ def handle_gear_loadout(args: argparse.Namespace) -> int:
         save_loadout,
     )
     from companion.equipment.loadout_promotion import promote_candidate_to_loadout
-    from companion.equipment.parser import parse_item_text
+    from companion.equipment.parser import InvalidItemClipboardError, parse_item_text
     from companion.equipment.schema import SlotType, WeaponSetContext
 
     char_id = _resolve_char_id(args)
 
     if args.loadout_action == "set-clipboard":
         raw_text = read_item_input(getattr(args, "file", None))
-        run_loadout_set_item(
-            runtime_dir=args.runtime,
-            character_id=char_id,
-            slot_name=args.slot,
-            item_text=raw_text,
-            weapon_set_name=getattr(args, "weapon_set", None),
-        )
-        print(f"Slot '{args.slot}' updated in loadout draft for character '{char_id}'.")
-        return 0
+        try:
+            run_loadout_set_item(
+                runtime_dir=args.runtime,
+                character_id=char_id,
+                slot_name=args.slot,
+                item_text=raw_text,
+                weapon_set_name=getattr(args, "weapon_set", None),
+            )
+            print(f"Slot '{args.slot}' updated in loadout draft for character '{char_id}'.")
+            return 0
+        except (InvalidItemClipboardError, ValueError) as exc:
+            sys.stderr.write(f"Error setting loadout slot: {exc}\n")
+            return 1
     elif args.loadout_action == "finalize":
         l = run_loadout_finalize(
             runtime_dir=args.runtime,
@@ -1312,26 +1316,30 @@ def handle_gear_loadout(args: argparse.Namespace) -> int:
         return 0
     elif args.loadout_action == "promote-candidate":
         raw_text = read_item_input(getattr(args, "file", None))
-        slot = SlotType.from_str(args.slot)
-        wset = WeaponSetContext.from_val(getattr(args, "weapon_set", None)) if getattr(args, "weapon_set", None) else None
-        candidate = parse_item_text(raw_text, target_slot=slot, target_weapon_set=wset)
+        try:
+            slot = SlotType.from_str(args.slot)
+            wset = WeaponSetContext.from_val(getattr(args, "weapon_set", None)) if getattr(args, "weapon_set", None) else None
+            candidate = parse_item_text(raw_text, target_slot=slot, target_weapon_set=wset)
 
-        loadout = load_loadout(args.runtime, char_id)
-        baseline = load_baseline(args.runtime, char_id)
+            loadout = load_loadout(args.runtime, char_id)
+            baseline = load_baseline(args.runtime, char_id)
 
-        new_loadout, new_baseline = promote_candidate_to_loadout(
-            loadout=loadout,
-            candidate=candidate,
-            slot=slot,
-            baseline=baseline,
-            weapon_set=wset,
-        )
-        save_loadout(args.runtime, new_loadout)
-        if new_baseline:
-            save_baseline(args.runtime, new_baseline)
+            new_loadout, new_baseline = promote_candidate_to_loadout(
+                loadout=loadout,
+                candidate=candidate,
+                slot=slot,
+                baseline=baseline,
+                weapon_set=wset,
+            )
+            save_loadout(args.runtime, new_loadout)
+            if new_baseline:
+                save_baseline(args.runtime, new_baseline)
 
-        print(f"Candidate '{candidate.name}' promoted to slot '{slot.value}'. Revision advanced to {new_loadout.revision}.")
-        return 0
+            print(f"Candidate '{candidate.name}' promoted to slot '{slot.value}'. Revision advanced to {new_loadout.revision}.")
+            return 0
+        except (InvalidItemClipboardError, ValueError) as exc:
+            sys.stderr.write(f"Error promoting candidate: {exc}\n")
+            return 1
     return 1
 
 

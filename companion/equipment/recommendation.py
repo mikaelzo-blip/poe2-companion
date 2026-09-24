@@ -91,6 +91,7 @@ def format_recommendation_report(rec: EquipmentRecommendation) -> str:
 
     # Helper lists for deficiency categorization
     crit_deficiencies: list[str] = []
+    gear_priorities: list[str] = []
     deficiencies_resolved: list[str] = []
     deficiencies_remaining: list[str] = []
     new_deficiencies: list[str] = []
@@ -99,30 +100,53 @@ def format_recommendation_report(rec: EquipmentRecommendation) -> str:
         ca = rec.contextual_analysis
         for res_type, r_ana in ca.resistances.items():
             r_name = res_type.value.capitalize()
-            if r_ana.deficit_before > 0:
-                crit_deficiencies.append(
-                    f"{r_name} Resistance: {r_ana.deficit_before}% deficit before (target {r_ana.target}%)"
-                )
-            if r_ana.impact == DeficiencyImpact.RESOLVES:
-                deficiencies_resolved.append(
-                    f"{r_name} Resistance: Deficit fully resolved (+{r_ana.delta:g}%, projected {r_ana.projected_effective}%)"
-                )
-            elif r_ana.impact == DeficiencyImpact.IMPROVES:
-                deficiencies_resolved.append(
-                    f"{r_name} Resistance: Deficit reduced from {r_ana.deficit_before}% to {r_ana.deficit_after}%"
-                )
-            elif r_ana.impact == DeficiencyImpact.UNCHANGED and r_ana.deficit_before > 0:
-                deficiencies_remaining.append(
-                    f"{r_name} Resistance: Deficit unchanged at {r_ana.deficit_before}% short of {r_ana.target}%"
-                )
-            elif r_ana.impact == DeficiencyImpact.WORSENS:
-                new_deficiencies.append(
-                    f"{r_name} Resistance: Deficit worsened by {abs(r_ana.delta):g}% (now {r_ana.deficit_after}% short)"
-                )
-            elif r_ana.impact == DeficiencyImpact.CREATES_NEW_DEFICIENCY:
-                new_deficiencies.append(
-                    f"{r_name} Resistance: New deficit created ({r_ana.deficit_after}% short of {r_ana.target}%)"
-                )
+            if r_ana.is_hard_target:
+                if r_ana.deficit_before > 0:
+                    crit_deficiencies.append(
+                        f"{r_name} Resistance: {r_ana.deficit_before}% deficit before (hard target {r_ana.target}%)"
+                    )
+                if r_ana.impact == DeficiencyImpact.RESOLVES:
+                    deficiencies_resolved.append(
+                        f"{r_name} Resistance: Deficit fully resolved (+{r_ana.delta:g}%, projected {r_ana.projected_effective}%)"
+                    )
+                elif r_ana.impact == DeficiencyImpact.IMPROVES:
+                    deficiencies_resolved.append(
+                        f"{r_name} Resistance: Deficit reduced from {r_ana.deficit_before}% to {r_ana.deficit_after}%"
+                    )
+                elif r_ana.impact == DeficiencyImpact.UNCHANGED and r_ana.deficit_before > 0:
+                    deficiencies_remaining.append(
+                        f"{r_name} Resistance: Deficit unchanged at {r_ana.deficit_before}% short of {r_ana.target}%"
+                    )
+                elif r_ana.impact == DeficiencyImpact.WORSENS:
+                    new_deficiencies.append(
+                        f"{r_name} Resistance: Deficit worsened by {abs(r_ana.delta):g}% (now {r_ana.deficit_after}% short)"
+                    )
+                elif r_ana.impact == DeficiencyImpact.CREATES_NEW_DEFICIENCY:
+                    new_deficiencies.append(
+                        f"{r_name} Resistance: New deficit created ({r_ana.deficit_after}% short of {r_ana.target}%)"
+                    )
+            else:
+                # Reference-only campaign resistance
+                if r_ana.gap_before > 0 and r_ana.current_effective is not None:
+                    gear_priorities.append(
+                        f"{r_name} Resistance: {r_ana.current_effective}% | Reference cap: {r_ana.reference_cap}% | Status: LOW / HIGH GEAR PRIORITY"
+                    )
+                if r_ana.impact == DeficiencyImpact.RESOLVES:
+                    deficiencies_resolved.append(
+                        f"{r_name} Resistance: Resolved reference cap gap (+{r_ana.delta:g}%, reached {r_ana.projected_effective}%)"
+                    )
+                elif r_ana.impact == DeficiencyImpact.IMPROVES:
+                    deficiencies_resolved.append(
+                        f"{r_name} Resistance: Improved from {r_ana.current_effective}% to {r_ana.projected_effective}% (reference cap {r_ana.reference_cap}%)"
+                    )
+                elif r_ana.impact == DeficiencyImpact.WORSENS:
+                    new_deficiencies.append(
+                        f"{r_name} Resistance: Regressed by {abs(r_ana.delta):g}% (from {r_ana.current_effective}% to {r_ana.projected_effective}%)"
+                    )
+                elif r_ana.impact == DeficiencyImpact.CREATES_NEW_DEFICIENCY:
+                    new_deficiencies.append(
+                        f"{r_name} Resistance: Capped state lost (dropped from {r_ana.current_effective}% to {r_ana.projected_effective}%, reference cap {r_ana.reference_cap}%)"
+                    )
 
         for attr_name, a_ana in ca.attributes.items():
             aname_cap = attr_name.capitalize()
@@ -150,6 +174,12 @@ def format_recommendation_report(rec: EquipmentRecommendation) -> str:
                 new_deficiencies.append(
                     f"{aname_cap} Attribute: New deficit created ({a_ana.deficit_after} short of {a_ana.highest_required})"
                 )
+
+    if gear_priorities:
+        lines.append("")
+        lines.append("--- GEAR RESISTANCE PRIORITIES (REFERENCE ONLY) ---")
+        for gp in gear_priorities:
+            lines.append(f"  * {gp}")
 
     lines.append("")
     lines.append("--- CRITICAL DEFICIENCIES ---")

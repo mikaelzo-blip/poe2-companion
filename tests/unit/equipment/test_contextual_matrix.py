@@ -23,7 +23,11 @@ from companion.equipment.precedence import (
     Verdict,
     evaluate_contextual_verdict,
 )
-from companion.equipment.rules import BuildBreakerCertainty, BuildBreakerEvaluation
+from companion.equipment.rules import (
+    BuildBreakerCertainty,
+    BuildBreakerEvaluation,
+    BuildProgressionStage,
+)
 from companion.equipment.requirements import RequirementCascadeResult
 from companion.equipment.engine import EquipmentIntelligenceEngine
 from companion.equipment.loadout_cli import run_loadout_set_item, run_loadout_finalize
@@ -111,6 +115,7 @@ def test_matrix_test_3_critical_deficit_case_d():
     analysis_a = evaluate_loadout_contextual_analysis(
         baseline=baseline,
         delta_res={ResistanceType.LIGHTNING: 45.0},
+        stage=BuildProgressionStage.EARLY_ENDGAME,
     )
     assert analysis_a.has_resolved_deficiency is True
     assert analysis_a.has_unchanged_critical_deficiency is False
@@ -127,6 +132,7 @@ def test_matrix_test_3_critical_deficit_case_d():
     analysis_b = evaluate_loadout_contextual_analysis(
         baseline=baseline,
         delta_res={ResistanceType.LIGHTNING: 0.0},
+        stage=BuildProgressionStage.EARLY_ENDGAME,
     )
     assert analysis_b.has_critical_deficiency is True
     assert analysis_b.has_unchanged_critical_deficiency is True
@@ -140,6 +146,47 @@ def test_matrix_test_3_critical_deficit_case_d():
     assert verdict_b != Verdict.EQUIP_NOW
     assert verdict_b in (Verdict.CONDITIONAL_UPGRADE, Verdict.KEEP_FOR_LATER)
     assert "UNCHANGED_CRITICAL_DEFICIT" in flags_b
+
+
+def test_matrix_test_3_campaign_candidate_b_not_blocked():
+    """Test 3 (Campaign): Leveling character with 30/75 lightning res and candidate with 0 res + 100 life.
+
+    Under campaign stage (REFERENCE_ONLY), Candidate B is NOT blocked by reference cap.
+    """
+    baseline = CharacterStatBaseline.create_partial(
+        baseline_id="base_case_d_camp",
+        character_id="char_case_d_camp",
+        anchored_loadout_revision=1,
+        lightning_res=30,
+        lightning_raw=30,
+        max_lightning_res=75,
+        fire_res=75,
+        fire_raw=80,
+        max_fire_res=75,
+        cold_res=75,
+        cold_raw=80,
+        max_cold_res=75,
+        life=2000,
+    )
+    safe = BuildBreakerEvaluation(certainty=BuildBreakerCertainty.VERIFIED_SAFE)
+    reqs = RequirementCascadeResult(is_satisfied=True)
+
+    analysis_b = evaluate_loadout_contextual_analysis(
+        baseline=baseline,
+        delta_res={ResistanceType.LIGHTNING: 0.0},
+        stage=BuildProgressionStage.LEVELING_15_32,
+    )
+    assert analysis_b.has_critical_deficiency is False
+    assert analysis_b.has_unchanged_critical_deficiency is False
+
+    verdict_b, _, flags_b = evaluate_contextual_verdict(
+        safety_eval=safe,
+        cascade_result=reqs,
+        contextual_analysis=analysis_b,
+        comparison=MultidimensionalComparison.DOMINANT_IMPROVEMENT,
+    )
+    assert verdict_b == Verdict.EQUIP_NOW
+    assert "UNCHANGED_CRITICAL_DEFICIT" not in flags_b
 
 
 def test_matrix_test_4_healthy_character_candidates():

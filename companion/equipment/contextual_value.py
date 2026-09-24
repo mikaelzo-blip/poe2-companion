@@ -7,7 +7,15 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from companion.equipment.baseline import CharacterStatBaseline
 from companion.equipment.partial_projection import PartialLoadoutProjection, StatProjection
-from companion.equipment.resistance import ResistanceType, ResistanceTarget
+from companion.equipment.resistance import (
+    ResistancePolicyMode,
+    ResistanceTarget,
+    ResistanceTargetPolicy,
+    ResistanceType,
+    get_resistance_policy,
+    resolve_resistance_policies,
+)
+from companion.equipment.rules import BuildProgressionStage
 
 
 class MarginalValueTier(str, Enum):
@@ -37,7 +45,10 @@ class ContextualResistanceAnalysis(BaseModel):
     delta: float = 0.0
     projected_raw: int | None = None
     projected_effective: int | None = None
-    target: int = 75
+    target: int | None = None
+    reference_cap: int = 75
+    gap_before: int = 0
+    gap_after: int = 0
     deficit_before: int = 0
     deficit_after: int = 0
     impact: DeficiencyImpact = DeficiencyImpact.UNCHANGED
@@ -46,6 +57,13 @@ class ContextualResistanceAnalysis(BaseModel):
     overcap_buffer_after: int = 0
     is_known: bool = True
     reason: str = ""
+    policy: ResistanceTargetPolicy | None = None
+
+    @property
+    def is_hard_target(self) -> bool:
+        if self.policy is not None:
+            return self.policy.is_hard_target
+        return self.target is not None
 
 
 class ContextualAttributeAnalysis(BaseModel):
@@ -76,33 +94,63 @@ class LoadoutContextualAnalysis(BaseModel):
     has_resolved_deficiency: bool = False
     has_improved_deficiency: bool = False
     has_created_deficiency: bool = False
+    unresolved_resistance_priorities: list[str] = Field(default_factory=list)
+    has_unresolved_resistance_priority: bool = False
 
 
 def evaluate_contextual_resistance(
     baseline: CharacterStatBaseline | None,
     res_type: ResistanceType,
     delta: float,
-    target: ResistanceTarget | int | None = None,
+    target: ResistanceTarget | ResistanceTargetPolicy | int | None = None,
+    stage: BuildProgressionStage | str | None = None,
+    build_profile: str | Any | None = None,
 ) -> ContextualResistanceAnalysis:
     """Evaluates contextual resistance value and deficiency impact based on baseline and delta."""
-    effective_target: int
-    overcap_target_buf: int = 20
-    max_cap: int = 75
-
-    if isinstance(target, ResistanceTarget):
-        effective_target = target.target_effective
-        overcap_target_buf = target.target_overcap_buffer
-        max_cap = target.max_res
+    policy: ResistanceTargetPolicy
+    if isinstance(target, ResistanceTargetPolicy):
+        policy = target
+    elif isinstance(target, ResistanceTarget):
+        policy = ResistanceTargetPolicy(
+            res_type=res_type,
+            mode=ResistancePolicyMode.USER_HARD_TARGET,
+            target_effective=target.target_effective,
+            reference_cap=target.max_res,
+            max_resistance=target.max_res,
+            target_overcap_buffer=target.target_overcap_buffer,
+            source="EXPLICIT_RESISTANCE_TARGET",
+            verification="USER_VERIFIED",
+        )
     elif isinstance(target, int):
-        effective_target = target
-        max_cap = max(75, target)
+        policy = ResistanceTargetPolicy(
+            res_type=res_type,
+            mode=ResistancePolicyMode.USER_HARD_TARGET,
+            target_effective=target,
+            reference_cap=max(75, target),
+            max_resistance=max(75, target),
+            target_overcap_buffer=20,
+            source="EXPLICIT_NUMERIC_TARGET",
+            verification="USER_VERIFIED",
+        )
     else:
-        if res_type == ResistanceType.CHAOS:
-            effective_target = 0
-            overcap_target_buf = 0
+        if stage is not None:
+            policy = get_resistance_policy(build_profile, stage, res_type)
         else:
-            effective_target = 75
-            overcap_target_buf = 20
+            policy = ResistanceTargetPolicy(
+                res_type=res_type,
+                mode=ResistancePolicyMode.REFERENCE_ONLY,
+                target_effective=None,
+                reference_cap=0 if res_type == ResistanceType.CHAOS else 75,
+                max_resistance=75,
+                target_overcap_buffer=0 if res_type == ResistanceType.CHAOS else 20,
+                source="DEFAULT_REFERENCE_ONLY",
+                verification="UNVERIFIED",
+            )
+
+    effective_target: int | None = policy.target_effective
+    overcap_target_buf: int = policy.target_overcap_buffer
+    reference_cap: int = policy.reference_cap
+    max_cap: int = policy.max_resistance
 
     if baseline is None:
         # Baseline unknown
@@ -111,10 +159,16 @@ def evaluate_contextual_resistance(
             res_type=res_type,
             delta=delta,
             target=effective_target,
+            reference_cap=reference_cap,
+            gap_before=0,
+            gap_after=0,
+            deficit_before=0,
+            deficit_after=0,
             impact=DeficiencyImpact.UNKNOWN,
             tier=MarginalValueTier.UNKNOWN,
             is_known=False,
             reason="Character baseline unknown; cannot determine contextual resistance impact.",
+            policy=policy,
         )
 
     # Resolve facts from baseline
@@ -141,10 +195,16 @@ def evaluate_contextual_resistance(
             res_type=res_type,
             delta=delta,
             target=effective_target,
+            reference_cap=reference_cap,
+            gap_before=0,
+            gap_after=0,
+            deficit_before=0,
+            deficit_after=0,
             impact=DeficiencyImpact.UNKNOWN,
             tier=MarginalValueTier.UNKNOWN,
             is_known=False,
             reason=f"{res_type.value.capitalize()} resistance is not observed in baseline.",
+            policy=policy,
         )
 
     # If raw is known, use raw, otherwise fall back to effective
@@ -169,60 +229,100 @@ def evaluate_contextual_resistance(
         proj_eff = min(char_max, int(eff_val + delta))
         overcap_after = max(0, proj_raw - char_max)
 
-    def_before = max(0, effective_target - eff_val)
-    def_after = max(0, effective_target - proj_eff)
+    gap_before = max(0, reference_cap - eff_val)
+    gap_after = max(0, reference_cap - proj_eff)
+
+    if policy.is_hard_target and effective_target is not None:
+        def_before = max(0, effective_target - eff_val)
+        def_after = max(0, effective_target - proj_eff)
+    else:
+        def_before = 0
+        def_after = 0
 
     # Classify impact
     impact: DeficiencyImpact
     tier: MarginalValueTier
     reason: str
 
-    if def_before > 0:
-        # There was a deficiency before
-        if def_after == 0:
-            impact = DeficiencyImpact.RESOLVES
-            tier = MarginalValueTier.CRITICAL
-            reason = f"Resolves {res_type.value} resistance deficit (from {eff_val}% to {proj_eff}%, target {effective_target}%)."
-        elif def_after < def_before:
-            impact = DeficiencyImpact.IMPROVES
-            # High or critical depending on deficit size
-            tier = MarginalValueTier.HIGH if def_before < 30 else MarginalValueTier.CRITICAL
-            reason = f"Improves {res_type.value} resistance deficit (from {eff_val}% to {proj_eff}%, remaining deficit {def_after}%)."
-        elif def_after == def_before:
-            impact = DeficiencyImpact.UNCHANGED
-            # Critical deficiency remains unchanged
-            tier = MarginalValueTier.NO_IMMEDIATE_VALUE if delta == 0 else MarginalValueTier.LOW
-            reason = f"No change to existing {res_type.value} resistance deficit of {def_before}%."
+    if policy.is_hard_target and effective_target is not None:
+        if def_before > 0:
+            if def_after == 0:
+                impact = DeficiencyImpact.RESOLVES
+                tier = MarginalValueTier.CRITICAL
+                reason = f"Resolves {res_type.value} resistance deficit (from {eff_val}% to {proj_eff}%, target {effective_target}%)."
+            elif def_after < def_before:
+                impact = DeficiencyImpact.IMPROVES
+                tier = MarginalValueTier.HIGH if def_before < 30 else MarginalValueTier.CRITICAL
+                reason = f"Improves {res_type.value} resistance deficit (from {eff_val}% to {proj_eff}%, remaining deficit {def_after}%)."
+            elif def_after == def_before:
+                impact = DeficiencyImpact.UNCHANGED
+                tier = MarginalValueTier.NO_IMMEDIATE_VALUE if delta == 0 else MarginalValueTier.LOW
+                reason = f"No change to existing {res_type.value} resistance deficit of {def_before}%."
+            else:
+                impact = DeficiencyImpact.WORSENS
+                tier = MarginalValueTier.CRITICAL
+                reason = f"Worsens existing {res_type.value} resistance deficit (from {eff_val}% to {proj_eff}%)."
         else:
-            impact = DeficiencyImpact.WORSENS
-            tier = MarginalValueTier.CRITICAL
-            reason = f"Worsens existing {res_type.value} resistance deficit (from {eff_val}% to {proj_eff}%)."
-    else:
-        # No deficiency before (character was at or above target)
-        if def_after > 0:
-            impact = DeficiencyImpact.CREATES_NEW_DEFICIENCY
-            tier = MarginalValueTier.CRITICAL
-            reason = f"Creates new {res_type.value} resistance deficit of {def_after}% (dropped to {proj_eff}%)."
-        else:
-            impact = DeficiencyImpact.UNCHANGED
-            if delta > 0:
-                # Adding more overcap
-                if overcap_before < overcap_target_buf:
-                    tier = MarginalValueTier.LOW
-                    reason = f"Adds to overcap buffer ({proj_raw}% raw, buffer {overcap_after}%)."
+            if def_after > 0:
+                impact = DeficiencyImpact.CREATES_NEW_DEFICIENCY
+                tier = MarginalValueTier.CRITICAL
+                reason = f"Creates new {res_type.value} resistance deficit of {def_after}% (dropped to {proj_eff}%)."
+            else:
+                impact = DeficiencyImpact.UNCHANGED
+                if delta > 0:
+                    if overcap_before < overcap_target_buf:
+                        tier = MarginalValueTier.LOW
+                        reason = f"Adds to overcap buffer ({proj_raw}% raw, buffer {overcap_after}%)."
+                    else:
+                        tier = MarginalValueTier.NO_IMMEDIATE_VALUE
+                        reason = f"Already overcapped past buffer; provides no immediate defensive gain ({proj_raw}% raw)."
+                elif delta < 0:
+                    if overcap_after < overcap_target_buf:
+                        tier = MarginalValueTier.NORMAL
+                        reason = f"Reduces overcap buffer from {overcap_before}% to {overcap_after}% (remains capped)."
+                    else:
+                        tier = MarginalValueTier.LOW
+                        reason = f"Losing excess overcap beyond buffer ({overcap_before}% -> {overcap_after}%), remains safely capped."
                 else:
                     tier = MarginalValueTier.NO_IMMEDIATE_VALUE
-                    reason = f"Already overcapped past buffer; provides no immediate defensive gain ({proj_raw}% raw)."
-            elif delta < 0:
-                # Losing some overcap, but remaining at or above target
-                if overcap_after < overcap_target_buf:
-                    tier = MarginalValueTier.NORMAL
-                    reason = f"Reduces overcap buffer from {overcap_before}% to {overcap_after}% (remains capped)."
+                    reason = "No change."
+    else:
+        # Reference-only campaign priority semantics
+        if delta > 0:
+            if eff_val < reference_cap:
+                if proj_eff >= reference_cap:
+                    impact = DeficiencyImpact.RESOLVES
+                    tier = MarginalValueTier.CRITICAL
+                    reason = f"Resolves {res_type.value} resistance gap to reference cap (from {eff_val}% to {proj_eff}%, reference cap {reference_cap}%)."
                 else:
-                    tier = MarginalValueTier.LOW
-                    reason = f"Losing excess overcap beyond buffer ({overcap_before}% -> {overcap_after}%), remains safely capped."
+                    impact = DeficiencyImpact.IMPROVES
+                    tier = MarginalValueTier.CRITICAL if gap_before >= 30 else MarginalValueTier.HIGH
+                    reason = f"Improves {res_type.value} resistance from {eff_val}% to {proj_eff}% (reference cap {reference_cap}%)."
             else:
-                tier = MarginalValueTier.NO_IMMEDIATE_VALUE
+                impact = DeficiencyImpact.UNCHANGED
+                tier = MarginalValueTier.LOW if overcap_before < overcap_target_buf else MarginalValueTier.NO_IMMEDIATE_VALUE
+                reason = f"Adds to overcap buffer ({proj_raw}% raw, buffer {overcap_after}%)."
+        elif delta < 0:
+            if eff_val >= reference_cap and proj_eff < reference_cap:
+                # Loss from healthy/capped state
+                impact = DeficiencyImpact.CREATES_NEW_DEFICIENCY
+                tier = MarginalValueTier.CRITICAL
+                reason = f"Creates new {res_type.value} resistance shortfall (dropped from capped {eff_val}% to {proj_eff}%, reference cap {reference_cap}%)."
+            elif eff_val >= reference_cap and proj_eff >= reference_cap:
+                impact = DeficiencyImpact.UNCHANGED
+                tier = MarginalValueTier.NORMAL if overcap_after < overcap_target_buf else MarginalValueTier.LOW
+                reason = f"Reduces overcap buffer from {overcap_before}% to {overcap_after}% (remains capped)."
+            else:
+                # Worsening existing resistance below reference cap
+                impact = DeficiencyImpact.WORSENS
+                tier = MarginalValueTier.CRITICAL if abs(delta) >= 15 else MarginalValueTier.HIGH
+                reason = f"Worsens existing {res_type.value} resistance (dropped from {eff_val}% to {proj_eff}%)."
+        else:
+            impact = DeficiencyImpact.UNCHANGED
+            tier = MarginalValueTier.NO_IMMEDIATE_VALUE
+            if gap_before > 0:
+                reason = f"No change to existing {res_type.value} resistance of {eff_val}% (campaign priority, reference cap {reference_cap}%)."
+            else:
                 reason = "No change."
 
     return ContextualResistanceAnalysis(
@@ -233,6 +333,9 @@ def evaluate_contextual_resistance(
         projected_raw=proj_raw,
         projected_effective=proj_eff,
         target=effective_target,
+        reference_cap=reference_cap,
+        gap_before=gap_before,
+        gap_after=gap_after,
         deficit_before=def_before,
         deficit_after=def_after,
         impact=impact,
@@ -241,6 +344,7 @@ def evaluate_contextual_resistance(
         overcap_buffer_after=overcap_after,
         is_known=True,
         reason=reason,
+        policy=policy,
     )
 
 
@@ -359,12 +463,16 @@ def evaluate_loadout_contextual_analysis(
     delta_res: dict[ResistanceType, float] | None = None,
     delta_attrs: dict[str, float] | None = None,
     highest_attribute_requirements: dict[str, int] | None = None,
-    resistance_targets: dict[ResistanceType, ResistanceTarget] | None = None,
+    resistance_targets: dict[ResistanceType, ResistanceTarget | ResistanceTargetPolicy] | None = None,
+    stage: BuildProgressionStage | str | None = None,
+    build_profile: str | Any | None = None,
+    resistance_policies: dict[ResistanceType, ResistanceTargetPolicy] | None = None,
 ) -> LoadoutContextualAnalysis:
     """Evaluates contextual analysis across all resistances and attributes for a candidate loadout change."""
     res_analysis: dict[ResistanceType, ContextualResistanceAnalysis] = {}
     attr_analysis: dict[str, ContextualAttributeAnalysis] = {}
     crit_details: list[str] = []
+    unresolved_res_priorities: list[str] = []
 
     # Map deltas from projection if provided
     res_deltas: dict[ResistanceType, float] = {}
@@ -386,15 +494,30 @@ def evaluate_loadout_contextual_analysis(
     if delta_attrs is not None:
         attr_deltas.update(delta_attrs)
 
+    effective_policies = resistance_policies or resistance_targets
+    if effective_policies is None and stage is not None:
+        effective_policies = resolve_resistance_policies(stage=stage, build_profile=build_profile)
+
     # Evaluate each resistance
     for r_type in (ResistanceType.FIRE, ResistanceType.COLD, ResistanceType.LIGHTNING, ResistanceType.CHAOS):
         r_delta = res_deltas.get(r_type, 0.0)
-        target_obj = resistance_targets.get(r_type) if resistance_targets else None
-        analysis = evaluate_contextual_resistance(baseline, r_type, r_delta, target=target_obj)
+        target_obj = effective_policies.get(r_type) if effective_policies else None
+        analysis = evaluate_contextual_resistance(
+            baseline,
+            r_type,
+            r_delta,
+            target=target_obj,
+            stage=stage,
+            build_profile=build_profile,
+        )
         res_analysis[r_type] = analysis
 
-        if analysis.deficit_before > 0:
+        if analysis.is_hard_target and analysis.deficit_before > 0:
             crit_details.append(f"{r_type.value.capitalize()} resistance deficit ({analysis.deficit_before}% short of target).")
+        elif not analysis.is_hard_target and analysis.gap_before > 0 and analysis.impact == DeficiencyImpact.UNCHANGED:
+            unresolved_res_priorities.append(
+                f"{r_type.value.capitalize()} resistance priority unresolved ({analysis.current_effective}% vs reference cap {analysis.reference_cap}%)."
+            )
 
     # Evaluate each attribute
     reqs = highest_attribute_requirements or {}
@@ -410,7 +533,7 @@ def evaluate_loadout_contextual_analysis(
     # Check overall flags
     has_critical = len(crit_details) > 0
     has_unchanged_crit = any(
-        (r.deficit_before > 0 and r.impact == DeficiencyImpact.UNCHANGED)
+        (r.is_hard_target and r.deficit_before > 0 and r.impact == DeficiencyImpact.UNCHANGED)
         for r in res_analysis.values()
     ) or any(
         (a.deficit_before > 0 and a.impact == DeficiencyImpact.UNCHANGED)
@@ -451,4 +574,6 @@ def evaluate_loadout_contextual_analysis(
         has_resolved_deficiency=has_resolved,
         has_improved_deficiency=has_improved,
         has_created_deficiency=has_created,
+        unresolved_resistance_priorities=unresolved_res_priorities,
+        has_unresolved_resistance_priority=len(unresolved_res_priorities) > 0,
     )

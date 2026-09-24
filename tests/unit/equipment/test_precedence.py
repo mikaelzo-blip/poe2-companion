@@ -1,7 +1,12 @@
 """Unit tests for non-scalar verdict precedence rules."""
 
 import pytest
-from companion.equipment.rules import BuildBreakerCertainty, BuildBreakerEvaluation, RuleSeverity
+from companion.equipment.rules import (
+    BuildBreakerCertainty,
+    BuildBreakerEvaluation,
+    BuildProgressionStage,
+    RuleSeverity,
+)
 from companion.equipment.requirements import RequirementCascadeResult, RequirementDeficiency
 from companion.equipment.baseline import CharacterStatBaseline, CharacterFact
 from companion.equipment.contextual_value import (
@@ -116,8 +121,8 @@ def test_pure_positive_upgrade_yields_equip_now():
     assert verdict == Verdict.EQUIP_NOW
 
 
-def test_case_d_unchanged_critical_deficit_blocks_equip_now():
-    """Forensic Case D: Candidate with large life but 0 resistance when character has critical deficit."""
+def test_case_d_explicit_hard_target_unchanged_blocks_equip_now():
+    """Case D (Hard Target): Candidate with large life but 0 resistance when character has verified hard target."""
     # Baseline with critical lightning resistance deficit (40% vs 75% target -> 35% deficit)
     baseline = CharacterStatBaseline.create_partial(
         baseline_id="base_d",
@@ -129,10 +134,11 @@ def test_case_d_unchanged_critical_deficit_blocks_equip_now():
         chaos_res=0,
         life=2000,
     )
-    # Candidate provides no lightning res delta (unchanged deficit)
+    # Candidate provides no lightning res delta (unchanged deficit) under EARLY_ENDGAME hard target
     contextual_analysis = evaluate_loadout_contextual_analysis(
         baseline=baseline,
         delta_res={},
+        stage=BuildProgressionStage.EARLY_ENDGAME,
     )
     assert contextual_analysis.has_unchanged_critical_deficiency is True
 
@@ -149,6 +155,40 @@ def test_case_d_unchanged_critical_deficit_blocks_equip_now():
     assert verdict != Verdict.EQUIP_NOW
     assert verdict == Verdict.CONDITIONAL_UPGRADE
     assert "UNCHANGED_CRITICAL_DEFICIT" in flags
+
+
+def test_case_d_campaign_reference_only_unchanged_permits_equip_now():
+    """Case D (Campaign Reference Only): Leveling character with 40% lightning res is not blocked by reference cap."""
+    baseline = CharacterStatBaseline.create_partial(
+        baseline_id="base_d_camp",
+        character_id="char_d_camp",
+        anchored_loadout_revision=1,
+        lightning_res=40,
+        fire_res=75,
+        cold_res=75,
+        chaos_res=0,
+        life=2000,
+    )
+    # Campaign leveling stage (REFERENCE_ONLY policy)
+    contextual_analysis = evaluate_loadout_contextual_analysis(
+        baseline=baseline,
+        delta_res={},
+        stage=BuildProgressionStage.LEVELING_15_32,
+    )
+    assert contextual_analysis.has_unchanged_critical_deficiency is False
+
+    safe = BuildBreakerEvaluation(certainty=BuildBreakerCertainty.VERIFIED_SAFE)
+    reqs = RequirementCascadeResult(is_satisfied=True)
+
+    verdict, reason, flags = evaluate_contextual_verdict(
+        safety_eval=safe,
+        cascade_result=reqs,
+        contextual_analysis=contextual_analysis,
+        comparison=MultidimensionalComparison.DOMINANT_IMPROVEMENT,
+    )
+
+    assert verdict == Verdict.EQUIP_NOW
+    assert "UNCHANGED_CRITICAL_DEFICIT" not in flags
 
 
 def test_data_insufficiency_yields_insufficient_data():

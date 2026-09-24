@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 from companion.equipment.baseline import CharacterStatBaseline
+from companion.equipment.rules import BuildProgressionStage
 
 
 class ResistanceType(str, Enum):
@@ -12,6 +14,113 @@ class ResistanceType(str, Enum):
     COLD = "cold"
     LIGHTNING = "lightning"
     CHAOS = "chaos"
+
+
+class ResistancePolicyMode(str, Enum):
+    REFERENCE_ONLY = "REFERENCE_ONLY"
+    VERIFIED_HARD_TARGET = "VERIFIED_HARD_TARGET"
+    USER_HARD_TARGET = "USER_HARD_TARGET"
+
+
+class ResistanceTargetPolicy(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    res_type: ResistanceType
+    mode: ResistancePolicyMode = ResistancePolicyMode.REFERENCE_ONLY
+    target_effective: int | None = None
+    reference_cap: int = 75
+    max_resistance: int = 75
+    target_overcap_buffer: int = 20
+    source: str = "DEFAULT_REFERENCE_ONLY"
+    verification: str = "UNVERIFIED"
+    stage: BuildProgressionStage | None = None
+
+    @property
+    def is_hard_target(self) -> bool:
+        return (
+            self.mode in (ResistancePolicyMode.VERIFIED_HARD_TARGET, ResistancePolicyMode.USER_HARD_TARGET)
+            and self.target_effective is not None
+        )
+
+
+def get_resistance_policy(
+    build_profile: str | Any | None,
+    stage: BuildProgressionStage | str | None,
+    res_type: ResistanceType,
+) -> ResistanceTargetPolicy:
+    """Centralized resolver for stage-aware resistance evaluation policy.
+
+    Distinguishes:
+    - MAX_RESISTANCE: Game mechanical cap / clamp (75 unless modified).
+    - REFERENCE_CAP: Informational distance to normal cap (75).
+    - HARD_TARGET: Gating threshold supported by verified build rule or explicit user target.
+    """
+    resolved_stage: BuildProgressionStage
+    if isinstance(stage, str):
+        parsed = BuildProgressionStage(stage)
+        resolved_stage = parsed if parsed is not None else BuildProgressionStage.EARLY_ENDGAME
+    elif isinstance(stage, BuildProgressionStage):
+        resolved_stage = stage
+    else:
+        resolved_stage = BuildProgressionStage.EARLY_ENDGAME
+
+    if res_type == ResistanceType.CHAOS:
+        # Audit fallback: Chaos is reference-only by default, never an invented hard target
+        return ResistanceTargetPolicy(
+            res_type=res_type,
+            mode=ResistancePolicyMode.REFERENCE_ONLY,
+            target_effective=None,
+            reference_cap=0,
+            max_resistance=75,
+            target_overcap_buffer=0,
+            source="DEFAULT_CHAOS_REFERENCE_ONLY",
+            verification="UNVERIFIED",
+            stage=resolved_stage,
+        )
+
+    # Elemental resistances
+    if resolved_stage.is_campaign:
+        # Fubgun campaign priority: seek Life + Resistance without hard numeric threshold
+        return ResistanceTargetPolicy(
+            res_type=res_type,
+            mode=ResistancePolicyMode.REFERENCE_ONLY,
+            target_effective=None,
+            reference_cap=75,
+            max_resistance=75,
+            target_overcap_buffer=20,
+            source="FUBGUN_CAMPAIGN_PRIORITY",
+            verification="VERIFIED",
+            stage=resolved_stage,
+        )
+
+    # Endgame stages: verified 75 cap applies
+    return ResistanceTargetPolicy(
+        res_type=res_type,
+        mode=ResistancePolicyMode.VERIFIED_HARD_TARGET,
+        target_effective=75,
+        reference_cap=75,
+        max_resistance=75,
+        target_overcap_buffer=20,
+        source="ENDGAME_VERIFIED_75_CAP",
+        verification="VERIFIED",
+        stage=resolved_stage,
+    )
+
+
+def resolve_resistance_policies(
+    stage: BuildProgressionStage | str | None = None,
+    build_profile: str | Any | None = None,
+) -> dict[ResistanceType, ResistanceTargetPolicy]:
+    """Resolves complete set of resistance policies for all resistance types."""
+    return {
+        r_type: get_resistance_policy(build_profile, stage, r_type)
+        for r_type in (
+            ResistanceType.FIRE,
+            ResistanceType.COLD,
+            ResistanceType.LIGHTNING,
+            ResistanceType.CHAOS,
+        )
+    }
 
 
 class ResistanceTarget(BaseModel):

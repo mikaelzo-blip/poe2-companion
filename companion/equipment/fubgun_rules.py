@@ -22,7 +22,7 @@ def evaluate_fubgun_modifier(
     weapon_set: WeaponSetContext | None,
     stage: BuildProgressionStage,
 ) -> tuple[BuildBreakerCertainty, RuleSeverity, str]:
-    if stage == BuildProgressionStage.PRE_SWAP:
+    if stage.is_pre_swap:
         return (
             BuildBreakerCertainty.VERIFIED_SAFE,
             RuleSeverity.INFO,

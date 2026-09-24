@@ -7,6 +7,7 @@ from companion.equipment.contextual_value import (
     evaluate_loadout_contextual_analysis,
 )
 from companion.equipment.resistance import ResistanceType, ResistanceTarget
+from companion.equipment.rules import BuildProgressionStage
 
 
 def test_resistance_same_item_different_character():
@@ -57,22 +58,28 @@ def test_resistance_deficit_resolves_and_worsens():
         fire_res=50, fire_raw=50, max_fire_res=75,
         cold_res=75, cold_raw=75, max_cold_res=75
     )
-    # Fire: +25 resolves deficit exactly
-    res_resolve = evaluate_contextual_resistance(baseline, ResistanceType.FIRE, delta=25.0)
+    # Fire: +25 resolves deficit exactly under explicit/endgame hard target 75%
+    res_resolve = evaluate_contextual_resistance(
+        baseline, ResistanceType.FIRE, delta=25.0, stage=BuildProgressionStage.EARLY_ENDGAME
+    )
     assert res_resolve.impact == DeficiencyImpact.RESOLVES
     assert res_resolve.tier == MarginalValueTier.CRITICAL
     assert res_resolve.deficit_before == 25
     assert res_resolve.deficit_after == 0
 
     # Fire: -10 worsens deficit
-    res_worsen = evaluate_contextual_resistance(baseline, ResistanceType.FIRE, delta=-10.0)
+    res_worsen = evaluate_contextual_resistance(
+        baseline, ResistanceType.FIRE, delta=-10.0, stage=BuildProgressionStage.EARLY_ENDGAME
+    )
     assert res_worsen.impact == DeficiencyImpact.WORSENS
     assert res_worsen.tier == MarginalValueTier.CRITICAL
     assert res_worsen.deficit_before == 25
     assert res_worsen.deficit_after == 35
 
     # Cold: -10 drops capped resistance below cap, creating new deficiency
-    res_create = evaluate_contextual_resistance(baseline, ResistanceType.COLD, delta=-10.0)
+    res_create = evaluate_contextual_resistance(
+        baseline, ResistanceType.COLD, delta=-10.0, stage=BuildProgressionStage.EARLY_ENDGAME
+    )
     assert res_create.impact == DeficiencyImpact.CREATES_NEW_DEFICIENCY
     assert res_create.tier == MarginalValueTier.CRITICAL
     assert res_create.deficit_before == 0
@@ -135,7 +142,7 @@ def test_attribute_unknown_baseline():
 
 
 def test_loadout_contextual_analysis_case_d_detection():
-    # Case D scenario: character has critical lightning deficit, candidate provides 0 lightning.
+    # Case D scenario (Endgame Hard Target): character has critical lightning deficit, candidate provides 0 lightning.
     baseline = CharacterStatBaseline.create_partial(
         baseline_id="b_case_d", character_id="char_case_d", anchored_loadout_revision=1,
         lightning_res=30, lightning_raw=30, max_lightning_res=75,
@@ -143,16 +150,45 @@ def test_loadout_contextual_analysis_case_d_detection():
         cold_res=75, cold_raw=80, max_cold_res=75,
         strength=100, dexterity=100, intelligence=100
     )
-    # Candidate provides 0 lightning res, +100 life
+    # Candidate provides 0 lightning res, +100 life under EARLY_ENDGAME hard target
     analysis = evaluate_loadout_contextual_analysis(
         baseline=baseline,
         delta_res={ResistanceType.LIGHTNING: 0.0, ResistanceType.FIRE: 0.0, ResistanceType.COLD: 0.0},
         delta_attrs={"strength": 0.0, "dexterity": 0.0, "intelligence": 0.0},
-        highest_attribute_requirements={"strength": 90, "dexterity": 90, "intelligence": 90}
+        highest_attribute_requirements={"strength": 90, "dexterity": 90, "intelligence": 90},
+        stage=BuildProgressionStage.EARLY_ENDGAME,
     )
     assert analysis.has_critical_deficiency is True
     assert analysis.has_unchanged_critical_deficiency is True
     assert analysis.has_worsened_deficiency is False
     assert analysis.resistances[ResistanceType.LIGHTNING].deficit_before == 45
     assert analysis.resistances[ResistanceType.LIGHTNING].deficit_after == 45
+    assert analysis.resistances[ResistanceType.LIGHTNING].impact == DeficiencyImpact.UNCHANGED
+
+
+def test_loadout_contextual_analysis_case_d_campaign_reference_only():
+    # Case D scenario (Campaign Reference Only): character has 30% lightning res, candidate provides 0 lightning.
+    baseline = CharacterStatBaseline.create_partial(
+        baseline_id="b_case_d_camp", character_id="char_case_d_camp", anchored_loadout_revision=1,
+        lightning_res=30, lightning_raw=30, max_lightning_res=75,
+        fire_res=75, fire_raw=80, max_fire_res=75,
+        cold_res=75, cold_raw=80, max_cold_res=75,
+        strength=100, dexterity=100, intelligence=100
+    )
+    # Under campaign leveling stage (REFERENCE_ONLY)
+    analysis = evaluate_loadout_contextual_analysis(
+        baseline=baseline,
+        delta_res={ResistanceType.LIGHTNING: 0.0, ResistanceType.FIRE: 0.0, ResistanceType.COLD: 0.0},
+        delta_attrs={"strength": 0.0, "dexterity": 0.0, "intelligence": 0.0},
+        highest_attribute_requirements={"strength": 90, "dexterity": 90, "intelligence": 90},
+        stage=BuildProgressionStage.LEVELING_15_32,
+    )
+    assert analysis.has_critical_deficiency is False
+    assert analysis.has_unchanged_critical_deficiency is False
+    assert analysis.has_unresolved_resistance_priority is True
+    assert len(analysis.unresolved_resistance_priorities) > 0
+    assert analysis.resistances[ResistanceType.LIGHTNING].deficit_before == 0
+    assert analysis.resistances[ResistanceType.LIGHTNING].deficit_after == 0
+    assert analysis.resistances[ResistanceType.LIGHTNING].gap_before == 45
+    assert analysis.resistances[ResistanceType.LIGHTNING].gap_after == 45
     assert analysis.resistances[ResistanceType.LIGHTNING].impact == DeficiencyImpact.UNCHANGED

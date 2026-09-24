@@ -29,15 +29,25 @@ class EquipmentIntelligenceEngine:
         character_id: str = "default",
         target_slot: str | SlotType | None = None,
         target_weapon_set: str | WeaponSetContext | None = None,
-        stage: BuildProgressionStage = BuildProgressionStage.EARLY_ENDGAME,
+        stage: BuildProgressionStage | str = BuildProgressionStage.EARLY_ENDGAME,
         critical_gems: list[GemRequirement] | None = None,
         candidate_text: str | None = None,
         slot: str | SlotType | None = None,
         weapon_set: str | WeaponSetContext | None = None,
+        build_profile: str | Any | None = None,
+        resistance_policies: dict[Any, Any] | None = None,
     ) -> EquipmentRecommendation:
         text = candidate_text if candidate_text is not None else item_text
         if text is None:
             raise ValueError("item_text or candidate_text must be provided.")
+
+        if isinstance(stage, str):
+            parsed_stage = BuildProgressionStage(stage)
+            resolved_stage = parsed_stage if parsed_stage is not None else BuildProgressionStage.EARLY_ENDGAME
+        elif isinstance(stage, BuildProgressionStage):
+            resolved_stage = stage
+        else:
+            resolved_stage = BuildProgressionStage.EARLY_ENDGAME
 
         actual_slot = slot if slot is not None else target_slot
         if isinstance(actual_slot, str):
@@ -74,7 +84,7 @@ class EquipmentIntelligenceEngine:
             candidate=candidate,
             slot=resolved_slot,
             weapon_set=resolved_wset,
-            stage=stage,
+            stage=resolved_stage,
         )
 
         # 2. Partial projection (deltas + unverified isolation)
@@ -110,6 +120,9 @@ class EquipmentIntelligenceEngine:
         contextual_analysis = evaluate_loadout_contextual_analysis(
             baseline=baseline,
             projection=projection,
+            stage=resolved_stage,
+            build_profile=build_profile,
+            resistance_policies=resistance_policies,
         )
 
         # 6. Non-scalar contextual verdict precedence
@@ -124,6 +137,8 @@ class EquipmentIntelligenceEngine:
         guidance: list[str] = []
         if verdict == Verdict.EQUIP_NOW:
             guidance.append(f"Safe direct upgrade. Promote via 'companion gear loadout promote-candidate --slot {resolved_slot.value}'.")
+            if contextual_analysis and contextual_analysis.has_unresolved_resistance_priority:
+                guidance.append("Unresolved campaign resistance priorities: seek additional resistance on other gear slots.")
         elif verdict == Verdict.CONDITIONAL_UPGRADE:
             guidance.append("Solve requirement/resistance deficits elsewhere before equipping.")
         elif verdict == Verdict.KEEP_FOR_LATER:

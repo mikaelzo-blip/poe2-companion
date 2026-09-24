@@ -254,6 +254,8 @@ def format_short_human_recommendation(
         lines.append("Recommendation:")
         if rec.verdict == Verdict.EQUIP_NOW:
             lines.append("Strong direct upgrade.")
+            if rec.verdict_reason and rec.verdict_reason != "Clear positive upgrade across evaluated stats.":
+                lines.append(rec.verdict_reason)
         elif rec.verdict == Verdict.CONDITIONAL_UPGRADE:
             if "MIXED_TRADEOFF" in rec.flags:
                 lines.append("Good survivability/stat gain but meaningful defense or mobility trade-off.")
@@ -268,8 +270,34 @@ def format_short_human_recommendation(
         else:
             lines.append(rec.verdict_reason)
 
+        # Guide priority reason
+        if rec.guide_priority:
+            lines.append("")
+            if "Movement Speed is critical on Boots" in rec.guide_priority:
+                lines.append("Fubgun — Movement Speed is critical on Boots.")
+            elif rec.stage == BuildProgressionStage.LEVELING_15_32:
+                lines.append("Build priority:\nFubgun lvl15-32 — Resistance > Life")
+            elif rec.stage and rec.stage.is_campaign:
+                lines.append(f"Build priority:\nFubgun {rec.stage.value} — Resistance > Life")
+            else:
+                lines.append(f"Build priority:\n{rec.guide_priority}")
+
     lines.append("────────────────────────")
     return "\n".join(lines)
+
+
+def is_item_crossbow(candidate: ItemCandidate) -> bool:
+    """Return True if candidate is a crossbow."""
+    bt = candidate.base_type.lower()
+    raw = candidate.raw_text.lower()
+    return "crossbow" in bt or "crossbow" in raw
+
+
+def is_item_staff(candidate: ItemCandidate) -> bool:
+    """Return True if candidate is a staff or quarterstaff."""
+    bt = candidate.base_type.lower()
+    raw = candidate.raw_text.lower()
+    return "staff" in bt or "staves" in bt or "staves" in raw or "staff" in raw
 
 
 def evaluate_live_candidate(
@@ -354,19 +382,45 @@ def evaluate_live_candidate(
         SlotOccupancy.OFF_HAND,
         SlotOccupancy.TWO_HAND,
     )
+    is_crossbow = is_item_crossbow(candidate)
+    is_staff = is_item_staff(candidate)
+
     if is_weapon and target_weapon_set is None:
-        lines = [
-            "────────────────────────",
-            "⚪ WEAPON SET CONTEXT AMBIGUOUS",
-            "",
-            "Cannot determine whether weapon belongs to Weapon Set 1 or Weapon Set 2.",
-            "Please specify weapon set context when running live mode:",
-            "  companion gear live --weapon-set set_1",
-            "  or",
-            "  companion gear live --weapon-set set_2",
-            "────────────────────────",
-        ]
-        return "\n".join(lines)
+        if stage.is_pre_swap:
+            if is_crossbow:
+                target_weapon_set = "set_1"
+            else:
+                lines = [
+                    "────────────────────────",
+                    "⚪ WEAPON SET CONTEXT AMBIGUOUS",
+                    "",
+                    "Cannot determine whether weapon belongs to Weapon Set 1 or Weapon Set 2.",
+                    "Please specify weapon set context when running live mode:",
+                    "  companion gear live --weapon-set set_1",
+                    "  or",
+                    "  companion gear live --weapon-set set_2",
+                    "────────────────────────",
+                ]
+                return "\n".join(lines)
+        else:
+            # Post-swap dual set model: Set 1 = Staff, Set 2 = Crossbow
+            if is_staff:
+                target_weapon_set = "set_1"
+            elif is_crossbow:
+                target_weapon_set = "set_2"
+            else:
+                lines = [
+                    "────────────────────────",
+                    "⚪ WEAPON SET CONTEXT AMBIGUOUS",
+                    "",
+                    "Cannot determine whether weapon belongs to Weapon Set 1 or Weapon Set 2.",
+                    "Please specify weapon set context when running live mode:",
+                    "  companion gear live --weapon-set set_1",
+                    "  or",
+                    "  companion gear live --weapon-set set_2",
+                    "────────────────────────",
+                ]
+                return "\n".join(lines)
 
     wset_ctx = WeaponSetContext.from_val(target_weapon_set) if target_weapon_set else candidate.weapon_set
     rec = engine.evaluate_candidate(
@@ -523,28 +577,72 @@ def run_live_watcher(
                                         continue
 
                             elif is_weapon:
+                                is_crossbow = is_item_crossbow(candidate)
+                                is_staff = is_item_staff(candidate)
                                 if weapon_set is None:
                                     w1_entry = loadout.get_slot(SlotType.MAIN_HAND, weapon_set=WeaponSetContext.WEAPON_SET_1) if loadout else None
                                     w2_entry = loadout.get_slot(SlotType.MAIN_HAND, weapon_set=WeaponSetContext.WEAPON_SET_2) if loadout else None
                                     has_w1 = w1_entry is not None and w1_entry.item is not None
                                     has_w2 = w2_entry is not None and w2_entry.item is not None
 
-                                    if not has_w1:
-                                        run_loadout_set_item(
-                                            r_path,
-                                            character_id,
-                                            candidate.slot.value,
-                                            raw_text,
-                                            weapon_set_name="set_1",
-                                        )
-                                        if candidate.slot_occupancy == SlotOccupancy.TWO_HAND:
-                                            run_loadout_clear(r_path, character_id, SlotType.OFF_HAND.value, weapon_set_name="set_1")
-                                        output_writer("✓ CURRENT WEAPON SET 1 LEARNED")
-                                        output_writer(candidate.name or candidate.base_type)
-                                        output_writer("")
-                                        bootstrapped = True
-                                    elif not has_w2:
-                                        if not is_item_decision_equal(w1_entry.item, candidate):
+                                    if stage.is_pre_swap:
+                                        if is_crossbow:
+                                            if not has_w1:
+                                                run_loadout_set_item(
+                                                    r_path,
+                                                    character_id,
+                                                    candidate.slot.value,
+                                                    raw_text,
+                                                    weapon_set_name="set_1",
+                                                )
+                                                if candidate.slot_occupancy == SlotOccupancy.TWO_HAND:
+                                                    run_loadout_clear(r_path, character_id, SlotType.OFF_HAND.value, weapon_set_name="set_1")
+                                                output_writer("✓ CURRENT WEAPON 1 LEARNED")
+                                                output_writer(candidate.name or candidate.base_type)
+                                                output_writer("")
+                                                bootstrapped = True
+                                            else:
+                                                # Pre-swap: do NOT automatically learn Weapon Set 2!
+                                                # Treat every subsequent crossbow as candidate against current Weapon 1
+                                                bootstrapped = False
+                                        else:
+                                            if not has_w1:
+                                                run_loadout_set_item(
+                                                    r_path,
+                                                    character_id,
+                                                    candidate.slot.value,
+                                                    raw_text,
+                                                    weapon_set_name="set_1",
+                                                )
+                                                if candidate.slot_occupancy == SlotOccupancy.TWO_HAND:
+                                                    run_loadout_clear(r_path, character_id, SlotType.OFF_HAND.value, weapon_set_name="set_1")
+                                                output_writer("✓ CURRENT WEAPON SET 1 LEARNED")
+                                                output_writer(candidate.name or candidate.base_type)
+                                                output_writer("")
+                                                bootstrapped = True
+                                            else:
+                                                bootstrapped = False
+                                    else:
+                                        # Post-swap dual-set model: Set 1 = Staff, Set 2 = Crossbow
+                                        if w1_entry and w1_entry.item and is_item_decision_equal(w1_entry.item, candidate):
+                                            output_writer("Weapon is already recorded as Weapon Set 1. To record Weapon Set 2, capture a distinct weapon.")
+                                            output_writer("")
+                                            continue
+                                        if is_staff and not has_w1:
+                                            run_loadout_set_item(
+                                                r_path,
+                                                character_id,
+                                                candidate.slot.value,
+                                                raw_text,
+                                                weapon_set_name="set_1",
+                                            )
+                                            if candidate.slot_occupancy == SlotOccupancy.TWO_HAND:
+                                                run_loadout_clear(r_path, character_id, SlotType.OFF_HAND.value, weapon_set_name="set_1")
+                                            output_writer("✓ CURRENT WEAPON SET 1 LEARNED")
+                                            output_writer(candidate.name or candidate.base_type)
+                                            output_writer("")
+                                            bootstrapped = True
+                                        elif is_crossbow and not has_w2:
                                             run_loadout_set_item(
                                                 r_path,
                                                 character_id,
@@ -558,10 +656,34 @@ def run_live_watcher(
                                             output_writer(candidate.name or candidate.base_type)
                                             output_writer("")
                                             bootstrapped = True
-                                        else:
-                                            output_writer("Weapon is already recorded as Weapon Set 1. To record Weapon Set 2, capture a distinct weapon.")
+                                        elif not has_w1:
+                                            run_loadout_set_item(
+                                                r_path,
+                                                character_id,
+                                                candidate.slot.value,
+                                                raw_text,
+                                                weapon_set_name="set_1",
+                                            )
+                                            if candidate.slot_occupancy == SlotOccupancy.TWO_HAND:
+                                                run_loadout_clear(r_path, character_id, SlotType.OFF_HAND.value, weapon_set_name="set_1")
+                                            output_writer("✓ CURRENT WEAPON SET 1 LEARNED")
+                                            output_writer(candidate.name or candidate.base_type)
                                             output_writer("")
-                                            continue
+                                            bootstrapped = True
+                                        elif not has_w2:
+                                            run_loadout_set_item(
+                                                r_path,
+                                                character_id,
+                                                candidate.slot.value,
+                                                raw_text,
+                                                weapon_set_name="set_2",
+                                            )
+                                            if candidate.slot_occupancy == SlotOccupancy.TWO_HAND:
+                                                run_loadout_clear(r_path, character_id, SlotType.OFF_HAND.value, weapon_set_name="set_2")
+                                            output_writer("✓ CURRENT WEAPON SET 2 LEARNED")
+                                            output_writer(candidate.name or candidate.base_type)
+                                            output_writer("")
+                                            bootstrapped = True
                                 else:
                                     target_slot = candidate.slot
                                     slot_entry = loadout.get_slot(target_slot, weapon_set=wset_ctx) if loadout else None

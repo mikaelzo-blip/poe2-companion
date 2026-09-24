@@ -13,6 +13,10 @@ from companion.equipment.fact_dependencies import (
     RecommendationFactDependencies,
     determine_recommendation_fact_dependencies,
 )
+from companion.equipment.fubgun_priorities import (
+    get_fubgun_build_priority_short,
+    get_fubgun_slot_priority_note,
+)
 from companion.equipment.loadout_cli import load_loadout
 from companion.equipment.parser import parse_item_text
 from companion.equipment.partial_projection import project_candidate_on_loadout
@@ -139,6 +143,7 @@ class EquipmentIntelligenceEngine:
             projection=projection,
             cascade_result=cascade_result,
             fact_dependencies=fact_dependencies,
+            stage=resolved_stage,
         )
 
         # 5. Loadout contextual analysis (deficiencies, marginal value tiers)
@@ -162,6 +167,20 @@ class EquipmentIntelligenceEngine:
         chaos_res_delta = projection.chaos_res.delta
 
         has_defense_regression = (armour_delta < 0 or evasion_delta < 0 or es_delta < 0)
+
+        # Fubgun campaign gear priorities:
+        # On HELMET during campaign:
+        # Resistance = high priority, Maximum Life = high priority
+        # Local Armour/Evasion/ES = secondary/tie-breaker
+        # Trading local defense base types while gaining high-priority Life or Resistance does not block upgrade
+        if (
+            has_defense_regression
+            and resolved_slot == SlotType.HELMET
+            and resolved_stage.is_campaign
+            and (life_delta > 0 or fire_res_delta > 0 or cold_res_delta > 0 or lightning_res_delta > 0 or chaos_res_delta > 0)
+        ):
+            has_defense_regression = False
+
         has_ms_regression = ms_delta < 0
         has_life_regression = life_delta < 0
         has_res_regression = (
@@ -274,6 +293,24 @@ class EquipmentIntelligenceEngine:
             downgrade_reason=downgrade_reason,
         )
 
+        if verdict == Verdict.EQUIP_NOW and resolved_stage.is_campaign:
+            if resolved_slot == SlotType.HELMET and life_delta > 0:
+                res_gains = []
+                if fire_res_delta > 0:
+                    res_gains.append("Fire Resistance")
+                if cold_res_delta > 0:
+                    res_gains.append("Cold Resistance")
+                if lightning_res_delta > 0:
+                    res_gains.append("Lightning Resistance")
+                if chaos_res_delta > 0:
+                    res_gains.append("Chaos Resistance")
+                if res_gains:
+                    reason = f"Life + {' + '.join(res_gains)} match the Fubgun campaign gearing priority."
+                else:
+                    reason = "Life improvement matches the Fubgun campaign gearing priority."
+            elif resolved_slot == SlotType.BOOTS and ms_delta > 0:
+                reason = "Movement Speed matches the Fubgun campaign gearing priority."
+
         # 7. Actionable guidance
         guidance: list[str] = []
         if verdict == Verdict.EQUIP_NOW:
@@ -292,6 +329,8 @@ class EquipmentIntelligenceEngine:
         elif verdict == Verdict.INSUFFICIENT_DATA:
             guidance.append("Capture missing baseline or loadout facts before making equip decision.")
 
+        slot_priority = get_fubgun_slot_priority_note(resolved_slot, resolved_stage)
+
         return EquipmentRecommendation(
             character_id=character_id,
             slot=resolved_slot,
@@ -307,4 +346,6 @@ class EquipmentIntelligenceEngine:
             sufficiency=sufficiency,
             contextual_analysis=contextual_analysis,
             actionable_guidance=guidance,
+            stage=resolved_stage,
+            guide_priority=slot_priority,
         )

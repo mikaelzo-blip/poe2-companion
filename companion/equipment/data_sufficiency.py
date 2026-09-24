@@ -61,8 +61,17 @@ RE_MATERIAL_UNSUPPORTED = re.compile(
 )
 
 
-def is_material_unsupported_modifier(mod_text: str) -> bool:
+def is_material_unsupported_modifier(
+    mod_text: str,
+    slot: SlotType | None = None,
+    stage: Any | None = None,
+) -> bool:
     """Return True if an unsupported modifier text represents a material combat, defense, or recovery effect."""
+    from companion.equipment.fubgun_priorities import is_fubgun_non_material_modifier
+
+    if is_fubgun_non_material_modifier(mod_text, slot=slot, stage=stage):
+        return False
+
     return bool(RE_MATERIAL_UNSUPPORTED.search(mod_text))
 
 
@@ -76,6 +85,7 @@ def analyze_data_sufficiency(
     mechanic_assessment: MechanicSafetyAssessment | None = None,
     cascade_result: Any = None,
     fact_dependencies: RecommendationFactDependencies | None = None,
+    stage: Any | None = None,
 ) -> DataSufficiencyResult:
     """Analyze data sufficiency for equipping candidate in target slot.
 
@@ -329,7 +339,7 @@ def analyze_data_sufficiency(
     for it in displaced_items:
         for m in it.modifiers:
             if m.modifier_type == NormalizedModifierType.UNKNOWN_MODIFIER:
-                if is_material_unsupported_modifier(m.raw_text):
+                if is_material_unsupported_modifier(m.raw_text, slot=slot, stage=stage):
                     unsupported_displaced_effects.append(m.raw_text)
 
     if unsupported_displaced_effects:

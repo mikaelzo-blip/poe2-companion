@@ -12,7 +12,11 @@ from companion.equipment.mechanics import lookup_special_mechanic
 from companion.equipment.partial_projection import PartialLoadoutProjection, StatProjection
 from companion.equipment.precedence import Verdict
 from companion.equipment.requirements import RequirementCascadeResult
-from companion.equipment.rules import BuildBreakerCertainty, BuildBreakerEvaluation
+from companion.equipment.rules import (
+    BuildBreakerCertainty,
+    BuildBreakerEvaluation,
+    BuildProgressionStage,
+)
 from companion.equipment.schema import (
     ItemCandidate,
     NormalizedModifier,
@@ -38,6 +42,8 @@ class EquipmentRecommendation(BaseModel):
     sufficiency: DataSufficiencyResult | None = None
     contextual_analysis: LoadoutContextualAnalysis | None = None
     actionable_guidance: list[str] = Field(default_factory=list)
+    stage: BuildProgressionStage | None = None
+    guide_priority: str | None = None
 
     @property
     def displaced_build_mechanics(self) -> list[NormalizedModifier]:

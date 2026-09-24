@@ -811,7 +811,7 @@ def test_live_bootstrap_weapons_sequential_flow(tmp_path: Path):
     char_id = "test_bootstrap_weapons"
 
     store = CharacterStateStore(runtime_dir)
-    store.save_character(CharacterState(character_id=char_id, character_name="WeaponSeqHero", build_progression={"active_stage": "lvl 15-32"}))
+    store.save_character(CharacterState(character_id=char_id, character_name="WeaponSeqHero", build_progression={"active_stage": "lvl 52 Swap"}))
     store.set_active_character(char_id)
 
     # Sequence: 1. Staff (Set 1), 2. Interleaved Boots, 3. Duplicate Staff, 4. Crossbow (Set 2)
@@ -826,7 +826,7 @@ def test_live_bootstrap_weapons_sequential_flow(tmp_path: Path):
     run_live_watcher(
         runtime_dir=runtime_dir,
         character_id=char_id,
-        stage=BuildProgressionStage.LEVELING_15_32,
+        stage=BuildProgressionStage.SWAP_52,
         bootstrap=True,
         weapon_set=None,
         clipboard_reader=mock_reader,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
+import re
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -44,7 +45,25 @@ class DataSufficiencyResult(BaseModel):
     is_safety_verified: bool = True
     is_mechanics_safe: bool = True
     unobserved_critical_facts: list[str] = Field(default_factory=list)
+    unsupported_displaced_effects: list[str] = Field(default_factory=list)
     fact_dependencies: RecommendationFactDependencies | None = None
+
+
+RE_MATERIAL_UNSUPPORTED = re.compile(
+    r"\b("
+    r"damage|adds?\b.*\bto\b|critical|strike[a-z]*|penetrat[a-z]*|multiplier[a-z]*|attack\s+speed|cast\s+speed|"
+    r"regenerat[a-z]*|leech[a-z]*|recoup[a-z]*|recovery|gain\s+on\s+hit|gain\s+on\s+kill|maximum\s+life|maximum\s+mana|"
+    r"applies?\s+to|taken\s+as|damage\s+taken|suppress[a-z]*|block[a-z]*|deflect[a-z]*|ward|maximum\s+.*resistan[a-z]*|"
+    r"intimidate|onslaught|unholy\s+might|consecrat[a-z]*|curse[a-z]*|blind[a-z]*|taunt[a-z]*|ignite|shock|freeze|chill|poison|bleed|exposure|wither|"
+    r"gem[a-z]*|socketed|reserv[a-z]*|cooldown[a-z]*|charge[a-z]*|aura[a-z]*"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def is_material_unsupported_modifier(mod_text: str) -> bool:
+    """Return True if an unsupported modifier text represents a material combat, defense, or recovery effect."""
+    return bool(RE_MATERIAL_UNSUPPORTED.search(mod_text))
 
 
 def analyze_data_sufficiency(
@@ -297,15 +316,39 @@ def analyze_data_sufficiency(
         is_mechanics_safe = False
         reasons.extend(mech_eval.reasons)
 
-    # 6. Evaluate overall sufficiency
+    # 6. Displaced item material unsupported modifiers check
+    unsupported_displaced_effects: list[str] = []
+    displaced_items: list[ItemCandidate] = []
+    if projection is not None and hasattr(projection, "displaced_items"):
+        displaced_items = list(projection.displaced_items)
+    elif loadout is not None:
+        slot_entry = loadout.get_slot(slot, candidate.weapon_set)
+        if slot_entry and slot_entry.item:
+            displaced_items = [slot_entry.item]
+
+    for it in displaced_items:
+        for m in it.modifiers:
+            if m.modifier_type == NormalizedModifierType.UNKNOWN_MODIFIER:
+                if is_material_unsupported_modifier(m.raw_text):
+                    unsupported_displaced_effects.append(m.raw_text)
+
+    if unsupported_displaced_effects:
+        slot_label = slot.value if slot else "item"
+        reasons.append(
+            f"Current {slot_label} contains unsupported or unmodeled material effects: "
+            f"{', '.join(unsupported_displaced_effects)}. Cannot safely say the candidate is better yet."
+        )
+
+    # 7. Evaluate overall sufficiency
     # Strict gate: if slot unknown, baseline missing/stale, topology unknown, build-breaker unknown/breaker,
-    # unmodeled mechanic added/removed, or any needed baseline fact is missing/stale/conflicting -> INSUFFICIENT_FOR_CONFIDENT_EQUIP
+    # unmodeled mechanic added/removed, material displaced unknown modifiers, or any needed baseline fact is missing/stale/conflicting -> INSUFFICIENT_FOR_CONFIDENT_EQUIP
     if (
         not is_slot_known
         or not is_baseline_anchored
         or not is_topology_known
         or not is_safety_verified
         or not is_mechanics_safe
+        or bool(unsupported_displaced_effects)
         or has_insufficient_needed_fact
         or baseline is None
     ):
@@ -318,6 +361,7 @@ def analyze_data_sufficiency(
             is_safety_verified=is_safety_verified,
             is_mechanics_safe=is_mechanics_safe,
             unobserved_critical_facts=unobserved_facts,
+            unsupported_displaced_effects=unsupported_displaced_effects,
             fact_dependencies=fact_dependencies,
         )
 
@@ -336,6 +380,7 @@ def analyze_data_sufficiency(
             is_safety_verified=is_safety_verified,
             is_mechanics_safe=is_mechanics_safe,
             unobserved_critical_facts=unobserved_facts,
+            unsupported_displaced_effects=unsupported_displaced_effects,
             fact_dependencies=fact_dependencies,
         )
 
@@ -349,5 +394,6 @@ def analyze_data_sufficiency(
         is_safety_verified=True,
         is_mechanics_safe=True,
         unobserved_critical_facts=[],
+        unsupported_displaced_effects=[],
         fact_dependencies=fact_dependencies,
     )

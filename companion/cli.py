@@ -264,6 +264,14 @@ def build_parser() -> argparse.ArgumentParser:
     gcomp_p.add_argument("--json", action="store_true", help="Output comparison as JSON")
 
     # Equipment Intelligence gear subparsers
+    glive_p = gear_sub.add_parser("live", help="Start MVP live clipboard monitoring mode")
+    glive_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
+    glive_p.add_argument("--stage", help="Build progression stage (e.g. 'lvl 15-32', 'lvl 52 swap'). If omitted, uses persisted runtime stage.")
+    glive_p.add_argument("--character-id", help="Character ID")
+    glive_p.add_argument("--weapon-set", help="Target weapon set (e.g. set_1, set_2)")
+    glive_p.add_argument("--poll-interval", type=float, default=0.25, help="Clipboard polling interval in seconds")
+    glive_p.add_argument("--json", action="store_true", help="Output recommendation as JSON")
+
     gclip_p = gear_sub.add_parser("inspect-clipboard", help="Inspect and evaluate item from clipboard")
     gclip_p.add_argument("--slot", help="Target equipment slot")
     gclip_p.add_argument("--weapon-set", help="Target weapon set (e.g. set_1, set_2)")
@@ -883,6 +891,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return handle_gear_audit(args)
         elif args.gear_action == "compare":
             return handle_gear_compare(args)
+        elif args.gear_action == "live":
+            return handle_gear_live(args)
         elif args.gear_action == "inspect-clipboard":
             return handle_gear_inspect_clipboard(args)
         elif args.gear_action == "evaluate":
@@ -1143,6 +1153,30 @@ def handle_gear_compare(args: argparse.Namespace) -> int:
             print(f"  Trade-offs: {upg.trade_offs}")
         print(f"  Investment advice: {advice.recommendation}")
     return 0
+
+
+def handle_gear_live(args: argparse.Namespace) -> int:
+    from companion.equipment.live_watcher import resolve_live_stage, run_live_watcher
+
+    char_id = _resolve_char_id(args)
+    try:
+        stage = resolve_live_stage(
+            stage_arg=getattr(args, "stage", None),
+            runtime_dir=args.runtime,
+            char_id=char_id,
+        )
+    except ValueError as err:
+        sys.stderr.write(f"Error: {err}\n")
+        return 1
+
+    return run_live_watcher(
+        runtime_dir=args.runtime,
+        character_id=char_id,
+        stage=stage,
+        poll_interval=getattr(args, "poll_interval", 0.25),
+        as_json=getattr(args, "json", False),
+        weapon_set=getattr(args, "weapon_set", None),
+    )
 
 
 def handle_gear_inspect_clipboard(args: argparse.Namespace) -> int:

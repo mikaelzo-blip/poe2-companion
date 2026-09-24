@@ -12,8 +12,53 @@ from companion.equipment.recommendation import EquipmentRecommendation
 from companion.equipment.rules import BuildProgressionStage
 
 
+def _read_win32_clipboard() -> str:
+    """Read Windows unicode clipboard text passively via ctypes user32."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+
+        user32.OpenClipboard.argtypes = [wintypes.HWND]
+        user32.OpenClipboard.restype = wintypes.BOOL
+        user32.CloseClipboard.argtypes = []
+        user32.CloseClipboard.restype = wintypes.BOOL
+        user32.GetClipboardData.argtypes = [wintypes.UINT]
+        user32.GetClipboardData.restype = wintypes.HANDLE
+        kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalLock.restype = ctypes.c_void_p
+        kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalUnlock.restype = wintypes.BOOL
+
+        if not user32.OpenClipboard(None):
+            return ""
+        try:
+            h_data = user32.GetClipboardData(13)  # CF_UNICODETEXT
+            if not h_data:
+                return ""
+            p_data = kernel32.GlobalLock(h_data)
+            if not p_data:
+                return ""
+            try:
+                return ctypes.wstring_at(p_data)
+            finally:
+                kernel32.GlobalUnlock(h_data)
+        finally:
+            user32.CloseClipboard()
+    except Exception:
+        return ""
+
+
 def _read_os_clipboard() -> str:
     """Read text from platform clipboard passively without simulating inputs."""
+    # Fast native Windows clipboard reader
+    if sys.platform == "win32":
+        text = _read_win32_clipboard()
+        if text:
+            return text
+
     # Try tkinter if available
     try:
         import tkinter

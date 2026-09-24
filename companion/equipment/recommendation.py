@@ -8,11 +8,17 @@ from companion.equipment.contextual_value import (
     LoadoutContextualAnalysis,
 )
 from companion.equipment.data_sufficiency import DataSufficiencyResult
+from companion.equipment.mechanics import lookup_special_mechanic
 from companion.equipment.partial_projection import PartialLoadoutProjection, StatProjection
 from companion.equipment.precedence import Verdict
 from companion.equipment.requirements import RequirementCascadeResult
 from companion.equipment.rules import BuildBreakerCertainty, BuildBreakerEvaluation
-from companion.equipment.schema import ItemCandidate, SlotType, WeaponSetContext
+from companion.equipment.schema import (
+    ItemCandidate,
+    NormalizedModifier,
+    SlotType,
+    WeaponSetContext,
+)
 
 
 class EquipmentRecommendation(BaseModel):
@@ -32,6 +38,26 @@ class EquipmentRecommendation(BaseModel):
     sufficiency: DataSufficiencyResult | None = None
     contextual_analysis: LoadoutContextualAnalysis | None = None
     actionable_guidance: list[str] = Field(default_factory=list)
+
+    @property
+    def displaced_build_mechanics(self) -> list[NormalizedModifier]:
+        return self.projection.displaced_build_mechanics
+
+    @property
+    def candidate_build_mechanics(self) -> list[NormalizedModifier]:
+        return self.projection.candidate_build_mechanics
+
+    @property
+    def removed_build_mechanics(self) -> list[NormalizedModifier]:
+        return self.projection.removed_build_mechanics
+
+    @property
+    def added_build_mechanics(self) -> list[NormalizedModifier]:
+        return self.projection.added_build_mechanics
+
+    @property
+    def preserved_build_mechanics(self) -> list[NormalizedModifier]:
+        return self.projection.preserved_build_mechanics
 
     @property
     def formatted_report(self) -> str:
@@ -194,6 +220,41 @@ def format_recommendation_report(rec: EquipmentRecommendation) -> str:
         lines.append(f"  * Warning: Replaces attribute needed by socketed gem {d.target_name} (Shortfall: {d.shortfall})")
 
     lines.append("")
+    lines.append("--- BUILD MECHANICS ---")
+    p = rec.projection
+    has_mechanics = bool(
+        p.displaced_build_mechanics
+        or p.candidate_build_mechanics
+        or p.removed_build_mechanics
+        or p.added_build_mechanics
+        or p.preserved_build_mechanics
+    )
+    if has_mechanics:
+        lines.append("  Removed:")
+        if p.removed_build_mechanics:
+            for m in p.removed_build_mechanics:
+                defn = lookup_special_mechanic(m)
+                lines.append(f"    * {defn.canonical_name} [{defn.projection_support.value}]")
+        else:
+            lines.append("    * None")
+
+        lines.append("  Added:")
+        if p.added_build_mechanics:
+            for m in p.added_build_mechanics:
+                defn = lookup_special_mechanic(m)
+                lines.append(f"    * {defn.canonical_name} [{defn.projection_support.value}]")
+        else:
+            lines.append("    * None")
+
+        if p.preserved_build_mechanics:
+            lines.append("  Preserved:")
+            for m in p.preserved_build_mechanics:
+                defn = lookup_special_mechanic(m)
+                lines.append(f"    * {defn.canonical_name} [{defn.projection_support.value}]")
+    else:
+        lines.append("  No special build mechanics on displaced or candidate item.")
+
+    lines.append("")
     if rec.safety_eval.certainty == BuildBreakerCertainty.VERIFIED_BUILD_BREAKER:
         lines.append("--- BUILD-MECHANIC SAFETY: VERIFIED_BUILD_BREAKER [BUILD BREAKER DETECTED] ---")
     elif rec.safety_eval.certainty == BuildBreakerCertainty.UNKNOWN_APPLICABILITY:
@@ -204,12 +265,18 @@ def format_recommendation_report(rec: EquipmentRecommendation) -> str:
 
     lines.append("")
     lines.append("--- UNCERTAINTIES ---")
-    if rec.sufficiency is not None and rec.sufficiency.unobserved_critical_facts:
-        for u in rec.sufficiency.unobserved_critical_facts:
-            lines.append(f"  * {u}")
-    elif rec.sufficiency is not None and rec.sufficiency.reasons:
+    uncertainty_items: list[str] = []
+    if rec.sufficiency is not None:
         for r in rec.sufficiency.reasons:
-            lines.append(f"  * {r}")
+            if r not in uncertainty_items:
+                uncertainty_items.append(r)
+        for u in rec.sufficiency.unobserved_critical_facts:
+            msg = f"Unobserved baseline stat: {u}"
+            if msg not in uncertainty_items:
+                uncertainty_items.append(msg)
+    if uncertainty_items:
+        for u in uncertainty_items:
+            lines.append(f"  * {u}")
     else:
         lines.append("  None identified.")
 

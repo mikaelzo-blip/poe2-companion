@@ -103,6 +103,7 @@ class EquipmentIntelligenceEngine:
             candidate=candidate,
             slot=resolved_slot,
             safety_eval=safety_eval,
+            projection=projection,
         )
 
         # 5. Loadout contextual analysis (deficiencies, marginal value tiers)

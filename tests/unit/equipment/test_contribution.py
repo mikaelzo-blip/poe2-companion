@@ -1,6 +1,7 @@
 """Unit tests for ItemContribution layer aggregating character-relevant effects."""
 
 import pytest
+from companion.state.provenance import VerificationState
 from companion.equipment.schema import (
     ItemCandidate,
     ModifierScope,
@@ -100,3 +101,65 @@ def test_build_item_contribution_preserves_weapon_set_and_topology():
     assert contrib.target_weapon_set == WeaponSetContext.WEAPON_SET_1
     assert contrib.slot_conflict_topology.occupied_slots == [SlotType.MAIN_HAND, SlotType.OFF_HAND]
     assert len(contrib.build_mechanic_modifiers) == 1
+
+
+def test_displayed_defense_plus_local_increased_does_not_double_count():
+    item = ItemCandidate(
+        item_id="item_knight_errant",
+        name="The Knight-errant",
+        base_type="Mail Sabatons",
+        slot=SlotType.BOOTS,
+        slot_occupancy=SlotOccupancy.SINGLE_SLOT,
+        local_armour=32,
+        local_evasion=25,
+        modifiers=[
+            NormalizedModifier(
+                modifier_type=NormalizedModifierType.LOCAL_ARMOUR_AND_EVASION,
+                scope=ModifierScope.LOCAL_ITEM_STAT,
+                value=45.0,
+                raw_text="45(30-50)% increased Armour and Evasion",
+            ),
+            NormalizedModifier(
+                modifier_type=NormalizedModifierType.MOVEMENT_SPEED,
+                scope=ModifierScope.GLOBAL_CHARACTER_STAT,
+                value=10.0,
+                raw_text="10% increased Movement Speed",
+            ),
+        ],
+    )
+    contrib = build_item_contribution(item)
+    # Proves local Armour/Evasion match displayed values without double-counting local % increase
+    assert contrib.local_armour == 32
+    assert contrib.local_evasion == 25
+    assert contrib.local_energy_shield == 0
+    assert contrib.movement_speed_delta == 10.0
+    # The 45% local increase is classified local and not present in global or unknown modifiers
+    assert not any(m.modifier_type == NormalizedModifierType.LOCAL_ARMOUR_AND_EVASION for m in contrib.global_modifiers)
+    assert not any(m.modifier_type == NormalizedModifierType.LOCAL_ARMOUR_AND_EVASION for m in contrib.unknown_modifiers)
+    assert len(contrib.global_modifiers) == 1
+    assert contrib.global_modifiers[0].modifier_type == NormalizedModifierType.MOVEMENT_SPEED
+
+
+def test_special_mechanic_enters_build_mechanic_modifiers_with_unknown_verification():
+    item = ItemCandidate(
+        item_id="item_iron_reflexes",
+        name="The Knight-errant",
+        base_type="Mail Sabatons",
+        slot=SlotType.BOOTS,
+        slot_occupancy=SlotOccupancy.SINGLE_SLOT,
+        modifiers=[
+            NormalizedModifier(
+                modifier_type=NormalizedModifierType.SPECIAL_MECHANIC,
+                scope=ModifierScope.BUILD_MECHANIC,
+                value=0.0,
+                raw_text="Iron Reflexes — Unscalable Value",
+                verification_state=VerificationState.UNKNOWN,
+            )
+        ],
+    )
+    contrib = build_item_contribution(item)
+    assert len(contrib.build_mechanic_modifiers) == 1
+    assert contrib.build_mechanic_modifiers[0].raw_text == "Iron Reflexes — Unscalable Value"
+    assert contrib.build_mechanic_modifiers[0].verification_state == VerificationState.UNKNOWN
+    assert len(contrib.unknown_modifiers) == 0
+    assert len(contrib.global_modifiers) == 0

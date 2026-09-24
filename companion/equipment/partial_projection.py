@@ -8,12 +8,20 @@ from companion.equipment.baseline import CharacterStatBaseline
 from companion.equipment.contribution import ItemContribution, build_item_contribution
 from companion.equipment.loadout import EquippedLoadout, EquippedSlotEntry
 from companion.equipment.occupancy_contribution import compute_weapon_occupancy_contribution
+from companion.equipment.mechanics import evaluate_mechanic_safety
 from companion.equipment.resistance import (
     ResistanceProjection,
     ResistanceType,
     evaluate_resistance_delta,
 )
-from companion.equipment.schema import ItemCandidate, SlotOccupancy, SlotType, WeaponSetContext
+from companion.equipment.schema import (
+    ItemCandidate,
+    NormalizedModifier,
+    NormalizedModifierType,
+    SlotOccupancy,
+    SlotType,
+    WeaponSetContext,
+)
 
 
 class StatProjection(BaseModel):
@@ -50,6 +58,11 @@ class PartialLoadoutProjection(BaseModel):
     local_armour_delta: int = 0
     local_evasion_delta: int = 0
     local_energy_shield_delta: int = 0
+    displaced_build_mechanics: list[NormalizedModifier] = Field(default_factory=list)
+    candidate_build_mechanics: list[NormalizedModifier] = Field(default_factory=list)
+    removed_build_mechanics: list[NormalizedModifier] = Field(default_factory=list)
+    added_build_mechanics: list[NormalizedModifier] = Field(default_factory=list)
+    preserved_build_mechanics: list[NormalizedModifier] = Field(default_factory=list)
     is_baseline_stale: bool = False
     baseline_anchored_revision: int | None = None
 
@@ -174,6 +187,22 @@ def project_candidate_on_loadout(
     es_val = baseline.energy_shield.value if baseline else None
     es_known = baseline.energy_shield.is_known if baseline else False
 
+    # Build mechanics evaluation across candidate and displaced items
+    disp_mechs: list[NormalizedModifier] = []
+    for c in displaced_contribs:
+        disp_mechs.extend(c.build_mechanic_modifiers)
+    for it in displaced_items:
+        for m in it.modifiers:
+            if m.modifier_type == NormalizedModifierType.SPECIAL_MECHANIC and m not in disp_mechs:
+                disp_mechs.append(m)
+
+    cand_mechs = list(cand_contrib.build_mechanic_modifiers)
+    for m in candidate.modifiers:
+        if m.modifier_type == NormalizedModifierType.SPECIAL_MECHANIC and m not in cand_mechs:
+            cand_mechs.append(m)
+
+    mech_assessment = evaluate_mechanic_safety(disp_mechs, cand_mechs, slot=slot)
+
     return PartialLoadoutProjection(
         slot=slot,
         target_weapon_set=weapon_set,
@@ -194,6 +223,11 @@ def project_candidate_on_loadout(
         local_armour_delta=local_armour_delta,
         local_evasion_delta=local_evasion_delta,
         local_energy_shield_delta=local_es_delta,
+        displaced_build_mechanics=mech_assessment.displaced_mechanics,
+        candidate_build_mechanics=mech_assessment.candidate_mechanics,
+        removed_build_mechanics=mech_assessment.removed_mechanics,
+        added_build_mechanics=mech_assessment.added_mechanics,
+        preserved_build_mechanics=mech_assessment.preserved_mechanics,
         is_baseline_stale=is_stale,
         baseline_anchored_revision=baseline.anchored_loadout_revision if baseline else None,
     )

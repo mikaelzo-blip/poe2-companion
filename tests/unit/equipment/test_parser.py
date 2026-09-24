@@ -174,3 +174,111 @@ def test_parse_unknown_topology():
     item = parse_item_text(UNKNOWN_TEXT)
     assert item.slot_occupancy == SlotOccupancy.UNKNOWN_OCCUPANCY
     assert item.slot_conflict_topology.is_known is False
+
+
+def test_parse_single_line_requires():
+    raw_text = """Item Class: Boots
+Rarity: Unique
+The Knight-errant
+Mail Sabatons
+--------
+Armour: 32 (augmented)
+Evasion Rating: 25 (augmented)
+--------
+Requires: Level 6
+--------
+Item Level: 15
+--------
+10% increased Movement Speed
+"""
+    item = parse_item_text(raw_text)
+    assert item.required_level == 6
+    assert item.required_str == 0
+    assert item.required_dex == 0
+    assert item.required_int == 0
+    assert not any("requires" in m.raw_text.lower() for m in item.modifiers)
+    assert not any(m.modifier_type == NormalizedModifierType.UNKNOWN_MODIFIER for m in item.modifiers)
+
+
+def test_parse_inline_multi_attribute_requirements():
+    raw_text = """Item Class: Gloves
+Rarity: Rare
+Doom Touch
+Strapped Mitts
+--------
+Requires: Level 15, 20 Str, 12 Dex
+--------
+Item Level: 18
+--------
++15 to maximum Life
+"""
+    item = parse_item_text(raw_text)
+    assert item.required_level == 15
+    assert item.required_str == 20
+    assert item.required_dex == 12
+    assert item.required_int == 0
+    assert not any("requires" in m.raw_text.lower() for m in item.modifiers)
+
+
+def test_parse_modifier_annotations_filtered():
+    raw_text = """Item Class: Boots
+Rarity: Unique
+The Knight-errant
+Mail Sabatons
+--------
+Requires: Level 6
+--------
+{ Unique Modifier — Speed }
+10% increased Movement Speed
+"""
+    item = parse_item_text(raw_text)
+    assert len(item.modifiers) == 1
+    assert item.modifiers[0].modifier_type == NormalizedModifierType.MOVEMENT_SPEED
+    assert "{ Unique Modifier — Speed }" in item.annotations
+    assert not any(m.modifier_type == NormalizedModifierType.UNKNOWN_MODIFIER for m in item.modifiers)
+
+
+def test_parse_unique_flavor_text_separated():
+    raw_text = """Item Class: Boots
+Rarity: Unique
+The Knight-errant
+Mail Sabatons
+--------
+Armour: 32 (augmented)
+Evasion Rating: 25 (augmented)
+--------
+Requires: Level 6
+--------
+Item Level: 15
+--------
+{ Unique Modifier — Speed }
+10% increased Movement Speed
+--------
+Some search forever for their path.
+"""
+    item = parse_item_text(raw_text)
+    assert item.flavor_text == "Some search forever for their path."
+    assert not any(m.raw_text == "Some search forever for their path." for m in item.modifiers)
+    assert not any(m.modifier_type == NormalizedModifierType.UNKNOWN_MODIFIER for m in item.modifiers)
+
+
+def test_parse_unique_preserves_real_unknown_affix_and_separates_flavor():
+    raw_text = """Item Class: Boots
+Rarity: Unique
+The Knight-errant
+Mail Sabatons
+--------
+Requires: Level 6
+--------
+{ Unique Modifier — Speed }
+10% increased Movement Speed
+{ Unique Modifier }
+10% increased Light Radius
+--------
+Some search forever for their path.
+"""
+    item = parse_item_text(raw_text)
+    assert item.flavor_text == "Some search forever for their path."
+    unknown_mods = [m for m in item.modifiers if m.modifier_type == NormalizedModifierType.UNKNOWN_MODIFIER]
+    assert len(unknown_mods) == 1
+    assert unknown_mods[0].raw_text == "10% increased Light Radius"

@@ -204,3 +204,99 @@ def test_fully_sufficient_all_facts_known():
     assert res.sufficiency == RecommendationDataSufficiency.SUFFICIENT
     assert res.is_sufficient_for_equip_now is True
     assert len(res.reasons) == 0
+
+
+def test_sufficiency_gated_by_unmodeled_removed_mechanic():
+    """Removing an unmodeled special mechanic (like Iron Reflexes) blocks confident equip in data sufficiency."""
+    from companion.equipment.schema import ModifierScope, NormalizedModifier, NormalizedModifierType
+    from companion.state.provenance import VerificationState
+
+    cand = parse_item_text(SAMPLE_BOOTS, target_slot=SlotType.BOOTS)
+    equipped_boots = cand.model_copy(
+        update={
+            "modifiers": [
+                NormalizedModifier(
+                    modifier_type=NormalizedModifierType.SPECIAL_MECHANIC,
+                    scope=ModifierScope.BUILD_MECHANIC,
+                    value=0.0,
+                    raw_text="Iron Reflexes — Unscalable Value",
+                    verification_state=VerificationState.UNKNOWN,
+                    mechanic_id="iron_reflexes",
+                )
+            ]
+        }
+    )
+
+    loadout = EquippedLoadout(loadout_id="l1", character_id="test", revision=1, is_finalized=True)
+    loadout.set_slot(SlotType.BOOTS, equipped_boots)
+    baseline = CharacterStatBaseline.create_partial(
+        baseline_id="b1",
+        character_id="test",
+        anchored_loadout_revision=1,
+        life=1000,
+        fire_res=75,
+        cold_res=75,
+        lightning_res=75,
+        chaos_res=0,
+    )
+    safe = BuildBreakerEvaluation(certainty=BuildBreakerCertainty.VERIFIED_SAFE)
+
+    res = analyze_data_sufficiency(
+        baseline=baseline,
+        loadout=loadout,
+        candidate=cand,
+        slot=SlotType.BOOTS,
+        safety_eval=safe,
+    )
+    assert res.sufficiency == RecommendationDataSufficiency.INSUFFICIENT_FOR_CONFIDENT_EQUIP
+    assert res.is_sufficient_for_equip_now is False
+    assert res.is_mechanics_safe is False
+    assert any("Iron Reflexes" in r for r in res.reasons)
+
+
+def test_sufficiency_gated_by_unmodeled_added_mechanic():
+    """Adding an unmodeled special mechanic blocks confident equip in data sufficiency."""
+    from companion.equipment.schema import ModifierScope, NormalizedModifier, NormalizedModifierType
+    from companion.state.provenance import VerificationState
+
+    cand_plain = parse_item_text(SAMPLE_BOOTS, target_slot=SlotType.BOOTS)
+    cand_special = cand_plain.model_copy(
+        update={
+            "modifiers": [
+                NormalizedModifier(
+                    modifier_type=NormalizedModifierType.SPECIAL_MECHANIC,
+                    scope=ModifierScope.BUILD_MECHANIC,
+                    value=0.0,
+                    raw_text="Iron Reflexes — Unscalable Value",
+                    verification_state=VerificationState.UNKNOWN,
+                    mechanic_id="iron_reflexes",
+                )
+            ]
+        }
+    )
+
+    loadout = EquippedLoadout(loadout_id="l1", character_id="test", revision=1, is_finalized=True)
+    loadout.set_slot(SlotType.BOOTS, cand_plain)
+    baseline = CharacterStatBaseline.create_partial(
+        baseline_id="b1",
+        character_id="test",
+        anchored_loadout_revision=1,
+        life=1000,
+        fire_res=75,
+        cold_res=75,
+        lightning_res=75,
+        chaos_res=0,
+    )
+    safe = BuildBreakerEvaluation(certainty=BuildBreakerCertainty.VERIFIED_SAFE)
+
+    res = analyze_data_sufficiency(
+        baseline=baseline,
+        loadout=loadout,
+        candidate=cand_special,
+        slot=SlotType.BOOTS,
+        safety_eval=safe,
+    )
+    assert res.sufficiency == RecommendationDataSufficiency.INSUFFICIENT_FOR_CONFIDENT_EQUIP
+    assert res.is_sufficient_for_equip_now is False
+    assert res.is_mechanics_safe is False
+    assert any("Iron Reflexes" in r for r in res.reasons)

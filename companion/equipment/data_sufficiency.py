@@ -7,9 +7,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from companion.equipment.baseline import CharacterStatBaseline
 from companion.equipment.loadout import EquippedLoadout
+from companion.equipment.mechanics import MechanicSafetyAssessment, evaluate_mechanic_safety
 from companion.equipment.rules import BuildBreakerCertainty, BuildBreakerEvaluation
 from companion.equipment.schema import (
     ItemCandidate,
+    NormalizedModifierType,
     SlotOccupancy,
     SlotType,
 )
@@ -34,6 +36,7 @@ class DataSufficiencyResult(BaseModel):
     is_slot_known: bool = True
     is_baseline_anchored: bool = True
     is_safety_verified: bool = True
+    is_mechanics_safe: bool = True
     unobserved_critical_facts: list[str] = Field(default_factory=list)
 
 
@@ -43,6 +46,8 @@ def analyze_data_sufficiency(
     candidate: ItemCandidate,
     slot: SlotType,
     safety_eval: BuildBreakerEvaluation,
+    projection: Any = None,
+    mechanic_assessment: MechanicSafetyAssessment | None = None,
 ) -> DataSufficiencyResult:
     """Analyze data sufficiency for equipping candidate in target slot.
 
@@ -122,13 +127,46 @@ def analyze_data_sufficiency(
             f"Candidate violates verified build-breaker rule: {safety_eval.reason or safety_eval.rule_name}"
         )
 
-    # 5. Evaluate overall sufficiency
-    # Strict gate: if slot unknown, baseline missing/stale, topology unknown, or build-breaker unknown/breaker -> INSUFFICIENT_FOR_CONFIDENT_EQUIP
+    # 5. Build mechanics safety check
+    is_mechanics_safe = True
+    if mechanic_assessment is not None:
+        mech_eval = mechanic_assessment
+    elif projection is not None and hasattr(projection, "displaced_build_mechanics"):
+        mech_eval = evaluate_mechanic_safety(
+            displaced_modifiers=projection.displaced_build_mechanics,
+            candidate_modifiers=projection.candidate_build_mechanics,
+            slot=slot,
+        )
+    else:
+        disp_mods = []
+        if loadout is not None:
+            slot_entry = loadout.get_slot(slot, candidate.weapon_set)
+            if slot_entry and slot_entry.item:
+                disp_mods = [
+                    m for m in slot_entry.item.modifiers
+                    if m.modifier_type == NormalizedModifierType.SPECIAL_MECHANIC
+                    or m.scope.value == "BUILD_MECHANIC"
+                ]
+        cand_mods = [
+            m for m in candidate.modifiers
+            if m.modifier_type == NormalizedModifierType.SPECIAL_MECHANIC
+            or m.scope.value == "BUILD_MECHANIC"
+        ]
+        mech_eval = evaluate_mechanic_safety(disp_mods, cand_mods, slot=slot)
+
+    if not mech_eval.is_safe_for_equip:
+        is_mechanics_safe = False
+        reasons.extend(mech_eval.reasons)
+
+    # 6. Evaluate overall sufficiency
+    # Strict gate: if slot unknown, baseline missing/stale, topology unknown, build-breaker unknown/breaker,
+    # or unmodeled mechanic added/removed -> INSUFFICIENT_FOR_CONFIDENT_EQUIP
     if (
         not is_slot_known
         or not is_baseline_anchored
         or not is_topology_known
         or not is_safety_verified
+        or not is_mechanics_safe
         or baseline is None
     ):
         return DataSufficiencyResult(
@@ -138,6 +176,7 @@ def analyze_data_sufficiency(
             is_slot_known=is_slot_known,
             is_baseline_anchored=is_baseline_anchored,
             is_safety_verified=is_safety_verified,
+            is_mechanics_safe=is_mechanics_safe,
             unobserved_critical_facts=unobserved_facts,
         )
 
@@ -154,6 +193,7 @@ def analyze_data_sufficiency(
             is_slot_known=is_slot_known,
             is_baseline_anchored=is_baseline_anchored,
             is_safety_verified=is_safety_verified,
+            is_mechanics_safe=is_mechanics_safe,
             unobserved_critical_facts=unobserved_facts,
         )
 
@@ -165,5 +205,6 @@ def analyze_data_sufficiency(
         is_slot_known=True,
         is_baseline_anchored=True,
         is_safety_verified=True,
+        is_mechanics_safe=True,
         unobserved_critical_facts=[],
     )

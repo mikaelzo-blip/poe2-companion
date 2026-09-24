@@ -62,6 +62,7 @@ def test_normalized_modifier_type_members():
     assert NormalizedModifierType.LOCAL_ARMOUR == "LOCAL_ARMOUR"
     assert NormalizedModifierType.LOCAL_EVASION == "LOCAL_EVASION"
     assert NormalizedModifierType.LOCAL_ENERGY_SHIELD == "LOCAL_ENERGY_SHIELD"
+    assert NormalizedModifierType.LOCAL_ARMOUR_AND_EVASION == "LOCAL_ARMOUR_AND_EVASION"
     assert NormalizedModifierType.MOVEMENT_SPEED == "MOVEMENT_SPEED"
     assert NormalizedModifierType.STRENGTH == "STRENGTH"
     assert NormalizedModifierType.DEXTERITY == "DEXTERITY"
@@ -72,6 +73,7 @@ def test_normalized_modifier_type_members():
     assert NormalizedModifierType.INCREASED_FIRE_DAMAGE == "INCREASED_FIRE_DAMAGE"
     assert NormalizedModifierType.FIRE_SPELL_LEVEL == "FIRE_SPELL_LEVEL"
     assert NormalizedModifierType.ALL_SPELL_LEVEL == "ALL_SPELL_LEVEL"
+    assert NormalizedModifierType.SPECIAL_MECHANIC == "SPECIAL_MECHANIC"
     assert NormalizedModifierType.UNKNOWN_MODIFIER == "UNKNOWN_MODIFIER"
 
 

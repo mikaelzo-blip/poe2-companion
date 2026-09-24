@@ -1,6 +1,7 @@
 """Unit tests for modifier normalizer distinguishing scopes and types."""
 
 import pytest
+from companion.state.provenance import VerificationState
 from companion.equipment.schema import (
     ModifierScope,
     NormalizedModifierType,
@@ -102,3 +103,53 @@ def test_normalize_unknown_and_conditional_modifiers():
 
     cond_mod = normalize_modifier("Gain 8% of Physical Damage as Extra Fire Damage during Focus")
     assert cond_mod.scope == ModifierScope.CONDITIONAL
+
+
+def test_normalize_modifier_annotation_filtered():
+    assert normalize_modifier("{ Unique Modifier — Armour, Evasion }") is None
+    assert normalize_modifier("{ Unique Modifier }") is None
+    assert normalize_modifier("{ Unique Modifier — Speed }") is None
+
+    mods = normalize_modifier_text([
+        "{ Unique Modifier }",
+        "+10% increased Movement Speed",
+    ])
+    assert len(mods) == 1
+    assert mods[0].modifier_type == NormalizedModifierType.MOVEMENT_SPEED
+    assert not any(m.modifier_type == NormalizedModifierType.UNKNOWN_MODIFIER for m in mods)
+
+
+def test_normalize_hybrid_local_defense_modifier():
+    mod = normalize_modifier("45(30-50)% increased Armour and Evasion", slot=SlotType.BOOTS)
+    assert mod is not None
+    assert mod.scope == ModifierScope.LOCAL_ITEM_STAT
+    assert mod.modifier_type == NormalizedModifierType.LOCAL_ARMOUR_AND_EVASION
+    assert mod.value == 45.0
+    assert mod.raw_text == "45(30-50)% increased Armour and Evasion"
+
+
+def test_normalize_special_mechanic_text():
+    mod = normalize_modifier("Iron Reflexes — Unscalable Value")
+    assert mod is not None
+    assert mod.modifier_type == NormalizedModifierType.SPECIAL_MECHANIC
+    assert mod.scope == ModifierScope.BUILD_MECHANIC
+    assert mod.verification_state == VerificationState.UNKNOWN
+    assert mod.raw_text == "Iron Reflexes — Unscalable Value"
+    assert mod.modifier_type != NormalizedModifierType.UNKNOWN_MODIFIER
+    assert mod.scope != ModifierScope.UNKNOWN_SCOPE
+
+
+def test_normalize_stun_and_ailment_threshold_preserved_as_genuine_unknown():
+    stun_mod = normalize_modifier("+30(30-50) to Stun Threshold")
+    assert stun_mod is not None
+    assert stun_mod.modifier_type == NormalizedModifierType.UNKNOWN_MODIFIER
+    assert stun_mod.scope == ModifierScope.UNKNOWN_SCOPE
+    assert stun_mod.verification_state == VerificationState.UNKNOWN
+    assert stun_mod.raw_text == "+30(30-50) to Stun Threshold"
+
+    ailment_mod = normalize_modifier("+45(30-50) to Ailment Threshold")
+    assert ailment_mod is not None
+    assert ailment_mod.modifier_type == NormalizedModifierType.UNKNOWN_MODIFIER
+    assert ailment_mod.scope == ModifierScope.UNKNOWN_SCOPE
+    assert ailment_mod.verification_state == VerificationState.UNKNOWN
+    assert ailment_mod.raw_text == "+45(30-50) to Ailment Threshold"

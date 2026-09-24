@@ -120,6 +120,7 @@ class NormalizedModifierType(str, Enum):
     LOCAL_ARMOUR = "LOCAL_ARMOUR"
     LOCAL_EVASION = "LOCAL_EVASION"
     LOCAL_ENERGY_SHIELD = "LOCAL_ENERGY_SHIELD"
+    LOCAL_ARMOUR_AND_EVASION = "LOCAL_ARMOUR_AND_EVASION"
     MOVEMENT_SPEED = "MOVEMENT_SPEED"
     STRENGTH = "STRENGTH"
     DEXTERITY = "DEXTERITY"
@@ -130,6 +131,7 @@ class NormalizedModifierType(str, Enum):
     INCREASED_FIRE_DAMAGE = "INCREASED_FIRE_DAMAGE"
     FIRE_SPELL_LEVEL = "FIRE_SPELL_LEVEL"
     ALL_SPELL_LEVEL = "ALL_SPELL_LEVEL"
+    SPECIAL_MECHANIC = "SPECIAL_MECHANIC"
     UNKNOWN_MODIFIER = "UNKNOWN_MODIFIER"
 
 
@@ -144,6 +146,7 @@ class NormalizedModifier(BaseModel):
     raw_text: str
     is_implicit: bool = False
     verification_state: VerificationState = VerificationState.VERIFIED
+    mechanic_id: str | None = None
 
 
 class ItemCandidate(BaseModel):
@@ -169,5 +172,7 @@ class ItemCandidate(BaseModel):
     local_evasion: int = 0
     local_energy_shield: int = 0
     modifiers: list[NormalizedModifier] = Field(default_factory=list)
+    annotations: list[str] = Field(default_factory=list)
+    flavor_text: str | None = None
     raw_text: str = ""
     weapon_set: WeaponSetContext | None = None

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 from typing import Any
-from companion.equipment.normalizer import normalize_modifier
+from companion.equipment.normalizer import is_modifier_annotation, normalize_modifier
 from companion.equipment.schema import (
     ItemCandidate,
     NormalizedModifier,
@@ -22,10 +22,15 @@ RE_EVASION = re.compile(r"^Evasion(?:\s+Rating)?:\s*(\d+)", re.IGNORECASE)
 RE_ENERGY_SHIELD = re.compile(r"^Energy\s+Shield:\s*(\d+)", re.IGNORECASE)
 RE_ITEM_LEVEL = re.compile(r"^Item\s+Level:\s*(\d+)", re.IGNORECASE)
 
-RE_REQ_LEVEL = re.compile(r"^\s*Level:\s*(\d+)", re.IGNORECASE)
-RE_REQ_STR = re.compile(r"^\s*Str(?:ength)?:\s*(\d+)", re.IGNORECASE)
-RE_REQ_DEX = re.compile(r"^\s*Dex(?:terity)?:\s*(\d+)", re.IGNORECASE)
-RE_REQ_INT = re.compile(r"^\s*Int(?:elligence)?:\s*(\d+)", re.IGNORECASE)
+RE_REQ_LEVEL = re.compile(r"(?:Level|Lvl)[:\s]+(\d+)", re.IGNORECASE)
+RE_REQ_STR = re.compile(r"(?:Str(?:ength)?[:\s]+(\d+)|(\d+)\s+Str(?:ength)?)", re.IGNORECASE)
+RE_REQ_DEX = re.compile(r"(?:Dex(?:terity)?[:\s]+(\d+)|(\d+)\s+Dex(?:terity)?)", re.IGNORECASE)
+RE_REQ_INT = re.compile(r"(?:Int(?:elligence)?[:\s]+(\d+)|(\d+)\s+Int(?:elligence)?)", re.IGNORECASE)
+
+RE_MODIFIER_HINT = re.compile(
+    r"(\d+%|\b(?:increased|reduced|more|less|to maximum|resistance|damage|gem|socketed|adds|gain|per second|leech|unscalable|requires)\b|^\+?\d+)",
+    re.IGNORECASE,
+)
 
 
 class InvalidItemClipboardError(ValueError):
@@ -256,6 +261,8 @@ def parse_item_text(
     req_str = 0
     req_dex = 0
     req_int = 0
+    annotations: list[str] = []
+    flavor_text: str | None = None
 
     header_lines = sections[0] if sections else []
     rem_header: list[str] = []
@@ -287,20 +294,20 @@ def parse_item_text(
 
     for section in sections[1:]:
         first_line = section[0]
-        if first_line.lower().startswith("requirements:"):
-            for rline in section[1:]:
+        if first_line.lower().startswith("requirements:") or first_line.lower().startswith("requires:"):
+            for rline in section:
                 m = RE_REQ_LEVEL.search(rline)
                 if m:
                     req_level = int(m.group(1))
                 m = RE_REQ_STR.search(rline)
                 if m:
-                    req_str = int(m.group(1))
+                    req_str = int(m.group(1) or m.group(2))
                 m = RE_REQ_DEX.search(rline)
                 if m:
-                    req_dex = int(m.group(1))
+                    req_dex = int(m.group(1) or m.group(2))
                 m = RE_REQ_INT.search(rline)
                 if m:
-                    req_int = int(m.group(1))
+                    req_int = int(m.group(1) or m.group(2))
             continue
 
         if any(RE_ITEM_LEVEL.match(l) for l in section):
@@ -331,8 +338,21 @@ def parse_item_text(
         if is_prop_section:
             continue
 
+        # Status tags section (Corrupted, Mirrored, Unmodifiable)
+        if all(l.strip() in ("Corrupted", "Mirrored", "Unmodifiable") for l in section):
+            continue
+
+        # Flavor text section (Unique items, trailing section without modifier syntax)
+        if rarity == "unique" and not any(is_modifier_annotation(l) for l in section):
+            if not any(RE_MODIFIER_HINT.search(l) for l in section):
+                flavor_text = "\n".join(section)
+                continue
+
         # Modifiers section
         for l in section:
+            if is_modifier_annotation(l):
+                annotations.append(l)
+                continue
             is_implicit = "(implicit)" in l.lower()
             modifier_lines.append((l, is_implicit))
 
@@ -347,7 +367,9 @@ def parse_item_text(
     # Normalize modifiers
     parsed_mods: list[NormalizedModifier] = []
     for mod_text, is_implicit in modifier_lines:
-        parsed_mods.append(normalize_modifier(mod_text, is_implicit=is_implicit, slot=slot))
+        mod = normalize_modifier(mod_text, is_implicit=is_implicit, slot=slot)
+        if mod is not None:
+            parsed_mods.append(mod)
 
     # Deterministic hash id
     item_id = f"item_{hashlib.sha256(raw_text.strip().encode('utf-8')).hexdigest()[:12]}"
@@ -369,6 +391,8 @@ def parse_item_text(
         local_evasion=local_evasion,
         local_energy_shield=local_energy_shield,
         modifiers=parsed_mods,
+        annotations=annotations,
+        flavor_text=flavor_text,
         raw_text=raw_text.strip(),
         weapon_set=target_weapon_set,
     )

@@ -9,10 +9,18 @@ from companion.equipment.baseline_gate import check_baseline_consistency
 from companion.equipment.build_breaker import evaluate_candidate_build_safety
 from companion.equipment.contextual_value import evaluate_loadout_contextual_analysis
 from companion.equipment.data_sufficiency import analyze_data_sufficiency
+from companion.equipment.fact_dependencies import (
+    RecommendationFactDependencies,
+    determine_recommendation_fact_dependencies,
+)
 from companion.equipment.loadout_cli import load_loadout
 from companion.equipment.parser import parse_item_text
 from companion.equipment.partial_projection import project_candidate_on_loadout
-from companion.equipment.precedence import Verdict, evaluate_contextual_verdict
+from companion.equipment.precedence import (
+    MultidimensionalComparison,
+    Verdict,
+    evaluate_contextual_verdict,
+)
 from companion.equipment.recommendation import EquipmentRecommendation
 from companion.equipment.requirements import GemRequirement, validate_requirement_cascades
 from companion.equipment.rules import BuildProgressionStage
@@ -36,6 +44,7 @@ class EquipmentIntelligenceEngine:
         weapon_set: str | WeaponSetContext | None = None,
         build_profile: str | Any | None = None,
         resistance_policies: dict[Any, Any] | None = None,
+        comparison: MultidimensionalComparison | None = None,
     ) -> EquipmentRecommendation:
         text = candidate_text if candidate_text is not None else item_text
         if text is None:
@@ -72,9 +81,13 @@ class EquipmentIntelligenceEngine:
         loadout = load_loadout(self.runtime_dir, character_id)
         raw_baseline = load_baseline(self.runtime_dir, character_id)
 
-        # Baseline consistency check against loadout revision
+        # Baseline consistency check against loadout revision and fingerprint
         if raw_baseline is not None and loadout is not None:
-            consistency_result = check_baseline_consistency(raw_baseline, loadout.revision)
+            consistency_result = check_baseline_consistency(
+                raw_baseline,
+                current_loadout_revision=loadout.revision,
+                current_loadout_fingerprint=loadout.compute_fingerprint(),
+            )
             baseline = consistency_result.reconciled_baseline
         else:
             baseline = raw_baseline
@@ -107,6 +120,16 @@ class EquipmentIntelligenceEngine:
         )
 
         # 4. Data sufficiency analysis
+        fact_dependencies: RecommendationFactDependencies = (
+            determine_recommendation_fact_dependencies(
+                candidate=candidate,
+                loadout=loadout,
+                slot=resolved_slot,
+                weapon_set=resolved_wset,
+                cascade_result=cascade_result,
+                projection=projection,
+            )
+        )
         sufficiency = analyze_data_sufficiency(
             baseline=baseline,
             loadout=loadout,
@@ -114,6 +137,8 @@ class EquipmentIntelligenceEngine:
             slot=resolved_slot,
             safety_eval=safety_eval,
             projection=projection,
+            cascade_result=cascade_result,
+            fact_dependencies=fact_dependencies,
         )
 
         # 5. Loadout contextual analysis (deficiencies, marginal value tiers)
@@ -125,12 +150,51 @@ class EquipmentIntelligenceEngine:
             resistance_policies=resistance_policies,
         )
 
-        # 6. Non-scalar contextual verdict precedence
+        # 6. Non-scalar contextual verdict precedence & defense regression detection
+        armour_delta = min(projection.local_armour_delta, int(projection.armour.delta))
+        evasion_delta = min(projection.local_evasion_delta, int(projection.evasion.delta))
+        es_delta = min(projection.local_energy_shield_delta, int(projection.energy_shield.delta))
+
+        has_defense_regression = (armour_delta < 0 or evasion_delta < 0 or es_delta < 0)
+
+        effective_comparison = comparison
+        defense_tradeoff_reason = None
+
+        if has_defense_regression:
+            effective_comparison = MultidimensionalComparison.MIXED_TRADEOFF
+            loss_parts = []
+            if armour_delta < 0:
+                loss_parts.append(f"Armour ({armour_delta:+d})")
+            if evasion_delta < 0:
+                loss_parts.append(f"Evasion ({evasion_delta:+d})")
+            if es_delta < 0:
+                loss_parts.append(f"Energy Shield ({es_delta:+d})")
+
+            gain_parts = []
+            if armour_delta > 0:
+                gain_parts.append(f"Armour ({armour_delta:+d})")
+            if evasion_delta > 0:
+                gain_parts.append(f"Evasion ({evasion_delta:+d})")
+            if es_delta > 0:
+                gain_parts.append(f"Energy Shield ({es_delta:+d})")
+
+            if gain_parts:
+                defense_tradeoff_reason = (
+                    f"Mixed defense tradeoff against equipped loadout: loses {', '.join(loss_parts)} while gaining {', '.join(gain_parts)}."
+                )
+            else:
+                defense_tradeoff_reason = (
+                    f"Candidate incurs regression on local defenses ({', '.join(loss_parts)}); represents a mixed defense tradeoff."
+                )
+
         verdict, reason, flags = evaluate_contextual_verdict(
             safety_eval=safety_eval,
             cascade_result=cascade_result,
             contextual_analysis=contextual_analysis,
             data_sufficiency=sufficiency,
+            comparison=effective_comparison,
+            has_defense_regression=has_defense_regression,
+            defense_tradeoff_reason=defense_tradeoff_reason,
         )
 
         # 7. Actionable guidance
@@ -140,7 +204,10 @@ class EquipmentIntelligenceEngine:
             if contextual_analysis and contextual_analysis.has_unresolved_resistance_priority:
                 guidance.append("Unresolved campaign resistance priorities: seek additional resistance on other gear slots.")
         elif verdict == Verdict.CONDITIONAL_UPGRADE:
-            guidance.append("Solve requirement/resistance deficits elsewhere before equipping.")
+            if "MIXED_TRADEOFF" in flags:
+                guidance.append("Evaluate defense trade-offs against offensive or utility gains before equipping.")
+            if "REQUIREMENT_DEFICIENCY" in flags or "UNMITIGATED_DEFICIT" in flags or "MIXED_TRADEOFF" not in flags:
+                guidance.append("Solve requirement/resistance deficits elsewhere before equipping.")
         elif verdict == Verdict.KEEP_FOR_LATER:
             guidance.append("Keep in stash for future gear reshuffling.")
         elif verdict == Verdict.REJECT:

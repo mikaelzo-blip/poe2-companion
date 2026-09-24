@@ -18,7 +18,7 @@ The system SHALL evaluate candidate equipment upgrades using a deterministic hie
 - **THEN** the system halts standard upgrade scoring, flags the specific violating modifier and rule, and issues a `REJECT` verdict regardless of attractive generic stats
 
 ### Requirement: Authoritative Character Stat Baseline, Raw vs Effective Resistances, and UNKNOWN State Handling
-The system SHALL model the current character defensive, attribute, and mobility state via an explicit `CharacterStatBaseline` composed of provenanced `CharacterFact` records for Life, Fire Resistance, Cold Resistance, Lightning Resistance, Chaos Resistance, Armour, Evasion, Energy Shield, Strength, Dexterity, Intelligence, Movement Speed, and current maximum elemental/chaos resistances. For each resistance category (Fire, Cold, Lightning, Chaos), the system SHALL explicitly distinguish `raw_uncapped_resistance`, `effective_resistance`, `max_resistance`, and `overcap_buffer`. Each fact SHALL record `value`, `source` (`EXISTING_CHARACTER_STATE`, `GGG_OFFICIAL_API`, `DERIVED_FROM_VERIFIED_COMPONENTS`, `DERIVED_CALCULATION`, `MANUAL_USER_INPUT`, `MANUAL_SNAPSHOT`, `UNKNOWN`), `observed_at`, `verification`, `stale_after`, and `evidence_ref`. If an exact current stat cannot be proven by verified evidence, its value SHALL be set to `UNKNOWN` and SHALL NOT be converted or coerced to zero. Schema defaults SHALL NOT mark omitted baseline facts as verified without explicit evidence.
+The system SHALL model the current character defensive, attribute, and mobility state via an explicit `CharacterStatBaseline` composed of provenanced `CharacterFact` records for Life, Fire Resistance, Cold Resistance, Lightning Resistance, Chaos Resistance, Armour, Evasion, Energy Shield, Strength, Dexterity, Intelligence, Movement Speed, and current maximum elemental/chaos resistances. For each resistance category (Fire, Cold, Lightning, Chaos), the system SHALL explicitly distinguish `raw_uncapped_resistance`, `effective_resistance`, `max_resistance`, and `overcap_buffer`. Each fact SHALL record `value`, `source` (`EXISTING_CHARACTER_STATE`, `GGG_OFFICIAL_API`, `DERIVED_FROM_VERIFIED_COMPONENTS`, `DERIVED_CALCULATION`, `MANUAL_USER_INPUT`, `MANUAL_SNAPSHOT`, `UNKNOWN`), `observed_at`, `verification`, `stale_after`, and `evidence_ref`. If an exact current stat cannot be proven by verified evidence, its value SHALL be set to `UNKNOWN` and SHALL NOT be converted or coerced to zero. Schema defaults SHALL NOT mark omitted baseline facts as verified without explicit evidence. The canonical fact predicate `CharacterFact.is_known` SHALL evaluate to `False` whenever `value` is `None` or `verification` is in `(UNKNOWN, STALE, CONFLICTING)`, ensuring unproven or conflicting facts are never treated as usable baselines.
 
 #### Scenario: Unobserved resistance is recorded as UNKNOWN rather than zero
 - **WHEN** official API synchronization or character runtime state does not supply a verified character-sheet value for Lightning Resistance
@@ -80,6 +80,7 @@ After the initial loadout has been finalized, the system SHALL increment `loadou
    - If the raw state cannot be proven (e.g. effective resistance is 75% but raw uncapped resistance and overcap buffer are `UNKNOWN`), the system SHALL report the known item resistance delta (e.g. `-30% Lightning Resistance`), but SHALL mark the new absolute effective resistance as `UNKNOWN` / `STALE` and SHALL NOT fabricate an absolute value.
 2. **Linear Attributes Rebase**: For linear attributes (Strength, Dexterity, Intelligence), the system SHALL compute `new_baseline = old_verified_baseline - old_item_contrib + new_item_contrib` and mark `source: DERIVED_CALCULATION`.
 3. **Complex Non-Linear Defenses Stale**: For complex, non-linear stats subject to passives or global scaling (total Armour, Evasion, Energy Shield), the system SHALL mark the baseline fact as `STALE` / `UNKNOWN` and SHALL NOT fabricate an unsubstantiated new total.
+4. **Linear Movement Speed Rebase**: For Movement Speed, if `baseline.movement_speed.is_known` and present, the system SHALL compute `new_baseline = int(baseline.movement_speed.value + net_ms_delta)` and mark `source: DERIVED_CALCULATION` and `verification: VERIFIED`. If present but unproven, the system SHALL mark it `STALE`. If unobserved, it SHALL remain `UNKNOWN`.
 
 #### Scenario: Capped effective resistance is not used as raw additive baseline
 - **WHEN** a character has raw lightning resistance 115, max resistance 75, effective resistance 75, and swaps an item replacing +40% with +10%
@@ -245,7 +246,7 @@ The system SHALL resolve the final equipment recommendation verdict through an e
 2. **Tier 2: Critical Requirement Failure**: If the swap causes the candidate item, equipped loadout, or build-critical gems to fail level or attribute requirements, the verdict SHALL be `REJECT` or `CONDITIONAL_UPGRADE` depending on attribute deficit recoverability.
 3. **Tier 3: Unknown Potential Build Breaker**: If any modifier has `UNKNOWN_APPLICABILITY` regarding a critical build-breaking rule, confident `EQUIP_NOW` SHALL be blocked; the verdict SHALL be `INSUFFICIENT_DATA` or `CONDITIONAL_UPGRADE` with `HIGH_RISK` notice.
 4. **Tier 4: New Critical Character Deficiency**: If the swap creates an unmitigated defense or resistance deficit below target caps, the verdict SHALL be `CONDITIONAL_UPGRADE` or `REJECT`.
-5. **Tier 5: Normal Gear Improvement**: If Tiers 1-4 pass safely, the item SHALL be evaluated for net improvement (`EQUIP_NOW`, `CONDITIONAL_UPGRADE`, or `KEEP_FOR_LATER`).
+5. **Tier 5: Normal Gear Improvement & Trade-offs**: If Tiers 1-4 pass safely, the item SHALL be evaluated for net improvement. If the candidate item causes a negative delta in local defenses (`armour_delta < 0`, `evasion_delta < 0`, or `es_delta < 0`) or trades off one defense type for another, the system SHALL NOT emit `EQUIP_NOW` or clean `DOMINANT_IMPROVEMENT`; the verdict SHALL be `CONDITIONAL_UPGRADE` with `flags=["MIXED_TRADEOFF"]`. Otherwise, net positive upgrades with safe trade-offs evaluate to `EQUIP_NOW`, minor trade-offs evaluate to `CONDITIONAL_UPGRADE`, and sidegrades evaluate to `KEEP_FOR_LATER`.
 
 #### Scenario: Build breaker takes precedence over high attribute gains
 - **WHEN** a candidate ring provides +50 to all Attributes and fixes all character deficits, but has flat fire damage to attacks post-swap
@@ -514,3 +515,82 @@ The system SHALL accompany every recommendation verdict with explicit, determini
 #### Scenario: Recommendation outputs complete explainable numeric deltas
 - **WHEN** a recommendation is generated
 - **THEN** the output includes explicit stat deltas, current vs projected values, resolved deficiencies, new deficits created, and plain-language explanation
+
+### Requirement: Separation of Loadout Structural Consistency from Per-Fact Freshness
+The system SHALL separate loadout structural consistency (verification that `baseline.anchored_loadout_revision` matches `current_loadout.revision` and loadout fingerprints align) from individual `CharacterFact` freshness. The system SHALL evaluate `CharacterFact.is_known` such that facts with `CONFLICTING`, `UNKNOWN`, or `STALE` verification states are treated as unusable (`is_known: False`). A synchronized loadout revision SHALL NOT imply that every individual stat fact is fresh, and an individual stale fact SHALL NOT invalidate loadout structural consistency.
+
+#### Scenario: Loadout structural consistency verified independently of per-fact freshness
+- **WHEN** evaluating loadout consistency where `baseline.anchored_loadout_revision == current_loadout.revision` but baseline Armour is marked `STALE`
+- **THEN** the system confirms loadout structural consistency is intact while identifying Armour specifically as stale
+
+#### Scenario: Conflicting character fact is treated as not known
+- **WHEN** a character fact has `verification: CONFLICTING` due to contradictory API and manual evidence
+- **THEN** the system evaluates `fact.is_known` as `False`, refusing to treat the conflicting value as authoritative
+
+### Requirement: Decision-Relevant Fact Dependencies and Targeted Confidence Gating
+The system SHALL determine decision-relevant fact dependencies (`RecommendationFactDependencies`) for every candidate evaluation. Only character facts materially impacted by the swap (candidate modifying local defense, movement speed, life, or resistances) or required for validation (attributes required by candidate, equipped items, or build-critical gems in requirement cascades) SHALL gate recommendation confidence.
+If any decision-relevant fact has an unusable state (`STALE`, `UNKNOWN`, `CONFLICTING`), the system SHALL block confident `EQUIP_NOW` (`is_sufficient_for_equip_now: False`, `sufficiency: INSUFFICIENT_FOR_CONFIDENT_EQUIP`) and output explicit diagnostic reasons identifying the unproven fact and its state.
+Unrelated stale facts SHALL NOT globally block recommendations or prevent `EQUIP_NOW` when evaluating candidates that do not depend on those facts.
+
+#### Scenario: Stale Armour blocks candidate modifying local Armour
+- **WHEN** candidate body armour changes local Armour while baseline Armour is marked `STALE`
+- **THEN** the system determines that Armour is decision-relevant, sets `is_sufficient_for_equip_now: False`, blocks `EQUIP_NOW`, and outputs an explanation that baseline Armour is STALE
+
+#### Scenario: Stale defenses do not block defense-independent candidate ring
+- **WHEN** evaluating a candidate ring modifying only Life and Fire Resistance while baseline Armour, Evasion, and Energy Shield are `STALE`
+- **THEN** the system determines defenses are not decision-relevant for the ring, confirms needed facts (Life, Fire Res) are fresh, and permits confident evaluation and `EQUIP_NOW`
+
+#### Scenario: Conflicting attribute fact required by requirement cascade blocks confident equip
+- **WHEN** a swap alters character attributes and an equipped gem requires Dexterity, but baseline Dexterity is marked `CONFLICTING`
+- **THEN** the system identifies Dexterity as decision-relevant for cascade validation, blocks confident equip, and outputs a diagnostic reason citing conflicting Dexterity
+
+### Requirement: Local Defense Regression Detection and Multidimensional Trade-off Semantics
+The system SHALL detect local defense regressions (Armour, Evasion, Energy Shield) deterministically. If a candidate item produces a negative delta in any local defense category (`armour_delta < 0`, `evasion_delta < 0`, or `es_delta < 0`), or trades off one defense type for another (such as losing Armour while gaining Evasion), the system SHALL treat the defense reduction as an explicit regression. The system SHALL NOT mask local defense regressions behind Life gains, resistance increases, or scalar scores. Candidates with defense regressions SHALL NOT qualify for clean `EQUIP_NOW` via `DOMINANT_IMPROVEMENT`, `RESOLVES_DEFICIT`, or `IMPROVES_DEFICIT`; they SHALL evaluate to `MultidimensionalComparison.MIXED_TRADEOFF` and `Verdict.CONDITIONAL_UPGRADE` with `flags=["MIXED_TRADEOFF"]` and explicit trade-off explanations detailing the exact defense losses.
+
+#### Scenario: Significant Armour drop with Life gain evaluates to CONDITIONAL_UPGRADE trade-off
+- **WHEN** evaluating a candidate body armour with 0 Armour and +80 Life replacing an equipped body armour with 800 Armour on a character with 1000 baseline Armour
+- **THEN** the system detects a negative Armour delta (-800), treats the trade-off as `MIXED_TRADEOFF`, and emits `Verdict.CONDITIONAL_UPGRADE` with `flags: ["MIXED_TRADEOFF"]` rather than `EQUIP_NOW`
+
+#### Scenario: Trading Armour for Evasion evaluates as MIXED_TRADEOFF
+- **WHEN** evaluating a candidate item that loses 400 Armour while gaining 300 Evasion
+- **THEN** the system classifies the outcome as `MIXED_TRADEOFF` and advises the user of the defensive trade-off
+
+#### Scenario: Clean upgrade with non-negative defense deltas qualifies for EQUIP_NOW
+- **WHEN** evaluating a candidate item with non-negative defense deltas and positive Life/resistance improvements that resolve active deficits
+- **THEN** the system does not trigger defense regression flags and allows clean evaluation to `Verdict.EQUIP_NOW`
+
+### Requirement: Movement Speed Baseline Reconciliation and Preservation
+During post-setup equipment mutation and baseline reconciliation (`reconcile_baseline_after_swap`), the system SHALL reconcile `movement_speed`. If `baseline.movement_speed.is_known`, the system SHALL compute the net movement speed delta:
+$$\Delta \text{MS} = \text{candidate\_contribution.movement\_speed\_delta} - \sum \text{displaced\_contributions.movement\_speed\_delta}$$
+and record the new value with `source: DERIVED_CALCULATION` and `verification: VERIFIED`.
+If baseline movement speed has a value but is unproven (`STALE` or `CONFLICTING`), the system SHALL mark it `STALE`.
+If movement speed was unobserved (`UNKNOWN`), it SHALL remain `UNKNOWN`. The system SHALL NOT fabricate movement speed values.
+
+#### Scenario: Known baseline movement speed projects net candidate minus displaced delta
+- **WHEN** baseline Movement Speed is known at 7%, displaced boots provide 10%, and candidate boots provide 25% (+15% net delta)
+- **THEN** baseline reconciliation updates Movement Speed to 22% with `source: DERIVED_CALCULATION` and `verification: VERIFIED`
+
+#### Scenario: Unproven baseline movement speed is marked stale on promotion
+- **WHEN** baseline Movement Speed is already `STALE` and an item promotion alters Movement Speed
+- **THEN** baseline reconciliation retains the fact as `STALE`, refusing to fabricate an authoritative absolute value
+
+#### Scenario: Candidate changing movement speed against unknown baseline gates confidence
+- **WHEN** evaluating candidate boots with +20% Movement Speed on a character whose baseline Movement Speed is `UNKNOWN`
+- **THEN** data sufficiency flags Movement Speed as decision-relevant and unobserved, blocking confident `EQUIP_NOW`
+
+### Requirement: Immutable Loadout Revision History Snapshots on Finalized Transitions
+Whenever an established, finalized loadout transitions due to an equipment mutation (`companion gear loadout promote-candidate`, `set-clipboard`, `clear`), the system SHALL persist an immutable snapshot of revision $N$ in `runtime/loadout_history/{character_id}/rev_{N:06d}.json` before incrementing to revision $N+1$.
+The system SHALL increment the revision exactly once per real change and SHALL attach a `LoadoutTransitionResult` containing `previous_revision`, `new_revision`, `is_finalized`, `is_changed`, and `history_snapshot_path`.
+CLI promotion commands SHALL route through this authoritative wrapper, and stdout output SHALL accurately communicate transition state (e.g. indicating whether a revision increment occurred, whether existing baseline became stale, or whether the change occurred in a draft).
+
+#### Scenario: Promoting candidate on finalized loadout creates history snapshot and advances revision
+- **WHEN** running `companion gear loadout promote-candidate --slot boots` on a finalized loadout at revision 1
+- **THEN** the system snapshots revision 1 to `runtime/loadout_history/{character_id}/rev_000001.json`, advances loadout revision to 2, and reports that the existing baseline is now stale
+
+#### Scenario: Unchanged promotion creates no history snapshot and preserves revision
+- **WHEN** promoting an identical candidate into a slot already occupied by that item
+- **THEN** the system determines no change occurred, creates no history snapshot, keeps revision unchanged, and reports the slot was unchanged
+
+#### Scenario: CLI displays state-accurate wording for finalized vs draft mutations
+- **WHEN** mutating a slot in a draft loadout versus a finalized loadout
+- **THEN** the CLI output states "updated in loadout draft" for draft mutations, and reports revision advancement "revision: N -> N+1" with baseline staleness warnings for finalized mutations

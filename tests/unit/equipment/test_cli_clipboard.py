@@ -45,6 +45,7 @@ Iron Greaves
         lightning_raw=70,
         chaos_res=0,
         chaos_raw=0,
+        movement_speed=0,
     )
 
     with patch("companion.equipment.clipboard._read_os_clipboard", return_value=BOOTS_ITEM):

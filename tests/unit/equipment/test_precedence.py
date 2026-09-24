@@ -19,6 +19,7 @@ from companion.equipment.data_sufficiency import (
 from companion.equipment.precedence import (
     MultidimensionalComparison,
     Verdict,
+    check_defense_regression,
     evaluate_contextual_verdict,
     evaluate_verdict_precedence,
 )
@@ -326,3 +327,78 @@ def test_healthy_multidimensional_comparisons():
         comparison=MultidimensionalComparison.CLEAR_DOWNGRADE,
     )
     assert v == Verdict.REJECT
+
+
+def test_check_defense_regression_detection():
+    # Negative delta on local defenses
+    assert check_defense_regression(armour_delta=-100) is True
+    assert check_defense_regression(evasion_delta=-50) is True
+    assert check_defense_regression(es_delta=-1) is True
+
+    # Mixed defense tradeoff: loses armour but gains evasion
+    assert check_defense_regression(armour_delta=-800, evasion_delta=400) is True
+    assert check_defense_regression(armour_delta=300, evasion_delta=-200) is True
+
+    # Non-negative defenses
+    assert check_defense_regression(armour_delta=100, evasion_delta=50, es_delta=0) is False
+    assert check_defense_regression(0, 0, 0) is False
+
+
+def test_defense_regression_blocks_clean_resolves_deficit():
+    safe = BuildBreakerEvaluation(certainty=BuildBreakerCertainty.VERIFIED_SAFE)
+    reqs = RequirementCascadeResult(is_satisfied=True)
+    baseline = CharacterStatBaseline.create_partial(
+        baseline_id="base_r",
+        character_id="char_r",
+        anchored_loadout_revision=1,
+        fire_res=60,
+    )
+    from companion.equipment.resistance import ResistanceType
+    contextual_analysis = evaluate_loadout_contextual_analysis(
+        baseline=baseline,
+        delta_res={ResistanceType.FIRE: +20.0},
+    )
+    assert contextual_analysis.has_resolved_deficiency is True
+
+    # With defense regression, candidate CANNOT qualify for clean RESOLVES_DEFICIT / EQUIP_NOW
+    v, reason, flags = evaluate_contextual_verdict(
+        safety_eval=safe,
+        cascade_result=reqs,
+        contextual_analysis=contextual_analysis,
+        has_defense_regression=True,
+        defense_tradeoff_reason="Candidate incurs regression on local defenses (Armour -800); represents a mixed defense tradeoff.",
+    )
+    assert v == Verdict.CONDITIONAL_UPGRADE
+    assert "MIXED_TRADEOFF" in flags
+    assert "RESOLVES_DEFICIT" not in flags
+    assert "Armour -800" in reason
+
+
+def test_defense_regression_blocks_clean_dominant_improvement():
+    safe = BuildBreakerEvaluation(certainty=BuildBreakerCertainty.VERIFIED_SAFE)
+    reqs = RequirementCascadeResult(is_satisfied=True)
+
+    # Dominant improvement with defense regression becomes MIXED_TRADEOFF / CONDITIONAL_UPGRADE
+    v, reason, flags = evaluate_contextual_verdict(
+        safety_eval=safe,
+        cascade_result=reqs,
+        comparison=MultidimensionalComparison.DOMINANT_IMPROVEMENT,
+        has_defense_regression=True,
+        defense_tradeoff_reason="Mixed defense tradeoff: loses Armour (-800) while gaining Evasion (+400).",
+    )
+    assert v == Verdict.CONDITIONAL_UPGRADE
+    assert "MIXED_TRADEOFF" in flags
+    assert "Armour (-800)" in reason
+
+
+def test_defense_regression_in_evaluate_verdict_precedence():
+    safe = BuildBreakerEvaluation(certainty=BuildBreakerCertainty.VERIFIED_SAFE)
+    reqs = RequirementCascadeResult(is_satisfied=True)
+
+    v, reason, flags = evaluate_verdict_precedence(
+        safety_eval=safe,
+        cascade_result=reqs,
+        has_defense_regression=True,
+    )
+    assert v == Verdict.CONDITIONAL_UPGRADE
+    assert "MIXED_TRADEOFF" in flags

@@ -71,6 +71,9 @@ def test_full_equipment_pipeline(tmp_path: Path):
         fire_raw=85,
         lightning_res=32,
         lightning_raw=32,
+        dex=50,
+        int=50,
+        movement_speed=0,
     )
     assert base.anchored_loadout_revision == 1
     assert base.lightning_deficit == 43

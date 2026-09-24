@@ -175,6 +175,7 @@ def test_forensic_f_lvl15_32_life_ms_boots_not_blocked(tmp_path: Path):
         dex=50,
         int=50,
         str=50,
+        movement_speed=0,
     )
 
     engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)

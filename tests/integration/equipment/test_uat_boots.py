@@ -54,6 +54,7 @@ def test_uat_boots_upgrade_equip_now(tmp_path: Path):
         max_lightning_res=75,
         dex=100,
         int=100,
+        movement_speed=0,
     )
 
     engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)

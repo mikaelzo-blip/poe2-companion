@@ -274,8 +274,9 @@ def test_matrix_test_5_missing_or_stale_baseline_gate():
     reqs = RequirementCascadeResult(is_satisfied=True)
     sample_boots = "Item Class: Boots\nRarity: Rare\nTest Boots\n--------\nRequirements:\nLevel: 45\n--------\n+30 to maximum Life\n"
     cand = parse_item_text(sample_boots, target_slot=SlotType.BOOTS)
-    loadout = EquippedLoadout(loadout_id="l1", character_id="test", revision=1, is_finalized=True)
+    loadout = EquippedLoadout.create_draft(character_id="test")
     loadout.set_slot(SlotType.BOOTS, cand)
+    loadout.finalize(loadout_id="l1")
 
     # Missing baseline
     suff_missing = analyze_data_sufficiency(
@@ -304,8 +305,10 @@ def test_matrix_test_5_missing_or_stale_baseline_gate():
         anchored_loadout_revision=1,
         life=1500,
     )
-    loadout_rev2 = EquippedLoadout(loadout_id="l2", character_id="test", revision=2, is_finalized=True)
+    loadout_rev2 = EquippedLoadout.create_draft(character_id="test")
     loadout_rev2.set_slot(SlotType.BOOTS, cand)
+    loadout_rev2.finalize(loadout_id="l2")
+    loadout_rev2.revision = 2
     suff_stale = analyze_data_sufficiency(
         baseline=stale_baseline,
         loadout=loadout_rev2,  # mismatched revision -> stale

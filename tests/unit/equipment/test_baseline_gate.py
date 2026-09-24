@@ -14,14 +14,16 @@ from companion.equipment.baseline_gate import (
 
 
 def test_baseline_consistency_gate_matching_revisions():
+    fp = "canonical_fp_123"
     baseline = CharacterStatBaseline.create_partial(
         baseline_id="b1",
         character_id="c1",
         anchored_loadout_revision=1,
+        anchored_loadout_fingerprint=fp,
         life=1500,
         fire_res=75,
     )
-    result = check_baseline_consistency(baseline, current_loadout_revision=1)
+    result = check_baseline_consistency(baseline, current_loadout_revision=1, current_loadout_fingerprint=fp)
     assert result.is_consistent is True
     assert result.reconciled_baseline.life.is_known is True
     assert result.reconciled_baseline.life.verification == VerificationState.VERIFIED

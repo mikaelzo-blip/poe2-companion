@@ -70,11 +70,13 @@ def run_baseline_set(
 
     loadout = load_loadout(runtime_dir, character_id)
     anchored_rev = loadout.revision if loadout.is_finalized else 1
+    anchored_fp = loadout.compute_fingerprint() if loadout.is_finalized else None
 
     baseline = CharacterStatBaseline.create_partial(
         baseline_id=f"base_{character_id}",
         character_id=character_id,
         anchored_loadout_revision=anchored_rev,
+        anchored_loadout_fingerprint=anchored_fp,
         source=BaselineSource.MANUAL_USER_INPUT,
         verification=VerificationState.VERIFIED,
         life=life,
@@ -196,6 +198,7 @@ def run_baseline_show(
         f"=== Character Stat Baseline: {baseline.baseline_id} ===",
         f"Character ID: {baseline.character_id}",
         f"Anchored Loadout Revision: {baseline.anchored_loadout_revision}",
+        f"Anchored Loadout Fingerprint: {baseline.anchored_loadout_fingerprint or 'NONE (LEGACY)'}",
         f"Observed At: {baseline.observed_at}",
         f"Life: {fmt_fact(baseline.life)}",
         f"Armour: {fmt_fact(baseline.armour)}",

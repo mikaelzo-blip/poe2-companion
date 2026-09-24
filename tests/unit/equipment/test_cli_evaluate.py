@@ -50,6 +50,7 @@ Iron Greaves
         lightning_raw=70,
         chaos_res=0,
         chaos_raw=0,
+        movement_speed=0,
     )
 
     report, rec = run_evaluate_file(

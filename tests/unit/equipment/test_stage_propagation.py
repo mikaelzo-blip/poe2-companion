@@ -58,7 +58,8 @@ def test_engine_stage_propagation_campaign_permits_equip_now(tmp_path: Path):
         dex=50,
         int=50,
         str=50,
-    )
+        movement_speed=0,
+        )
 
     engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)
     # Evaluate with stage="lvl 15-32"

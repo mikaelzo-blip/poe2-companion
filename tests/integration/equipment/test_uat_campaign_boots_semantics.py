@@ -100,6 +100,7 @@ def test_fubgun_leveling_boots_improves_low_res_equip_now(tmp_path: Path):
         max_cold_res=75,
         dex=50,
         int=50,
+        movement_speed=0,
     )
 
     engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)
@@ -143,6 +144,7 @@ def test_campaign_boots_upgrade_without_resistance_equip_now(tmp_path: Path):
         cold_res=15,
         dex=50,
         int=50,
+        movement_speed=0,
     )
 
     engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)
@@ -186,6 +188,7 @@ def test_campaign_boots_regression_still_matters_conditional_upgrade(tmp_path: P
         fire_res=20,
         cold_res=15,
         str=50,
+        movement_speed=0,
     )
 
     engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)
@@ -227,6 +230,7 @@ def test_healthy_to_unhealthy_regression_creates_deficiency(tmp_path: Path):
         lightning_raw=75,
         max_lightning_res=75,
         str=50,
+        movement_speed=0,
     )
 
     engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)

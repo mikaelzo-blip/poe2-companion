@@ -27,12 +27,23 @@ class MultidimensionalComparison(str, Enum):
     CLEAR_DOWNGRADE = "CLEAR_DOWNGRADE"
 
 
+def check_defense_regression(
+    armour_delta: int | float = 0,
+    evasion_delta: int | float = 0,
+    es_delta: int | float = 0,
+) -> bool:
+    """Checks if candidate incurs a negative delta on local defenses."""
+    return armour_delta < 0 or evasion_delta < 0 or es_delta < 0
+
+
 def evaluate_contextual_verdict(
     safety_eval: BuildBreakerEvaluation,
     cascade_result: RequirementCascadeResult,
     contextual_analysis: LoadoutContextualAnalysis | None = None,
     data_sufficiency: DataSufficiencyResult | None = None,
     comparison: MultidimensionalComparison | None = None,
+    has_defense_regression: bool = False,
+    defense_tradeoff_reason: str | None = None,
 ) -> tuple[Verdict, str, list[str]]:
     """Evaluates equipment verdict using strict non-scalar precedence hierarchy.
 
@@ -130,23 +141,29 @@ def evaluate_contextual_verdict(
             )
 
         # 8. Candidate resolves/improves critical deficiency with no critical regression
-        if contextual_analysis.has_resolved_deficiency:
-            flags.append("RESOLVES_DEFICIT")
-            return (
-                Verdict.EQUIP_NOW,
-                "Candidate resolves a critical defensive or requirement deficiency without critical regressions.",
-                flags,
-            )
-        if contextual_analysis.has_improved_deficiency:
-            flags.append("IMPROVES_DEFICIT")
-            return (
-                Verdict.EQUIP_NOW,
-                "Candidate improves a critical defensive or requirement deficiency without critical regressions.",
-                flags,
-            )
+        if not has_defense_regression:
+            if contextual_analysis.has_resolved_deficiency:
+                flags.append("RESOLVES_DEFICIT")
+                return (
+                    Verdict.EQUIP_NOW,
+                    "Candidate resolves a critical defensive or requirement deficiency without critical regressions.",
+                    flags,
+                )
+            if contextual_analysis.has_improved_deficiency:
+                flags.append("IMPROVES_DEFICIT")
+                return (
+                    Verdict.EQUIP_NOW,
+                    "Candidate improves a critical defensive or requirement deficiency without critical regressions.",
+                    flags,
+                )
 
     # 9. Healthy character comparison (or default when no deficiencies)
-    effective_comparison = comparison or MultidimensionalComparison.DOMINANT_IMPROVEMENT
+    effective_comparison = comparison or (
+        MultidimensionalComparison.MIXED_TRADEOFF if has_defense_regression else MultidimensionalComparison.DOMINANT_IMPROVEMENT
+    )
+    if has_defense_regression and effective_comparison == MultidimensionalComparison.DOMINANT_IMPROVEMENT:
+        effective_comparison = MultidimensionalComparison.MIXED_TRADEOFF
+
     if effective_comparison == MultidimensionalComparison.DOMINANT_IMPROVEMENT:
         return (
             Verdict.EQUIP_NOW,
@@ -155,9 +172,14 @@ def evaluate_contextual_verdict(
         )
     if effective_comparison == MultidimensionalComparison.MIXED_TRADEOFF:
         flags.append("MIXED_TRADEOFF")
+        tradeoff_reason = defense_tradeoff_reason or (
+            "Candidate incurs regression on local defenses; represents a mixed defense tradeoff."
+            if has_defense_regression
+            else "Mixed tradeoff against equipped loadout; provides situational value."
+        )
         return (
             Verdict.CONDITIONAL_UPGRADE,
-            "Mixed tradeoff against equipped loadout; provides situational value.",
+            tradeoff_reason,
             flags,
         )
     if effective_comparison == MultidimensionalComparison.NO_MEANINGFUL_CURRENT_GAIN:
@@ -190,6 +212,8 @@ def evaluate_verdict_precedence(
     contextual_analysis: LoadoutContextualAnalysis | None = None,
     data_sufficiency: DataSufficiencyResult | None = None,
     comparison: MultidimensionalComparison | None = None,
+    has_defense_regression: bool = False,
+    defense_tradeoff_reason: str | None = None,
 ) -> tuple[Verdict, str, list[str]]:
     """Backward-compatible entry point for verdict precedence evaluation.
 
@@ -237,13 +261,20 @@ def evaluate_verdict_precedence(
         )
 
     # If contextual analysis or data sufficiency provided, delegate to contextual evaluator
-    if contextual_analysis is not None or data_sufficiency is not None or comparison is not None:
+    if (
+        contextual_analysis is not None
+        or data_sufficiency is not None
+        or comparison is not None
+        or has_defense_regression
+    ):
         return evaluate_contextual_verdict(
             safety_eval=safety_eval,
             cascade_result=cascade_result,
             contextual_analysis=contextual_analysis,
             data_sufficiency=data_sufficiency,
             comparison=comparison,
+            has_defense_regression=has_defense_regression,
+            defense_tradeoff_reason=defense_tradeoff_reason,
         )
 
     # If comparison not provided and no unmitigated deficit or build breaker, default to EQUIP_NOW

@@ -19,6 +19,11 @@ However, existing planning had critical gaps regarding character state availabil
 12. **Resistance Rebase Hazard (Capped Effective vs Raw Uncapped State)**: Additive resistance rebasing is mathematically valid only when the baseline being rebased is the raw uncapped resistance contribution. For example, if raw lightning resistance is 115, cap is 75, and effective resistance is 75, swapping an item from +40% to +10% yields new raw resistance of 85 ($115 - 40 + 10 = 85$) and effective resistance remains 75 ($\min(85, 75) = 75$). Rebasing directly from capped effective value ($75 - 40 + 10 = 45$) is incorrect and produces dangerous false alerts. The engine must explicitly distinguish `raw_uncapped_resistance`, `effective_resistance`, `max_resistance`, and `overcap_buffer`.
 13. **Initial Setup vs Real Equipment Mutation Semantics**: During initial setup, the user describes equipment that was ALREADY worn when the character-sheet baseline was observed. Treating each initial slot entry as an in-game gear swap would prematurely increment revisions and trigger baseline reconciliation on an unestablished baseline. The workflow must establish the loadout draft first, finalize it (`companion gear loadout finalize`, establishing revision 1), and then anchor the manual character baseline to revision 1. Partial loadout must be supported with explicit known vs unknown slots.
 14. **Generalized Slot Conflict Topology vs Universal Handedness**: In Path of Exile 2, two-handed weapon classes do not all share identical companion slot rules. While Bows uniquely permit an off-hand Quiver, Staves and Crossbows are both two-handed weapon classes that occupy both weapon slots (`main_hand` and `off_hand`), conflicting with both weapon slots and strictly disallowing off-hand accessories like quivers or shields. Quivers can only be equipped while wielding a Bow, never with a crossbow. Normalized base metadata grounded in verified game-item rules must specify actual slot-conflict topology (`occupied_slots`, `conflicting_slots`, `allowed_companion_slots`) rather than relying on generic guide text or hardcoding every two-handed weapon to identical behavior.
+15. **Separation of Loadout Structural Consistency and Per-Fact Freshness**: Loadout consistency (verifying `baseline.anchored_loadout_revision == current_loadout.revision` and loadout fingerprints) is structurally distinct from per-fact freshness. An individual character fact may be `STALE`, `UNKNOWN`, or `CONFLICTING` while the overall loadout revision remains synchronized. The canonical fact predicate `CharacterFact.is_known` must treat `CONFLICTING` as unusable alongside `UNKNOWN` and `STALE`.
+16. **Decision-Relevant Fact Gating vs Unrelated Stale Facts**: Not all stale or unknown facts impact every equipment decision. When a candidate item targets a specific slot, only facts materially affected by or required for that swap (local defense changes, resistance changes, movement speed changes, and attribute cascade requirements) are decision-relevant. If a decision-relevant fact is unproven, confident equip must be gated with diagnostic explanations; however, unrelated stale facts (such as stale Armour from a prior swap when evaluating a ring affecting only Life and Resistances) must not globally block recommendations.
+17. **Local Defense Regressions as Explicit Multidimensional Trade-offs**: In Path of Exile 2, sacrificing local defense ratings (Armour, Evasion, Energy Shield) compromises base survivability. Such regressions must not be hidden behind large Life or resistance gains. A candidate that drops local defense must evaluate as a `MIXED_TRADEOFF` yielding `CONDITIONAL_UPGRADE` rather than a clean `EQUIP_NOW` or `DOMINANT_IMPROVEMENT`.
+18. **Movement Speed Baseline Reconciliation**: Movement Speed is a linear additive stat that changes with footwear and specific modifiers. During baseline reconciliation upon loadout promotion, known baseline movement speed must be deterministically updated via `DERIVED_CALCULATION` from net deltas, or marked `STALE` if unproven, avoiding silent omission or fabrication.
+19. **Immutable History Snapshots on Finalized Revision Transitions**: Every real mutation to a finalized loadout must archive the prior revision state to `runtime/loadout_history/{character_id}/rev_{N:06d}.json` before incrementing to $N+1$, ensuring full auditability and preventing CLI commands from bypassing snapshot preservation.
 
 ## Goals / Non-Goals
 
@@ -53,6 +58,11 @@ However, existing planning had critical gaps regarding character state availabil
 - Honestly gate official API capabilities (`UNAVAILABLE_BY_CURRENT_OFFICIAL_API` for inventory and stashes) and adhere to OAuth 2.1 public client specifications with registration freeze handling (`API_AVAILABLE`, `AUTH_CONFIGURED`, `AUTH_UNAVAILABLE`).
 - Guarantee complete V1 Gear Brain functionality without official API credentials via clipboard ingestion and manual baseline.
 - Maintain strict anti-automation compliance: zero simulated inputs, zero memory reading, zero automated gameplay actions.
+- Separate loadout structural consistency (revision anchoring and fingerprint matching) from individual `CharacterFact` freshness, enforcing `is_known` to exclude `CONFLICTING`, `UNKNOWN`, and `STALE`.
+- Centralize decision-relevant fact dependencies (`RecommendationFactDependencies`) so only facts materially required for a swap gate recommendation confidence, preventing unrelated stale facts from overblocking clean upgrades.
+- Detect local defense regressions (`armour_delta < 0 or evasion_delta < 0 or es_delta < 0`) deterministically, treating them as multidimensional trade-offs (`MIXED_TRADEOFF` / `CONDITIONAL_UPGRADE`) rather than allowing Life or resistance gains to emit clean `EQUIP_NOW`.
+- Reconcile Movement Speed during baseline reconciliation (`DERIVED_CALCULATION`), applying net deltas when known or marking `STALE` when unproven without fabricating values.
+- Archive immutable history snapshots in `runtime/loadout_history` for every finalized loadout revision transition, attaching `LoadoutTransitionResult` and keeping CLI outputs state-accurate.
 
 **Non-Goals:**
 - Automated passive tree pathfinding or gem link optimizers (gem requirements are validated only as requirement context).
@@ -68,7 +78,8 @@ However, existing planning had critical gaps regarding character state availabil
   - Allowed sources: `EXISTING_CHARACTER_STATE`, `GGG_OFFICIAL_API`, `DERIVED_FROM_VERIFIED_COMPONENTS`, `DERIVED_CALCULATION`, `MANUAL_USER_INPUT`, `MANUAL_SNAPSHOT`, `UNKNOWN`.
   - Allowed verification states: `VERIFIED`, `CORROBORATED`, `SINGLE_SOURCE`, `STALE`, `UNKNOWN`, `CONFLICTING`.
   - Invariant: When a character-sheet stat is unobserved or unproven, `value = UNKNOWN` (represented as `None` with `verification_state = UNKNOWN`). The engine strictly forbids converting missing stats to `0` or `0%`.
-- **Rationale**: In PoE2, resistances can be negative (-60% or lower) or positive (75%+). Treating missing stats as 0 is mathematically wrong and dangerously misleads defensive evaluation.
+  - Canonical Fact Usability Invariant: The `CharacterFact.is_known` property evaluates whether a fact can be reliably consumed for calculations. It requires that `value is not None` AND that `verification` is not `UNKNOWN`, `STALE`, or `CONFLICTING`. When contradictory sources exist (`verification: CONFLICTING`), the fact is strictly unusable (`is_known = False`) and cannot serve as an authoritative baseline value.
+- **Rationale**: In PoE2, resistances can be negative (-60% or lower) or positive (75%+). Treating missing stats as 0 is mathematically wrong and dangerously misleads defensive evaluation. Likewise, trusting conflicting or uncorroborated contradictions risks erroneous upgrade verdicts.
 - **Alternatives Rejected**:
   - *Coercing missing values to 0*: Falsely triggers massive deficit warnings or falsely assumes zero resistance.
   - *Heuristic stat estimation*: Guessing stats from character level or passives alone produces inaccurate verdicts.
@@ -114,22 +125,34 @@ However, existing planning had critical gaps regarding character state availabil
         - Mark `verification = VerificationState.STALE`.
         - Refuse to fabricate a projected total Armour (e.g. do not guess $4200 - 850 + 1050 = 4400$).
         - Surface notice to the user: *"Equipped loadout updated. Run `companion gear baseline set` or take a panel snapshot to refresh total character Armour."*
-- **Rationale**: Additive rebasing against capped values creates severe mathematical distortion (e.g. 115% raw losing 30% res remains 75% effective, not 45%). Safe rebase requires raw uncapped state.
+    - **Outcome D: Movement Speed Reconciliation**:
+      - Net movement speed delta:
+        $$\Delta \text{MS} = \text{cand\_ms} - \sum \text{disp\_ms}$$
+      - If `baseline.movement_speed.is_known` and `baseline.movement_speed.value is not None`:
+        $$\text{new\_ms} = \text{int}(\text{baseline.movement\_speed.value} + \Delta \text{MS})$$
+        Record with `source = BaselineSource.DERIVED_CALCULATION` and `verification = VerificationState.VERIFIED`.
+      - If `baseline.movement_speed.value` is present but unproven (`STALE` or `CONFLICTING`), mark `STALE` via `mark_stale()`.
+      - If `baseline.movement_speed.value is None` (`UNKNOWN`), preserve `UNKNOWN`.
+      - Refuse to fabricate or guess movement speed values.
+- **Rationale**: Additive rebasing against capped values creates severe mathematical distortion (e.g. 115% raw losing 30% res remains 75% effective, not 45%). Safe rebase requires raw uncapped state. Movement speed behaves linearly and can be safely derived when known, but must not be fabricated when unproven.
 
-### Decision 4: Baseline Consistency Gate
+### Decision 4: Baseline Consistency Gate & Fact Freshness Separation
 - **Approach**:
+  - Strictly distinguish **loadout structural consistency** from **individual fact freshness**:
+    - *Loadout Structural Consistency*: Verifies that `baseline.anchored_loadout_revision == current_loadout.revision` and loadout fingerprint hashes match. This ensures that the baseline was established against the current gear configuration.
+    - *Per-Fact Freshness*: Evaluates whether individual character facts are known, stale, unknown, or conflicting (`fact.is_known`). A baseline whose revision matches may still have specific stats marked `STALE` (e.g. Armour following a previous swap) or `UNKNOWN` (e.g. unobserved max resistance).
   - Before `EquipmentIntelligenceEngine` evaluates a candidate item, it executes the consistency gate:
     ```python
     if baseline.anchored_loadout_revision != current_loadout.revision:
         for fact in baseline.affected_unreconciled_facts():
             fact.mark_stale()
     ```
-  - If a fact is marked `STALE` or `UNKNOWN`:
+  - If a fact is marked `STALE`, `UNKNOWN`, or `CONFLICTING`:
     - The engine refuses to use it as an authoritative current character stat.
     - The engine refuses to assert projected absolute character values (e.g. `75% -> 47%`).
     - The engine continues to compute and report deterministic equipment-level deltas (e.g. `-28% Fire Resistance`).
-    - Verdict defaults to `INSUFFICIENT_DATA` or `CONDITIONAL_UPGRADE` with identified risk.
-- **Rationale**: Prevents stale character baselines from misleading upgrade recommendations while maintaining helpful equipment delta information.
+    - Confidence gating applies selectively based on whether the unproven fact is decision-relevant to the proposed swap (see Decision 18).
+- **Rationale**: Prevents stale or mismatched character baselines from misleading upgrade recommendations while maintaining helpful equipment delta information and avoiding conflation between whole-loadout anchoring and individual stat usability.
 
 ### Decision 5: Recommendation Generation Must Not Mutate Current State
 - **Approach**:
@@ -246,10 +269,16 @@ However, existing planning had critical gaps regarding character state availabil
 
     Tier 5: NORMAL_GEAR_IMPROVEMENT?
       ├── Significant net upgrade with safe trade-offs ──> EQUIP_NOW
+      ├── Local defense regression / mixed trade-offs ──> CONDITIONAL_UPGRADE (flags: [MIXED_TRADEOFF])
       ├── Upgrade with minor trade-offs ────────────────> CONDITIONAL_UPGRADE
       ├── Sidegrade / stash potential ──────────────────> KEEP_FOR_LATER
       └── Strict downgrade ─────────────────────────────> REJECT
     ```
+  - **Local Defense Regression & Trade-off Invariant**:
+    - Evaluated via `check_defense_regression(armour_delta, evasion_delta, es_delta) -> bool`.
+    - If `armour_delta < 0 or evasion_delta < 0 or es_delta < 0`, or if candidate trades one defense type for another (e.g. Armour loss for Evasion gain), candidate CANNOT qualify for clean `RESOLVES_DEFICIT`, `IMPROVES_DEFICIT`, or `DOMINANT_IMPROVEMENT` to produce `EQUIP_NOW`.
+    - Defense regressions are explicit trade-offs and MUST NOT be hidden or compensated by Life or resistance gains.
+    - Comparison evaluates to `MultidimensionalComparison.MIXED_TRADEOFF`, and verdict evaluates to `Verdict.CONDITIONAL_UPGRADE` with `flags=["MIXED_TRADEOFF"]` and explicit trade-off reasoning detailing the lost defenses.
   - Under no circumstances is this decision sequence collapsed into a scalar score.
 
 ### Decision 11: Field Availability Matrix & Expanded Manual Baseline Workflow
@@ -381,6 +410,32 @@ However, existing planning had critical gaps regarding character state availabil
   - Feature Gating: Maintain three clean states: `API_AVAILABLE`, `AUTH_CONFIGURED`, `AUTH_UNAVAILABLE`.
   - Offline V1 Workflow: Core Gear Brain functions 100% offline without API credentials using manual baseline and clipboard inspection (`companion gear inspect-clipboard`).
 
+### Decision 18: Centralized Decision-Relevant Fact Dependencies & Per-Fact Sufficiency
+- **Approach**:
+  - Centralize fact dependency derivation in `companion/equipment/fact_dependencies.py` via `determine_recommendation_fact_dependencies(...)` returning `RecommendationFactDependencies`:
+    - `needs_armour`: `cand.local_armour != disp_armour` or candidate has armour modifiers.
+    - `needs_evasion`: `cand.local_evasion != disp_evasion` or candidate has evasion modifiers.
+    - `needs_energy_shield`: `cand.local_energy_shield != disp_es` or candidate has energy shield modifiers.
+    - `needs_movement_speed`: candidate or displaced item modifies movement speed.
+    - `needs_strength`, `needs_dexterity`, `needs_intelligence`: candidate modifies attributes, or candidate/equipped items/gems require attributes in cascade validation.
+    - `needs_life`: candidate modifies Life.
+    - `needs_fire_res`, `needs_cold_res`, `needs_lightning_res`, `needs_chaos_res`: candidate modifies resistances or deficits are evaluated.
+  - In `analyze_data_sufficiency` (`companion/equipment/data_sufficiency.py`):
+    - For each needed fact, check if baseline fact is usable (`fact.is_known`).
+    - If any needed fact is `STALE`, `UNKNOWN`, or `CONFLICTING`, mark `is_sufficient_for_equip_now = False`, `sufficiency = INSUFFICIENT_FOR_CONFIDENT_EQUIP`, and add explicit diagnostic reasons (e.g. `"Armour baseline is STALE and this candidate changes local Armour. Exact resulting character Armour cannot be safely projected."`, `"Movement Speed is unknown and this swap changes Movement Speed."`, `"Strength is conflicting and is required to validate equipment/gem requirements."`).
+    - Unneeded facts that are stale DO NOT block `is_sufficient_for_equip_now` (e.g. stale Armour does not block evaluating a ring modifying only Life and Resistances).
+- **Rationale**: Prevents unrelated stale stats (e.g. Armour from an earlier body swap) from globally blocking clean upgrades on other slots, while strictly gating swaps that materially depend on stale, unknown, or conflicting stats.
+
+### Decision 19: Immutable Loadout Revision History Snapshots on Finalized Transitions
+- **Approach**:
+  - Whenever an established, finalized loadout transitions due to an equipment change (`promote-candidate`, `set-clipboard`, or `clear`):
+    - The authoritative wrapper `run_loadout_promote_candidate` (and associated transition handlers) snapshots the prior revision $N$ to `runtime/loadout_history/{character_id}/rev_{N:06d}.json` before advancing to revision $N+1$.
+    - Increments `loadout.revision` exactly once per real change.
+    - Attaches `LoadoutTransitionResult` (`is_finalized`, `is_changed`, `previous_revision`, `new_revision`, `history_snapshot_path`) to `new_loadout.last_transition`.
+    - Routes CLI promotion and slot mutations through this transition wrapper so direct CLI calls never bypass history creation.
+    - CLI emits state-accurate messages reflecting whether the loadout was finalized and whether a mutation occurred.
+- **Rationale**: Preserves an immutable, auditable record of all finalized loadouts, enabling rollbacks, forensic analysis, and regression investigation.
+
 ## Data Models
 
 ```python
@@ -405,7 +460,11 @@ class CharacterFact(BaseModel, Generic[T]):
 
     @property
     def is_known(self) -> bool:
-        return self.value is not None and self.verification != VerificationState.UNKNOWN
+        return self.value is not None and self.verification not in (
+            VerificationState.UNKNOWN,
+            VerificationState.STALE,
+            VerificationState.CONFLICTING,
+        )
 
 class CharacterStatBaseline(BaseModel):
     baseline_id: str
@@ -603,6 +662,27 @@ class EquipmentRecommendation(BaseModel):
     prerequisites_to_equip: list[str] = Field(default_factory=list)
     explanation: str
     confidence: VerificationState
+
+class RecommendationFactDependencies(BaseModel):
+    needs_armour: bool = False
+    needs_evasion: bool = False
+    needs_energy_shield: bool = False
+    needs_movement_speed: bool = False
+    needs_strength: bool = False
+    needs_dexterity: bool = False
+    needs_intelligence: bool = False
+    needs_life: bool = False
+    needs_fire_res: bool = False
+    needs_cold_res: bool = False
+    needs_lightning_res: bool = False
+    needs_chaos_res: bool = False
+
+class LoadoutTransitionResult(BaseModel):
+    is_finalized: bool
+    is_changed: bool
+    previous_revision: int
+    new_revision: int
+    history_snapshot_path: str | None = None
 ```
 
 ## Risks / Trade-offs
@@ -623,6 +703,14 @@ class EquipmentRecommendation(BaseModel):
   *Mitigation*: High-Risk Unknown Gate blocks confident `EQUIP_NOW` for any modifier with `UNKNOWN_APPLICABILITY` relating to fire damage, emitting `INSUFFICIENT_DATA` or `CONDITIONAL_UPGRADE` with explicit `HIGH_RISK` warning.
 - **[Risk: Accidental Double-Counting of Defenses]** → Total character Armour could be inflated if combined with item local Armour.
   *Mitigation*: The engine explicitly decouples $S_{\text{baseline}}$ from item contributions; candidate projection only adds $\Delta \text{Local} = C_{\text{candidate}} - C_{\text{equipped}}$.
+- **[Risk: Overblocking Clean Upgrades Due to Unrelated Stale Facts]** → A character with stale Armour from an earlier chest swap would be unable to evaluate a ring candidate for `EQUIP_NOW`.
+  *Mitigation*: Centralized decision-relevant fact dependencies (`RecommendationFactDependencies`) ensure only facts materially impacted by or required for the candidate swap gate confidence. Unrelated stale facts do not globally block recommendations.
+- **[Risk: Local Defense Regressions Masked by Life or Resistance Gains]** → A candidate body armour dropping 800 Armour but gaining +80 Life and 10% Fire Res could be falsely judged as a clean dominant improvement.
+  *Mitigation*: Deterministic defense regression check (`check_defense_regression`) catches negative local defense deltas and mixed defense trades, classifying them as `MIXED_TRADEOFF` and yielding `CONDITIONAL_UPGRADE`.
+- **[Risk: Lost Movement Speed Tracking During Gear Promotion]** → Swapping boots could fail to update baseline movement speed, causing stale mobility metrics.
+  *Mitigation*: Baseline reconciler explicitly computes net movement speed delta as `DERIVED_CALCULATION` when known, or marks it `STALE` when unproven.
+- **[Risk: CLI Commands Bypassing Loadout History Snapshots]** → Direct loadout mutations from CLI commands could increment revisions without creating historical audit files.
+  *Mitigation*: Route all CLI promotion and slot mutations through the authoritative transition wrapper `run_loadout_promote_candidate` which snapshots revision $N$ to `runtime/loadout_history/{character_id}/rev_{N:06d}.json` before advancing to $N+1$.
 
 ## Open Questions
 

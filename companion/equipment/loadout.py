@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,106 @@ ALL_WEAPON_SLOTS = [
     SlotType.MAIN_HAND,
     SlotType.OFF_HAND,
 ]
+
+
+class FinalizedLoadoutMutationError(RuntimeError):
+    """Raised when direct slot mutation is attempted on a finalized loadout bypassing revision transition."""
+
+
+def compute_item_fingerprint(item: ItemCandidate | None) -> str:
+    """Compute a deterministic fingerprint of decision-relevant item content."""
+    if item is None:
+        return "EMPTY"
+
+    sorted_mods = []
+    for m in item.modifiers:
+        sorted_mods.append((
+            m.modifier_type.value,
+            m.scope.value,
+            float(m.value),
+            m.raw_text.strip().lower(),
+            m.is_implicit,
+            m.mechanic_id or "",
+        ))
+    sorted_mods.sort()
+
+    payload = {
+        "name": (item.name or "").strip().lower(),
+        "base_type": (item.base_type or "").strip().lower(),
+        "slot": item.slot.value,
+        "slot_occupancy": item.slot_occupancy.value,
+        "rarity": (item.rarity or "").strip().lower(),
+        "item_level": item.item_level,
+        "required_level": item.required_level,
+        "required_str": item.required_str,
+        "required_dex": item.required_dex,
+        "required_int": item.required_int,
+        "local_armour": item.local_armour,
+        "local_evasion": item.local_evasion,
+        "local_energy_shield": item.local_energy_shield,
+        "modifiers": sorted_mods,
+    }
+    raw = json.dumps(payload, sort_keys=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def is_item_decision_equal(a: ItemCandidate | None, b: ItemCandidate | None) -> bool:
+    """Return True if two items have identical decision-relevant representation."""
+    return compute_item_fingerprint(a) == compute_item_fingerprint(b)
+
+
+def compute_loadout_fingerprint(loadout: EquippedLoadout) -> str:
+    """Compute deterministic fingerprint of decision-relevant loadout state.
+
+    Includes:
+    - Slot identity
+    - Weapon-set context
+    - Item decision-relevant identity and modifier content
+    - Known vs unknown occupancy
+
+    Excludes:
+    - updated_at
+    - loadout_id
+    - character_id
+    - revision
+    - is_finalized
+    - incidental ordering
+    """
+    shared = {
+        slot.value: compute_item_fingerprint(
+            loadout.shared_slots[slot.value].item
+            if loadout.shared_slots.get(slot.value) is not None
+            else None
+        )
+        for slot in sorted(ALL_SHARED_SLOTS, key=lambda s: s.value)
+    }
+
+    wset1 = {
+        slot.value: compute_item_fingerprint(
+            loadout.weapon_set_1[slot.value].item
+            if loadout.weapon_set_1.get(slot.value) is not None
+            else None
+        )
+        for slot in sorted(ALL_WEAPON_SLOTS, key=lambda s: s.value)
+    }
+
+    wset2 = {
+        slot.value: compute_item_fingerprint(
+            loadout.weapon_set_2[slot.value].item
+            if loadout.weapon_set_2.get(slot.value) is not None
+            else None
+        )
+        for slot in sorted(ALL_WEAPON_SLOTS, key=lambda s: s.value)
+    }
+
+    payload = {
+        "shared_slots": shared,
+        "weapon_set_1": wset1,
+        "weapon_set_2": wset2,
+        "active_weapon_set": loadout.active_weapon_set,
+    }
+    raw = json.dumps(payload, sort_keys=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 class EquippedSlotEntry(BaseModel):
@@ -64,6 +165,11 @@ class EquippedLoadout(BaseModel):
     weapon_set_2: dict[str, EquippedSlotEntry | None] = Field(default_factory=dict)
     active_weapon_set: int = 1
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    last_transition: Any = Field(default=None, exclude=True)
+
+    def compute_fingerprint(self) -> str:
+        """Compute deterministic fingerprint of decision-relevant loadout equipment."""
+        return compute_loadout_fingerprint(self)
 
     @classmethod
     def create_draft(cls, character_id: str, loadout_id: str = "draft_loadout") -> EquippedLoadout:
@@ -108,7 +214,7 @@ class EquippedLoadout(BaseModel):
         self.known_slots = known
         self.unknown_slots = unknown
 
-    def set_slot(
+    def _raw_set_slot(
         self,
         slot: SlotType,
         item: ItemCandidate,
@@ -117,7 +223,7 @@ class EquippedLoadout(BaseModel):
         verification: VerificationState = VerificationState.SINGLE_SOURCE,
         evidence_ref: str | None = None,
     ) -> None:
-        """Assign an item to an equipped slot."""
+        """Raw internal slot assignment without finalization gate."""
         entry = EquippedSlotEntry(
             item=item,
             slot=slot,
@@ -139,6 +245,45 @@ class EquippedLoadout(BaseModel):
         self.updated_at = datetime.now(timezone.utc).isoformat()
         self._update_known_unknown()
 
+    def _raw_clear_slot(
+        self,
+        slot: SlotType,
+        weapon_set: WeaponSetContext | None = None,
+    ) -> None:
+        """Raw internal slot clear without finalization gate."""
+        if weapon_set == WeaponSetContext.WEAPON_SET_1:
+            self.weapon_set_1[slot.value] = None
+        elif weapon_set == WeaponSetContext.WEAPON_SET_2:
+            self.weapon_set_2[slot.value] = None
+        elif slot in ALL_WEAPON_SLOTS:
+            self.weapon_set_1[slot.value] = None
+            self.weapon_set_2[slot.value] = None
+        else:
+            self.shared_slots[slot.value] = None
+
+        self.updated_at = datetime.now(timezone.utc).isoformat()
+        self._update_known_unknown()
+
+    def set_slot(
+        self,
+        slot: SlotType,
+        item: ItemCandidate,
+        source: BaselineSource = BaselineSource.CLIPBOARD_ITEM_TEXT,
+        weapon_set: WeaponSetContext | None = None,
+        verification: VerificationState = VerificationState.SINGLE_SOURCE,
+        evidence_ref: str | None = None,
+    ) -> None:
+        """Assign an item to an equipped slot.
+
+        Raises FinalizedLoadoutMutationError if called directly on a finalized loadout.
+        """
+        if self.is_finalized:
+            raise FinalizedLoadoutMutationError(
+                f"Cannot mutate finalized loadout '{self.loadout_id}' (revision {self.revision}) directly via set_slot. "
+                "Post-finalization changes must occur through controlled version transitions."
+            )
+        self._raw_set_slot(slot, item, source, weapon_set, verification, evidence_ref)
+
     def get_slot(
         self,
         slot: SlotType,
@@ -158,19 +303,61 @@ class EquippedLoadout(BaseModel):
         slot: SlotType,
         weapon_set: WeaponSetContext | None = None,
     ) -> None:
-        """Clear an equipped slot."""
-        if weapon_set == WeaponSetContext.WEAPON_SET_1:
-            self.weapon_set_1[slot.value] = None
-        elif weapon_set == WeaponSetContext.WEAPON_SET_2:
-            self.weapon_set_2[slot.value] = None
-        elif slot in ALL_WEAPON_SLOTS:
-            self.weapon_set_1[slot.value] = None
-            self.weapon_set_2[slot.value] = None
-        else:
-            self.shared_slots[slot.value] = None
+        """Clear an equipped slot.
 
-        self.updated_at = datetime.now(timezone.utc).isoformat()
-        self._update_known_unknown()
+        Raises FinalizedLoadoutMutationError if called directly on a finalized loadout.
+        """
+        if self.is_finalized:
+            raise FinalizedLoadoutMutationError(
+                f"Cannot mutate finalized loadout '{self.loadout_id}' (revision {self.revision}) directly via clear_slot. "
+                "Post-finalization changes must occur through controlled version transitions."
+            )
+        self._raw_clear_slot(slot, weapon_set)
+
+    def transition_slot(
+        self,
+        slot: SlotType,
+        item: ItemCandidate,
+        source: BaselineSource = BaselineSource.CLIPBOARD_ITEM_TEXT,
+        weapon_set: WeaponSetContext | None = None,
+        verification: VerificationState = VerificationState.SINGLE_SOURCE,
+        evidence_ref: str | None = None,
+    ) -> bool:
+        """Execute a controlled versioned transition setting a slot.
+
+        Returns True if a decision-relevant change occurred, False if no-op.
+        If finalized and changed, increments revision exactly once.
+        """
+        existing = self.get_slot(slot, weapon_set=weapon_set)
+        current_item = existing.item if existing else None
+        if is_item_decision_equal(current_item, item):
+            return False
+
+        if self.is_finalized:
+            self.revision += 1
+
+        self._raw_set_slot(slot, item, source, weapon_set, verification, evidence_ref)
+        return True
+
+    def transition_clear_slot(
+        self,
+        slot: SlotType,
+        weapon_set: WeaponSetContext | None = None,
+    ) -> bool:
+        """Execute a controlled versioned transition clearing a slot.
+
+        Returns True if slot had an item cleared, False if already empty (no-op).
+        If finalized and changed, increments revision exactly once.
+        """
+        existing = self.get_slot(slot, weapon_set=weapon_set)
+        if existing is None or existing.item is None:
+            return False
+
+        if self.is_finalized:
+            self.revision += 1
+
+        self._raw_clear_slot(slot, weapon_set)
+        return True
 
     def finalize(self, loadout_id: str | None = None) -> None:
         """Finalize the loadout, establishing revision 1 and stable known/unknown slots."""

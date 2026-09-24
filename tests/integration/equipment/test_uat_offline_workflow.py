@@ -70,6 +70,7 @@ def test_uat_full_offline_workflow_lifecycle(tmp_path: Path):
         max_lightning_res=75,
         dex=50,
         int=50,
+        movement_speed=0,
     )
     assert base.anchored_loadout_revision == 1
 

@@ -42,6 +42,7 @@ class CharacterFact(BaseModel, Generic[T]):
         return self.value is not None and self.verification not in (
             VerificationState.UNKNOWN,
             VerificationState.STALE,
+            VerificationState.CONFLICTING,
         )
 
     @classmethod
@@ -99,6 +100,7 @@ class CharacterStatBaseline(BaseModel):
     baseline_id: str
     character_id: str
     anchored_loadout_revision: int
+    anchored_loadout_fingerprint: str | None = None
 
     life: CharacterFact[int] = Field(default_factory=CharacterFact[int].unknown)
     armour: CharacterFact[int] = Field(default_factory=CharacterFact[int].unknown)
@@ -178,12 +180,14 @@ class CharacterStatBaseline(BaseModel):
         cls,
         character_id: str,
         anchored_loadout_revision: int = 1,
+        anchored_loadout_fingerprint: str | None = None,
         baseline_id: str | None = None,
     ) -> CharacterStatBaseline:
         return cls.create_partial(
             baseline_id=baseline_id or f"base_{character_id}",
             character_id=character_id,
             anchored_loadout_revision=anchored_loadout_revision,
+            anchored_loadout_fingerprint=anchored_loadout_fingerprint,
         )
 
     @classmethod
@@ -192,6 +196,7 @@ class CharacterStatBaseline(BaseModel):
         baseline_id: str,
         character_id: str,
         anchored_loadout_revision: int,
+        anchored_loadout_fingerprint: str | None = None,
         source: BaselineSource = BaselineSource.MANUAL_USER_INPUT,
         verification: VerificationState = VerificationState.VERIFIED,
         life: int | None = None,
@@ -252,6 +257,7 @@ class CharacterStatBaseline(BaseModel):
             baseline_id=baseline_id,
             character_id=character_id,
             anchored_loadout_revision=anchored_loadout_revision,
+            anchored_loadout_fingerprint=anchored_loadout_fingerprint,
             life=make_fact(life),
             armour=make_fact(armour),
             evasion=make_fact(evasion),
@@ -286,6 +292,7 @@ class CharacterStatBaseline(BaseModel):
             baseline_id=self.baseline_id,
             character_id=self.character_id,
             anchored_loadout_revision=self.anchored_loadout_revision,
+            anchored_loadout_fingerprint=self.anchored_loadout_fingerprint,
             life=self.life.mark_stale() if self.life.value is not None else self.life,
             armour=self.armour.mark_stale() if self.armour.value is not None else self.armour,
             evasion=self.evasion.mark_stale() if self.evasion.value is not None else self.evasion,

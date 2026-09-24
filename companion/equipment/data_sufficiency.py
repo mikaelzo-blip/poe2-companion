@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
-from companion.equipment.baseline import CharacterStatBaseline
+from companion.equipment.baseline import CharacterFact, CharacterStatBaseline
+from companion.equipment.fact_dependencies import (
+    RecommendationFactDependencies,
+    determine_recommendation_fact_dependencies,
+)
 from companion.equipment.loadout import EquippedLoadout
 from companion.equipment.mechanics import MechanicSafetyAssessment, evaluate_mechanic_safety
 from companion.equipment.rules import BuildBreakerCertainty, BuildBreakerEvaluation
@@ -15,6 +20,7 @@ from companion.equipment.schema import (
     SlotOccupancy,
     SlotType,
 )
+from companion.state.provenance import VerificationState
 
 
 class RecommendationDataSufficiency(str, Enum):
@@ -38,6 +44,7 @@ class DataSufficiencyResult(BaseModel):
     is_safety_verified: bool = True
     is_mechanics_safe: bool = True
     unobserved_critical_facts: list[str] = Field(default_factory=list)
+    fact_dependencies: RecommendationFactDependencies | None = None
 
 
 def analyze_data_sufficiency(
@@ -48,6 +55,8 @@ def analyze_data_sufficiency(
     safety_eval: BuildBreakerEvaluation,
     projection: Any = None,
     mechanic_assessment: MechanicSafetyAssessment | None = None,
+    cascade_result: Any = None,
+    fact_dependencies: RecommendationFactDependencies | None = None,
 ) -> DataSufficiencyResult:
     """Analyze data sufficiency for equipping candidate in target slot.
 
@@ -56,10 +65,21 @@ def analyze_data_sufficiency(
     2. Target slot knownness in the current equipped loadout.
     3. Slot occupancy topology certainty.
     4. Build-breaker rule certainty (e.g. unknown applicability blocks confident equip).
-    5. Observation state of critical baseline stats (defenses, resistances, attributes).
+    5. Observation state and freshness of decision-relevant baseline facts.
     """
     reasons: list[str] = []
     unobserved_facts: list[str] = []
+    has_insufficient_needed_fact = False
+
+    if fact_dependencies is None:
+        fact_dependencies = determine_recommendation_fact_dependencies(
+            candidate=candidate,
+            loadout=loadout,
+            slot=slot,
+            weapon_set=candidate.weapon_set,
+            cascade_result=cascade_result,
+            projection=projection,
+        )
 
     # 1. Slot topology and occupancy check
     is_topology_known = (
@@ -91,29 +111,148 @@ def analyze_data_sufficiency(
         reasons.append("Character stat baseline is missing; absolute totals cannot be calculated.")
     else:
         if loadout is not None:
-            if baseline.anchored_loadout_revision == loadout.revision:
+            loadout_fp = loadout.compute_fingerprint()
+            fingerprint_matches = (
+                baseline.anchored_loadout_fingerprint is not None
+                and baseline.anchored_loadout_fingerprint == loadout_fp
+            )
+            if baseline.anchored_loadout_revision == loadout.revision and fingerprint_matches:
                 is_baseline_anchored = True
             else:
-                reasons.append(
-                    f"Baseline anchored loadout revision {baseline.anchored_loadout_revision} is stale "
-                    f"compared to current loadout revision {loadout.revision}."
-                )
+                if baseline.anchored_loadout_revision != loadout.revision:
+                    reasons.append(
+                        f"Baseline anchored loadout revision {baseline.anchored_loadout_revision} is stale "
+                        f"compared to current loadout revision {loadout.revision}."
+                    )
+                if baseline.anchored_loadout_fingerprint is None:
+                    reasons.append(
+                        "Baseline lacks anchored loadout fingerprint (LEGACY_ANCHOR_REQUIRES_REBASELINE)."
+                    )
+                elif baseline.anchored_loadout_fingerprint != loadout_fp:
+                    reasons.append(
+                        f"Baseline anchored fingerprint '{baseline.anchored_loadout_fingerprint}' does not match "
+                        f"current loadout fingerprint '{loadout_fp}'."
+                    )
         else:
             is_baseline_anchored = True
 
+        # Per-fact sufficiency check for decision-relevant needed facts
+        needed_fact_checks = [
+            (
+                fact_dependencies.needs_armour,
+                baseline.armour,
+                "Armour",
+                "this candidate changes local Armour. Exact resulting character Armour cannot be safely projected",
+                "this candidate changes local Armour",
+            ),
+            (
+                fact_dependencies.needs_evasion,
+                baseline.evasion,
+                "Evasion",
+                "this candidate changes local Evasion. Exact resulting character Evasion cannot be safely projected",
+                "this candidate changes local Evasion",
+            ),
+            (
+                fact_dependencies.needs_energy_shield,
+                baseline.energy_shield,
+                "Energy Shield",
+                "this candidate changes local Energy Shield. Exact resulting character Energy Shield cannot be safely projected",
+                "this candidate changes local Energy Shield",
+            ),
+            (
+                fact_dependencies.needs_movement_speed,
+                baseline.movement_speed,
+                "Movement Speed",
+                "this swap changes Movement Speed",
+                "this swap changes Movement Speed",
+            ),
+            (
+                fact_dependencies.needs_strength,
+                baseline.strength,
+                "Strength",
+                "is required to validate equipment/gem requirements",
+                "is required to validate equipment/gem requirements",
+            ),
+            (
+                fact_dependencies.needs_dexterity,
+                baseline.dexterity,
+                "Dexterity",
+                "is required to validate equipment/gem requirements",
+                "is required to validate equipment/gem requirements",
+            ),
+            (
+                fact_dependencies.needs_intelligence,
+                baseline.intelligence,
+                "Intelligence",
+                "is required to validate equipment/gem requirements",
+                "is required to validate equipment/gem requirements",
+            ),
+            (
+                fact_dependencies.needs_life,
+                baseline.life,
+                "Life",
+                "this candidate changes Life",
+                "this candidate changes Life",
+            ),
+            (
+                fact_dependencies.needs_fire_res,
+                baseline.effective_fire_res,
+                "Fire Resistance",
+                "this candidate changes Fire Resistance",
+                "this candidate changes Fire Resistance",
+            ),
+            (
+                fact_dependencies.needs_cold_res,
+                baseline.effective_cold_res,
+                "Cold Resistance",
+                "this candidate changes Cold Resistance",
+                "this candidate changes Cold Resistance",
+            ),
+            (
+                fact_dependencies.needs_lightning_res,
+                baseline.effective_lightning_res,
+                "Lightning Resistance",
+                "this candidate changes Lightning Resistance",
+                "this candidate changes Lightning Resistance",
+            ),
+            (
+                fact_dependencies.needs_chaos_res,
+                baseline.effective_chaos_res,
+                "Chaos Resistance",
+                "this candidate changes Chaos Resistance",
+                "this candidate changes Chaos Resistance",
+            ),
+        ]
+
+        for is_needed, fact, stat_name, stale_suffix, other_suffix in needed_fact_checks:
+            if not is_needed:
+                continue
+            # Optional defenses (Armour, Evasion, Energy Shield) may remain unpopulated (UNKNOWN)
+            # per spec without blocking upgrades. Only STALE or CONFLICTING defenses block when changed.
+            if stat_name in ("Armour", "Evasion", "Energy Shield") and fact.verification == VerificationState.UNKNOWN:
+                continue
+            if not fact.is_known:
+                has_insufficient_needed_fact = True
+                if fact.verification == VerificationState.STALE:
+                    reasons.append(f"{stat_name} baseline is STALE and {stale_suffix}.")
+                elif fact.verification == VerificationState.CONFLICTING:
+                    reasons.append(f"{stat_name} is conflicting and {other_suffix}.")
+                else:
+                    reasons.append(f"{stat_name} is unknown and {other_suffix}.")
+
         # Check critical resistance facts
         res_checks = [
-            ("effective_fire_res", baseline.effective_fire_res.is_known, "Fire resistance"),
-            ("effective_cold_res", baseline.effective_cold_res.is_known, "Cold resistance"),
-            ("effective_lightning_res", baseline.effective_lightning_res.is_known, "Lightning resistance"),
-            ("effective_chaos_res", baseline.effective_chaos_res.is_known, "Chaos resistance"),
+            ("effective_fire_res", baseline.effective_fire_res),
+            ("effective_cold_res", baseline.effective_cold_res),
+            ("effective_lightning_res", baseline.effective_lightning_res),
+            ("effective_chaos_res", baseline.effective_chaos_res),
         ]
-        for field_name, is_known, label in res_checks:
-            if not is_known:
+        for field_name, fact in res_checks:
+            if fact.value is None or fact.verification == VerificationState.UNKNOWN:
                 unobserved_facts.append(field_name)
 
         # Check defensive facts
-        if not baseline.life.is_known:
+        if baseline.life.value is None or baseline.life.verification == VerificationState.UNKNOWN:
             unobserved_facts.append("life")
 
     # 4. Build-breaker safety evaluation certainty
@@ -160,13 +299,14 @@ def analyze_data_sufficiency(
 
     # 6. Evaluate overall sufficiency
     # Strict gate: if slot unknown, baseline missing/stale, topology unknown, build-breaker unknown/breaker,
-    # or unmodeled mechanic added/removed -> INSUFFICIENT_FOR_CONFIDENT_EQUIP
+    # unmodeled mechanic added/removed, or any needed baseline fact is missing/stale/conflicting -> INSUFFICIENT_FOR_CONFIDENT_EQUIP
     if (
         not is_slot_known
         or not is_baseline_anchored
         or not is_topology_known
         or not is_safety_verified
         or not is_mechanics_safe
+        or has_insufficient_needed_fact
         or baseline is None
     ):
         return DataSufficiencyResult(
@@ -178,6 +318,7 @@ def analyze_data_sufficiency(
             is_safety_verified=is_safety_verified,
             is_mechanics_safe=is_mechanics_safe,
             unobserved_critical_facts=unobserved_facts,
+            fact_dependencies=fact_dependencies,
         )
 
     # Slot is known, baseline is anchored, topology is known, safety is verified.
@@ -195,6 +336,7 @@ def analyze_data_sufficiency(
             is_safety_verified=is_safety_verified,
             is_mechanics_safe=is_mechanics_safe,
             unobserved_critical_facts=unobserved_facts,
+            fact_dependencies=fact_dependencies,
         )
 
     # All criteria satisfied
@@ -207,4 +349,5 @@ def analyze_data_sufficiency(
         is_safety_verified=True,
         is_mechanics_safe=True,
         unobserved_critical_facts=[],
+        fact_dependencies=fact_dependencies,
     )

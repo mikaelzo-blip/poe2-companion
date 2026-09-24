@@ -1264,32 +1264,42 @@ def handle_gear_baseline(args: argparse.Namespace) -> int:
 
 def handle_gear_loadout(args: argparse.Namespace) -> int:
     from companion.equipment.clipboard import read_item_input
-    from companion.equipment.baseline_cli import load_baseline, save_baseline
     from companion.equipment.loadout_cli import (
-        load_loadout,
         run_loadout_clear,
         run_loadout_finalize,
+        run_loadout_promote_candidate,
         run_loadout_set_item,
         run_loadout_show,
-        save_loadout,
     )
-    from companion.equipment.loadout_promotion import promote_candidate_to_loadout
-    from companion.equipment.parser import InvalidItemClipboardError, parse_item_text
-    from companion.equipment.schema import SlotType, WeaponSetContext
+    from companion.equipment.parser import InvalidItemClipboardError
 
     char_id = _resolve_char_id(args)
 
     if args.loadout_action == "set-clipboard":
         raw_text = read_item_input(getattr(args, "file", None))
         try:
-            run_loadout_set_item(
+            l = run_loadout_set_item(
                 runtime_dir=args.runtime,
                 character_id=char_id,
                 slot_name=args.slot,
                 item_text=raw_text,
                 weapon_set_name=getattr(args, "weapon_set", None),
             )
-            print(f"Slot '{args.slot}' updated in loadout draft for character '{char_id}'.")
+            trans = getattr(l, "last_transition", None)
+            if trans and trans.is_finalized:
+                if trans.is_changed:
+                    print(
+                        f"Slot '{args.slot}' updated.\n"
+                        f"Loadout revision: {trans.previous_revision} -> {trans.new_revision}.\n"
+                        f"Existing baseline is now stale and requires re-baseline."
+                    )
+                else:
+                    print(
+                        f"Slot '{args.slot}' unchanged.\n"
+                        f"Loadout revision remains {trans.new_revision}."
+                    )
+            else:
+                print(f"Slot '{args.slot}' updated in loadout draft for character '{char_id}'.")
             return 0
         except (InvalidItemClipboardError, ValueError) as exc:
             sys.stderr.write(f"Error setting loadout slot: {exc}\n")
@@ -1306,42 +1316,58 @@ def handle_gear_loadout(args: argparse.Namespace) -> int:
         print(run_loadout_show(runtime_dir=args.runtime, character_id=char_id))
         return 0
     elif args.loadout_action == "clear":
-        run_loadout_clear(
+        l = run_loadout_clear(
             runtime_dir=args.runtime,
             character_id=char_id,
             slot_name=args.slot,
             weapon_set_name=getattr(args, "weapon_set", None),
         )
-        print(f"Slot '{args.slot}' cleared from loadout.")
+        trans = getattr(l, "last_transition", None)
+        if trans and trans.is_finalized:
+            if trans.is_changed:
+                print(
+                    f"Slot '{args.slot}' cleared.\n"
+                    f"Loadout revision: {trans.previous_revision} -> {trans.new_revision}.\n"
+                    f"Existing baseline is now stale and requires re-baseline."
+                )
+            else:
+                print(
+                    f"Slot '{args.slot}' unchanged.\n"
+                    f"Loadout revision remains {trans.new_revision}."
+                )
+        else:
+            print(f"Slot '{args.slot}' cleared from loadout.")
         return 0
     elif args.loadout_action == "promote-candidate":
         raw_text = read_item_input(getattr(args, "file", None))
         try:
-            slot = SlotType.from_str(args.slot)
-            wset = WeaponSetContext.from_val(getattr(args, "weapon_set", None)) if getattr(args, "weapon_set", None) else None
-            candidate = parse_item_text(raw_text, target_slot=slot, target_weapon_set=wset)
-
-            loadout = load_loadout(args.runtime, char_id)
-            baseline = load_baseline(args.runtime, char_id)
-
-            new_loadout, new_baseline = promote_candidate_to_loadout(
-                loadout=loadout,
-                candidate=candidate,
-                slot=slot,
-                baseline=baseline,
-                weapon_set=wset,
+            new_loadout, _ = run_loadout_promote_candidate(
+                runtime_dir=args.runtime,
+                character_id=char_id,
+                slot_name=args.slot,
+                candidate_text=raw_text,
+                weapon_set_name=getattr(args, "weapon_set", None),
             )
-            save_loadout(args.runtime, new_loadout)
-            if new_baseline:
-                save_baseline(args.runtime, new_baseline)
-
-            print(f"Candidate '{candidate.name}' promoted to slot '{slot.value}'. Revision advanced to {new_loadout.revision}.")
+            trans = getattr(new_loadout, "last_transition", None)
+            if trans and trans.is_finalized:
+                if trans.is_changed:
+                    print(
+                        f"Slot '{args.slot}' updated.\n"
+                        f"Loadout revision: {trans.previous_revision} -> {trans.new_revision}.\n"
+                        f"Existing baseline is now stale and requires re-baseline."
+                    )
+                else:
+                    print(
+                        f"Slot '{args.slot}' unchanged.\n"
+                        f"Loadout revision remains {trans.new_revision}."
+                    )
+            else:
+                print(f"Slot '{args.slot}' updated in loadout draft for character '{char_id}'.")
             return 0
         except (InvalidItemClipboardError, ValueError) as exc:
             sys.stderr.write(f"Error promoting candidate: {exc}\n")
             return 1
     return 1
-
 
 
 def handle_intelligence_story(args: argparse.Namespace) -> int:

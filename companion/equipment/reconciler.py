@@ -17,6 +17,7 @@ def reconcile_baseline_after_swap(
     displaced_contributions: list[ItemContribution],
     candidate_contribution: ItemContribution | None,
     new_loadout_revision: int,
+    new_loadout_fingerprint: str | None = None,
 ) -> CharacterStatBaseline:
     """Reconcile baseline after an equipment mutation under strict Resistance Rebase Policy.
 
@@ -151,10 +152,28 @@ def reconcile_baseline_after_swap(
     # Life (can also mark stale or rebase if additive)
     new_life = reconcile_linear_stat(baseline.life, int(net_life))
 
+    # Movement Speed rebase or stale
+    disp_ms = sum(c.movement_speed_delta for c in displaced_contributions)
+    cand_ms = candidate_contribution.movement_speed_delta if candidate_contribution else 0.0
+    net_ms = cand_ms - disp_ms
+
+    if baseline.movement_speed.is_known and baseline.movement_speed.value is not None:
+        new_ms_fact = CharacterFact[int](
+            value=int(baseline.movement_speed.value + net_ms),
+            source=BaselineSource.DERIVED_CALCULATION,
+            observed_at=now_iso,
+            verification=VerificationState.VERIFIED,
+        )
+    elif baseline.movement_speed.value is not None:
+        new_ms_fact = baseline.movement_speed.mark_stale()
+    else:
+        new_ms_fact = baseline.movement_speed
+
     return CharacterStatBaseline(
         baseline_id=baseline.baseline_id,
         character_id=baseline.character_id,
         anchored_loadout_revision=new_loadout_revision,
+        anchored_loadout_fingerprint=new_loadout_fingerprint,
         life=new_life,
         armour=new_armour,
         evasion=new_evasion,
@@ -178,7 +197,7 @@ def reconcile_baseline_after_swap(
         strength=new_str,
         dexterity=new_dex,
         intelligence=new_int,
-        movement_speed=baseline.movement_speed,
+        movement_speed=new_ms_fact,
         observed_at=baseline.observed_at,
         updated_at=now_iso,
     )

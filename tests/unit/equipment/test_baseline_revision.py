@@ -93,10 +93,12 @@ def test_baseline_anchors_to_finalized_revision():
         baseline_id="base_1",
         character_id="char_1",
         anchored_loadout_revision=loadout.revision,
+        anchored_loadout_fingerprint=loadout.compute_fingerprint(),
         life=1500,
     )
     assert baseline.anchored_loadout_revision == 1
-    gate_res = check_baseline_consistency(baseline, loadout.revision)
+    assert baseline.anchored_loadout_fingerprint == loadout.compute_fingerprint()
+    gate_res = check_baseline_consistency(baseline, loadout.revision, loadout.compute_fingerprint())
     assert gate_res.is_consistent is True
 
 
@@ -174,12 +176,13 @@ def test_fresh_manual_baseline_reanchors_to_current_revision():
         baseline_id="b_fresh",
         character_id="char_1",
         anchored_loadout_revision=loadout.revision,
+        anchored_loadout_fingerprint=loadout.compute_fingerprint(),
         source=BaselineSource.MANUAL_USER_INPUT,
         verification=VerificationState.VERIFIED,
         life=1600,
     )
     assert fresh_baseline.anchored_loadout_revision == 4
-    gate = check_baseline_consistency(fresh_baseline, loadout.revision)
+    gate = check_baseline_consistency(fresh_baseline, loadout.revision, loadout.compute_fingerprint())
     assert gate.is_consistent is True
 
 
@@ -209,6 +212,7 @@ def test_persistence_reloads_revision_relationship(tmp_path: Path):
         baseline_id="base_persisted",
         character_id="char_1",
         anchored_loadout_revision=3,
+        anchored_loadout_fingerprint=loadout.compute_fingerprint(),
         life=1800,
     )
     baseline_file = tmp_path / "baseline.json"
@@ -220,5 +224,5 @@ def test_persistence_reloads_revision_relationship(tmp_path: Path):
 
     assert reloaded_loadout.revision == 3
     assert reloaded_baseline.anchored_loadout_revision == 3
-    gate = check_baseline_consistency(reloaded_baseline, reloaded_loadout.revision)
+    gate = check_baseline_consistency(reloaded_baseline, reloaded_loadout.revision, reloaded_loadout.compute_fingerprint())
     assert gate.is_consistent is True

@@ -10,6 +10,45 @@ from companion.equipment.schema import (
     SlotType,
 )
 from companion.state.provenance import VerificationState
+from companion.equipment.engine import EquipmentIntelligenceEngine
+from companion.equipment.loadout_cli import run_loadout_finalize, run_loadout_set_item
+from companion.equipment.precedence import Verdict
+from companion.equipment.rules import BuildProgressionStage
+from companion.equipment.live_watcher import format_short_human_recommendation
+
+BERYL_BOOTS_RAW = """Item Class: Boots
+Rarity: Magic
+Beryl Mail Sabatons of the Mongoose
+Mail Sabatons
+--------
+Armour: 22
+Evasion Rating: 17
+--------
+Requires: Level 6
+--------
+Item Level: 15
+--------
+{ Prefix Modifier "Beryl" (Tier: 9) — Mana }
++13(10-14) to maximum Mana
+{ Suffix Modifier "of the Mongoose" (Tier: 8) — Attribute }
++5(5-8) to Dexterity
+"""
+
+VICTORY_SOLES_BOOTS_RAW = """Item Class: Boots
+Rarity: Rare
+Victory Soles
+Mail Sabatons
+--------
+Armour: 40
+Evasion Rating: 35
+--------
+Requires: Level 15
+--------
++80 to maximum Life
++35% to Fire Resistance
++30% to Cold Resistance
+25% increased Movement Speed
+"""
 
 KNIGHT_ERRANT_BOOTS_RAW = """Item Class: Boots
 Rarity: Unique
@@ -133,3 +172,81 @@ def test_knight_errant_boots_regression_fixture():
     assert contrib.build_mechanic_modifiers[0].verification_state == VerificationState.UNKNOWN
     # Unknown modifiers only contain Stun and Ailment threshold
     assert len(contrib.unknown_modifiers) == 2
+
+
+def test_knight_errant_vs_beryl_regression_verdict(tmp_path):
+    """The Knight-errant vs Beryl regression must evaluate to REJECT even with baseline MISSING.
+
+    Per spec clarifications:
+    - An UNMODELED SPECIAL_MECHANIC such as Iron Reflexes must not be treated as a quantified/proven negative by itself.
+    - KEEP CURRENT / REJECT should be justified by verified item-level regressions:
+      * Movement Speed loss (-10%)
+      * Armour loss (-10)
+      * Evasion loss (-8)
+      * lack of meaningful compensating gains (+5 Dex does not compensate)
+    - Iron Reflexes removal should be shown as an additional material uncertainty / reason not to switch,
+      not assigned an invented numeric value.
+    """
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    char_id = "test_player"
+
+    # Set up loadout with The Knight-errant in boots (baseline is MISSING)
+    run_loadout_set_item(runtime_dir, char_id, "boots", KNIGHT_ERRANT_BOOTS_RAW)
+    run_loadout_finalize(runtime_dir, char_id)
+
+    engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)
+    rec = engine.evaluate_candidate(
+        item_text=BERYL_BOOTS_RAW,
+        character_id=char_id,
+        target_slot=SlotType.BOOTS,
+        stage=BuildProgressionStage.LEVELING_15_32,
+    )
+
+    # 1. Must be REJECT (NOT INSUFFICIENT_DATA)
+    assert rec.verdict == Verdict.REJECT
+    assert "CLEAR_DOWNGRADE" in rec.flags
+
+    # 2. Verdict reason cites verified item-level regressions and lack of compensating gains
+    assert "Movement Speed" in rec.verdict_reason
+    assert "Armour" in rec.verdict_reason
+    assert "Evasion" in rec.verdict_reason
+
+    # 3. Iron Reflexes is tracked as unmodeled removed mechanic (uncertainty, not invented score)
+    assert len(rec.projection.removed_build_mechanics) == 1
+    assert "Iron Reflexes" in rec.projection.removed_build_mechanics[0].raw_text
+    assert "Iron Reflexes" in rec.verdict_reason
+    assert "uncertainty" in rec.verdict_reason.lower()
+    assert not hasattr(rec, "score_delta")  # Strictly non-scalar, never invented value
+
+    # 4. Formatted human output displays losses and rejection
+    report = format_short_human_recommendation(rec, vs_item_name="The Knight-errant")
+    assert "🔴 REJECT / KEEP CURRENT" in report
+    assert "vs The Knight-errant" in report
+    assert "-10% Movement Speed" in report
+    assert "-10 Armour" in report
+    assert "-8 Evasion" in report
+
+
+def test_one_sided_safe_negative_positive_candidate_held_insufficient(tmp_path):
+    """Candidates with meaningful positive gains must NOT be allowed to EQUIP_NOW when baseline is missing or mechanics are unmodeled."""
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    char_id = "test_player"
+
+    run_loadout_set_item(runtime_dir, char_id, "boots", KNIGHT_ERRANT_BOOTS_RAW)
+    run_loadout_finalize(runtime_dir, char_id)
+
+    engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)
+    rec = engine.evaluate_candidate(
+        item_text=VICTORY_SOLES_BOOTS_RAW,
+        character_id=char_id,
+        target_slot=SlotType.BOOTS,
+        stage=BuildProgressionStage.LEVELING_15_32,
+    )
+
+    # Candidate has +80 Life and +35% Fire Res, but baseline is missing and Iron Reflexes is removed:
+    # It must NOT be EQUIP_NOW, but safely held as INSUFFICIENT_DATA
+    assert rec.verdict != Verdict.EQUIP_NOW
+    assert rec.verdict == Verdict.INSUFFICIENT_DATA
+    assert not rec.sufficiency.is_sufficient_for_equip_now

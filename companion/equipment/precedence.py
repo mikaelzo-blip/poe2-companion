@@ -44,6 +44,7 @@ def evaluate_contextual_verdict(
     comparison: MultidimensionalComparison | None = None,
     has_defense_regression: bool = False,
     defense_tradeoff_reason: str | None = None,
+    downgrade_reason: str | None = None,
 ) -> tuple[Verdict, str, list[str]]:
     """Evaluates equipment verdict using strict non-scalar precedence hierarchy.
 
@@ -52,6 +53,7 @@ def evaluate_contextual_verdict(
     2. Candidate unrecoverable requirement failure -> REJECT (CANNOT_EQUIP_CANDIDATE)
     3. Recoverable requirement failure (loadout cascading) -> CONDITIONAL_UPGRADE (REQUIREMENT_DEFICIENCY)
     4. UNKNOWN_APPLICABILITY build breaker -> CONDITIONAL_UPGRADE (HIGH_RISK)
+    4b. CLEAR_DOWNGRADE on observed slot -> REJECT (CLEAR_DOWNGRADE)
     5. Insufficient data for confident equip -> INSUFFICIENT_DATA (INSUFFICIENT_DATA)
     6. Candidate creates or worsens critical defensive deficiency -> CONDITIONAL_UPGRADE (or REJECT)
     7. Known critical deficiency remains completely UNCHANGED (Case D) -> CONDITIONAL_UPGRADE (UNCHANGED_CRITICAL_DEFICIT)
@@ -98,6 +100,19 @@ def evaluate_contextual_verdict(
             f"Candidate contains unknown modifiers with unverified build impact: {safety_eval.reason}",
             flags,
         )
+
+    # 4b. Clear Downgrade on observed slot (Safe One-Sided Rejection)
+    # If the candidate represents a clear downgrade across verified dimensions and the slot is known,
+    # we can safely REJECT without requiring full baseline context.
+    if comparison == MultidimensionalComparison.CLEAR_DOWNGRADE:
+        if data_sufficiency is None or data_sufficiency.is_slot_known:
+            flags.append("CLEAR_DOWNGRADE")
+            reason = downgrade_reason or "Inferior stats across evaluated dimensions compared to equipped loadout."
+            return (
+                Verdict.REJECT,
+                reason,
+                flags,
+            )
 
     # 5. Insufficient data for confident equip
     if data_sufficiency is not None:
@@ -214,6 +229,7 @@ def evaluate_verdict_precedence(
     comparison: MultidimensionalComparison | None = None,
     has_defense_regression: bool = False,
     defense_tradeoff_reason: str | None = None,
+    downgrade_reason: str | None = None,
 ) -> tuple[Verdict, str, list[str]]:
     """Backward-compatible entry point for verdict precedence evaluation.
 
@@ -275,6 +291,7 @@ def evaluate_verdict_precedence(
             comparison=comparison,
             has_defense_regression=has_defense_regression,
             defense_tradeoff_reason=defense_tradeoff_reason,
+            downgrade_reason=downgrade_reason,
         )
 
     # If comparison not provided and no unmitigated deficit or build breaker, default to EQUIP_NOW

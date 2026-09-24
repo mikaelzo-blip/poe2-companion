@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 import sys
 import time
@@ -13,7 +14,7 @@ from companion.equipment.baseline_gate import check_baseline_consistency
 from companion.equipment.clipboard import get_clipboard_text
 from companion.equipment.engine import EquipmentIntelligenceEngine
 from companion.equipment.loadout import is_item_decision_equal
-from companion.equipment.loadout_cli import load_loadout, run_loadout_set_item
+from companion.equipment.loadout_cli import load_loadout, run_loadout_clear, run_loadout_set_item
 from companion.equipment.parser import (
     InvalidItemClipboardError,
     parse_item_text,
@@ -62,21 +63,37 @@ def resolve_live_stage(
     )
 
 
+def supports_color() -> bool:
+    """Return True if the current terminal environment supports ANSI colors."""
+    if "NO_COLOR" in os.environ:
+        return False
+    if os.environ.get("FORCE_COLOR") in ("1", "true", "TRUE"):
+        return True
+    return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+
+
 def format_short_human_recommendation(
     rec: EquipmentRecommendation,
     vs_item_name: str | None = None,
     slot_label: str | None = None,
+    use_color: bool | None = None,
 ) -> str:
     """Format short, human-readable terminal recommendation output."""
+    if use_color is None:
+        use_color = supports_color()
+
     lines: list[str] = ["────────────────────────"]
 
-    # Header / Verdict
+    # Header / Verdict with semantic ANSI color
     if rec.verdict == Verdict.EQUIP_NOW:
-        lines.append("🟢 EQUIP NOW")
+        hdr = "🟢 EQUIP NOW"
+        lines.append(f"\033[32m{hdr}\033[0m" if use_color else hdr)
     elif rec.verdict == Verdict.REJECT:
-        lines.append("🔴 REJECT / KEEP CURRENT")
+        hdr = "🔴 REJECT / KEEP CURRENT"
+        lines.append(f"\033[31m{hdr}\033[0m" if use_color else hdr)
     elif rec.verdict == Verdict.CONDITIONAL_UPGRADE:
-        lines.append("🟡 CONDITIONAL UPGRADE")
+        hdr = "🟡 CONDITIONAL UPGRADE"
+        lines.append(f"\033[33m{hdr}\033[0m" if use_color else hdr)
     elif rec.verdict == Verdict.INSUFFICIENT_DATA:
         lines.append("⚪ INSUFFICIENT DATA")
     else:
@@ -185,10 +202,32 @@ def format_short_human_recommendation(
             for l_item in losses:
                 lines.append(l_item)
             lines.append("")
+        has_meaningful_gain = any(
+            g > 0
+            for g in (
+                proj.life.delta,
+                proj.fire_res.delta,
+                proj.cold_res.delta,
+                proj.lightning_res.delta,
+                proj.chaos_res.delta,
+                proj.movement_speed.delta,
+                proj.armour.delta,
+                proj.evasion.delta,
+                proj.energy_shield.delta,
+            )
+        )
         if not gains:
             lines.append("No useful stat gain.")
             lines.append("")
+        elif not has_meaningful_gain:
+            lines.append("No meaningful compensating gains.")
+            lines.append("")
         lines.append(rec.verdict_reason or "Keep current item.")
+        if rec.projection.removed_build_mechanics:
+            mechs = [m.raw_text.split(" — ")[0] for m in rec.projection.removed_build_mechanics]
+            if mechs:
+                lines.append("")
+                lines.append(f"Additional material uncertainty: removes {', '.join(mechs)} (unmodeled build mechanic).")
     else:
         for g_item in gains:
             lines.append(g_item)
@@ -401,6 +440,7 @@ def run_live_watcher(
     if bootstrap:
         output_writer("Bootstrap mode: ACTIVE")
         output_writer("Warning: first item copied for an unknown slot is assumed to be CURRENT EQUIPPED.")
+        output_writer("Copy CURRENT Weapon Set 1 first, then CURRENT Weapon Set 2.")
     if baseline_note and baseline_status != "MISSING":
         output_writer("")
         output_writer(baseline_note)
@@ -484,20 +524,44 @@ def run_live_watcher(
 
                             elif is_weapon:
                                 if weapon_set is None:
-                                    lines = [
-                                        "────────────────────────",
-                                        "⚪ WEAPON SET CONTEXT AMBIGUOUS",
-                                        "",
-                                        "Cannot determine whether weapon belongs to Weapon Set 1 or Weapon Set 2.",
-                                        "Please specify weapon set context when running live mode:",
-                                        "  companion gear live --weapon-set set_1",
-                                        "  or",
-                                        "  companion gear live --weapon-set set_2",
-                                        "────────────────────────",
-                                    ]
-                                    output_writer("\n".join(lines))
-                                    output_writer("")
-                                    continue
+                                    w1_entry = loadout.get_slot(SlotType.MAIN_HAND, weapon_set=WeaponSetContext.WEAPON_SET_1) if loadout else None
+                                    w2_entry = loadout.get_slot(SlotType.MAIN_HAND, weapon_set=WeaponSetContext.WEAPON_SET_2) if loadout else None
+                                    has_w1 = w1_entry is not None and w1_entry.item is not None
+                                    has_w2 = w2_entry is not None and w2_entry.item is not None
+
+                                    if not has_w1:
+                                        run_loadout_set_item(
+                                            r_path,
+                                            character_id,
+                                            candidate.slot.value,
+                                            raw_text,
+                                            weapon_set_name="set_1",
+                                        )
+                                        if candidate.slot_occupancy == SlotOccupancy.TWO_HAND:
+                                            run_loadout_clear(r_path, character_id, SlotType.OFF_HAND.value, weapon_set_name="set_1")
+                                        output_writer("✓ CURRENT WEAPON SET 1 LEARNED")
+                                        output_writer(candidate.name or candidate.base_type)
+                                        output_writer("")
+                                        bootstrapped = True
+                                    elif not has_w2:
+                                        if not is_item_decision_equal(w1_entry.item, candidate):
+                                            run_loadout_set_item(
+                                                r_path,
+                                                character_id,
+                                                candidate.slot.value,
+                                                raw_text,
+                                                weapon_set_name="set_2",
+                                            )
+                                            if candidate.slot_occupancy == SlotOccupancy.TWO_HAND:
+                                                run_loadout_clear(r_path, character_id, SlotType.OFF_HAND.value, weapon_set_name="set_2")
+                                            output_writer("✓ CURRENT WEAPON SET 2 LEARNED")
+                                            output_writer(candidate.name or candidate.base_type)
+                                            output_writer("")
+                                            bootstrapped = True
+                                        else:
+                                            output_writer("Weapon is already recorded as Weapon Set 1. To record Weapon Set 2, capture a distinct weapon.")
+                                            output_writer("")
+                                            continue
                                 else:
                                     target_slot = candidate.slot
                                     slot_entry = loadout.get_slot(target_slot, weapon_set=wset_ctx) if loadout else None

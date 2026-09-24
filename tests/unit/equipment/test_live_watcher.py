@@ -13,6 +13,7 @@ from companion.equipment.live_watcher import (
     format_short_human_recommendation,
     resolve_live_stage,
     run_live_watcher,
+    supports_color,
 )
 from companion.state.schema import CharacterState
 from companion.state.store import CharacterStateStore
@@ -110,6 +111,18 @@ Level: 20
 --------
 +15% to Fire Resistance
 +20 to maximum Life
+"""
+
+CROSSBOW_TEXT = """Item Class: Crossbows
+Rarity: Rare
+Doom Bolt
+Bombard Crossbow
+--------
+Requirements:
+Level: 25
+--------
++25 to maximum Life
++15% to Cold Resistance
 """
 
 BOOTS_WITH_RES = """Item Class: Boots
@@ -571,6 +584,7 @@ def test_bootstrap_banner_warns_first_item_assumed_equipped(tmp_path: Path):
     full_output = "\n".join(output_lines)
     assert "Bootstrap mode: ACTIVE" in full_output
     assert "first item copied for an unknown slot is assumed to be CURRENT EQUIPPED" in full_output
+    assert "Copy CURRENT Weapon Set 1 first, then CURRENT Weapon Set 2." in full_output
 
 
 def test_live_watcher_missing_baseline_banner_display(tmp_path: Path):
@@ -754,7 +768,7 @@ def test_live_bootstrap_duplicate_ring_not_learned_as_ring2(tmp_path: Path):
     assert loadout.get_slot(SlotType.RING_2) is None
 
 
-def test_live_bootstrap_weapon_set_ambiguity_guard(tmp_path: Path):
+def test_live_normal_mode_weapon_set_ambiguity_guard(tmp_path: Path):
     runtime_dir = tmp_path / "runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     char_id = "test_weapon_guard"
@@ -763,8 +777,45 @@ def test_live_bootstrap_weapon_set_ambiguity_guard(tmp_path: Path):
     store.save_character(CharacterState(character_id=char_id, character_name="WeaponHero", build_progression={"active_stage": "lvl 15-32"}))
     store.set_active_character(char_id)
 
-    # 1. Weapon copied without --weapon-set -> must NOT blindly equip
+    # 1. Weapon copied in normal mode (bootstrap=False) without --weapon-set -> must NOT blindly equip
     clipboard_items = [STAFF_TEXT]
+
+    def mock_reader():
+        if clipboard_items:
+            return clipboard_items.pop(0)
+        raise KeyboardInterrupt()
+
+    output_lines = []
+    run_live_watcher(
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        bootstrap=False,
+        weapon_set=None,
+        clipboard_reader=mock_reader,
+        output_writer=output_lines.append,
+        poll_interval=0.001,
+    )
+
+    full_output = "\n".join(output_lines)
+    assert "WEAPON SET CONTEXT AMBIGUOUS" in full_output or "--weapon-set" in full_output
+
+    loadout = load_loadout(runtime_dir, char_id)
+    assert loadout.get_slot(SlotType.MAIN_HAND, weapon_set=WeaponSetContext.WEAPON_SET_1) is None
+    assert loadout.get_slot(SlotType.MAIN_HAND, weapon_set=WeaponSetContext.WEAPON_SET_2) is None
+
+
+def test_live_bootstrap_weapons_sequential_flow(tmp_path: Path):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    char_id = "test_bootstrap_weapons"
+
+    store = CharacterStateStore(runtime_dir)
+    store.save_character(CharacterState(character_id=char_id, character_name="WeaponSeqHero", build_progression={"active_stage": "lvl 15-32"}))
+    store.set_active_character(char_id)
+
+    # Sequence: 1. Staff (Set 1), 2. Interleaved Boots, 3. Duplicate Staff, 4. Crossbow (Set 2)
+    clipboard_items = [STAFF_TEXT, BOOTS_CANDIDATE, STAFF_TEXT, CROSSBOW_TEXT]
 
     def mock_reader():
         if clipboard_items:
@@ -784,40 +835,72 @@ def test_live_bootstrap_weapon_set_ambiguity_guard(tmp_path: Path):
     )
 
     full_output = "\n".join(output_lines)
-    assert "WEAPON SET CONTEXT AMBIGUOUS" in full_output or "--weapon-set" in full_output
+    # Check instructions and sequential learning
+    assert "Copy CURRENT Weapon Set 1 first, then CURRENT Weapon Set 2." in full_output
+    assert "✓ CURRENT WEAPON SET 1 LEARNED" in full_output
+    assert "Gloom Branch" in full_output
+    assert "Weapon is already recorded as Weapon Set 1" in full_output
+    assert "✓ CURRENT WEAPON SET 2 LEARNED" in full_output
+    assert "Doom Bolt" in full_output
 
     loadout = load_loadout(runtime_dir, char_id)
-    assert loadout.get_slot(SlotType.MAIN_HAND, weapon_set=WeaponSetContext.WEAPON_SET_1) is None
-    assert loadout.get_slot(SlotType.MAIN_HAND, weapon_set=WeaponSetContext.WEAPON_SET_2) is None
+    w1 = loadout.get_slot(SlotType.MAIN_HAND, weapon_set=WeaponSetContext.WEAPON_SET_1)
+    w2 = loadout.get_slot(SlotType.MAIN_HAND, weapon_set=WeaponSetContext.WEAPON_SET_2)
+    assert w1 is not None and w1.item is not None
+    assert w1.item.name == "Gloom Branch"
+    assert w2 is not None and w2.item is not None
+    assert w2.item.name == "Doom Bolt"
+    # Staff is two-handed, so off_hand in Set 1 must be None
+    assert loadout.get_slot(SlotType.OFF_HAND, weapon_set=WeaponSetContext.WEAPON_SET_1) is None
 
-    # 2. Weapon copied WITH --weapon-set set_1 -> safely learned in set_1
-    clipboard_items2 = [STAFF_TEXT]
 
-    def mock_reader2():
-        if clipboard_items2:
-            return clipboard_items2.pop(0)
-        raise KeyboardInterrupt()
+def test_live_watcher_color_formatting(monkeypatch, tmp_path):
+    from companion.equipment.engine import EquipmentIntelligenceEngine
+    from companion.equipment.rules import BuildProgressionStage
 
-    output_lines2 = []
-    run_live_watcher(
-        runtime_dir=runtime_dir,
-        character_id=char_id,
+    # 1. Test supports_color
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert supports_color() is False
+
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    assert supports_color() is True
+
+    # 2. Test format_short_human_recommendation with use_color=True
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    run_loadout_set_item(runtime_dir, "color_char", "boots", OLD_BOOTS)
+    run_loadout_finalize(runtime_dir, "color_char")
+    run_baseline_set(
+        runtime_dir,
+        "color_char",
+        life=1000,
+        fire_res=50,
+        cold_res=50,
+        lightning_res=50,
+        chaos_res=0,
+        strength=50,
+        dexterity=50,
+        intelligence=50,
+        movement_speed=0,
+        armour=100,
+        evasion=100,
+    )
+    engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)
+    rec_equip = engine.evaluate_candidate(
+        item_text=BOOTS_CANDIDATE,
+        character_id="color_char",
+        target_slot=SlotType.BOOTS,
         stage=BuildProgressionStage.LEVELING_15_32,
-        bootstrap=True,
-        weapon_set="set_1",
-        clipboard_reader=mock_reader2,
-        output_writer=output_lines2.append,
-        poll_interval=0.001,
     )
 
-    full_output2 = "\n".join(output_lines2)
-    assert "✓ CURRENT MAIN HAND LEARNED" in full_output2 or "✓ CURRENT MAIN_HAND LEARNED" in full_output2
-    assert "Gloom Branch" in full_output2
+    out_colored = format_short_human_recommendation(rec_equip, use_color=True)
+    assert "\033[32m" in out_colored
 
-    loadout2 = load_loadout(runtime_dir, char_id)
-    m1 = loadout2.get_slot(SlotType.MAIN_HAND, weapon_set=WeaponSetContext.WEAPON_SET_1)
-    assert m1 is not None and m1.item is not None
-    assert m1.item.name == "Gloom Branch"
+    # 3. Test plain formatting with use_color=False
+    out_plain = format_short_human_recommendation(rec_equip, use_color=False)
+    assert "\033[" not in out_plain
+    assert "INSUFFICIENT DATA" in out_plain or "EQUIP NOW" in out_plain or "REJECT" in out_plain
 
 
 def test_normal_mode_does_not_bootstrap_unknown_slot(tmp_path: Path):

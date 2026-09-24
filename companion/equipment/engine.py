@@ -154,14 +154,90 @@ class EquipmentIntelligenceEngine:
         armour_delta = min(projection.local_armour_delta, int(projection.armour.delta))
         evasion_delta = min(projection.local_evasion_delta, int(projection.evasion.delta))
         es_delta = min(projection.local_energy_shield_delta, int(projection.energy_shield.delta))
+        ms_delta = projection.movement_speed.delta
+        life_delta = projection.life.delta
+        fire_res_delta = projection.fire_res.delta
+        cold_res_delta = projection.cold_res.delta
+        lightning_res_delta = projection.lightning_res.delta
+        chaos_res_delta = projection.chaos_res.delta
 
         has_defense_regression = (armour_delta < 0 or evasion_delta < 0 or es_delta < 0)
+        has_ms_regression = ms_delta < 0
+        has_life_regression = life_delta < 0
+        has_res_regression = (
+            fire_res_delta < 0 or cold_res_delta < 0 or lightning_res_delta < 0 or chaos_res_delta < 0
+        )
+        has_verified_regression = (
+            has_defense_regression or has_ms_regression or has_life_regression or has_res_regression
+        )
+
+        has_defense_gain = (armour_delta > 0 or evasion_delta > 0 or es_delta > 0)
+        has_ms_gain = ms_delta > 0
+        has_life_gain = life_delta > 0
+        has_res_gain = (
+            fire_res_delta > 0 or cold_res_delta > 0 or lightning_res_delta > 0 or chaos_res_delta > 0
+        )
+        has_meaningful_gain = (
+            has_defense_gain or has_ms_gain or has_life_gain or has_res_gain
+        )
+
+        equipped_entry = loadout.get_slot(resolved_slot, resolved_wset) if loadout else None
+        has_equipped_item = equipped_entry is not None and equipped_entry.item is not None
 
         effective_comparison = comparison
         defense_tradeoff_reason = None
+        downgrade_reason = None
 
-        if has_defense_regression:
+        if effective_comparison is None:
+            if has_equipped_item:
+                if has_verified_regression and not has_meaningful_gain:
+                    effective_comparison = MultidimensionalComparison.CLEAR_DOWNGRADE
+                elif has_verified_regression and has_meaningful_gain:
+                    effective_comparison = MultidimensionalComparison.MIXED_TRADEOFF
+                elif not has_verified_regression and has_meaningful_gain:
+                    effective_comparison = MultidimensionalComparison.DOMINANT_IMPROVEMENT
+                else:
+                    effective_comparison = MultidimensionalComparison.NO_MEANINGFUL_CURRENT_GAIN
+            else:
+                effective_comparison = (
+                    MultidimensionalComparison.MIXED_TRADEOFF
+                    if has_defense_regression
+                    else MultidimensionalComparison.DOMINANT_IMPROVEMENT
+                )
+
+        if has_defense_regression and effective_comparison == MultidimensionalComparison.DOMINANT_IMPROVEMENT:
             effective_comparison = MultidimensionalComparison.MIXED_TRADEOFF
+
+        if effective_comparison == MultidimensionalComparison.CLEAR_DOWNGRADE:
+            loss_items = []
+            if ms_delta < 0:
+                loss_items.append(f"Movement Speed ({int(ms_delta):+d}%)")
+            if armour_delta < 0:
+                loss_items.append(f"Armour ({armour_delta:+d})")
+            if evasion_delta < 0:
+                loss_items.append(f"Evasion ({evasion_delta:+d})")
+            if es_delta < 0:
+                loss_items.append(f"Energy Shield ({es_delta:+d})")
+            if life_delta < 0:
+                loss_items.append(f"Life ({int(life_delta):+d})")
+            if fire_res_delta < 0:
+                loss_items.append(f"Fire Res ({int(fire_res_delta):+d}%)")
+            if cold_res_delta < 0:
+                loss_items.append(f"Cold Res ({int(cold_res_delta):+d}%)")
+            if lightning_res_delta < 0:
+                loss_items.append(f"Lightning Res ({int(lightning_res_delta):+d}%)")
+            if chaos_res_delta < 0:
+                loss_items.append(f"Chaos Res ({int(chaos_res_delta):+d}%)")
+
+            downgrade_reason = (
+                f"Candidate incurs verified item-level regressions ({', '.join(loss_items)}) "
+                "with no meaningful compensating gains."
+            )
+            if projection.removed_build_mechanics:
+                removed_names = [m.raw_text.split(" — ")[0] for m in projection.removed_build_mechanics]
+                downgrade_reason += f" Additional material uncertainty: removes {', '.join(removed_names)} (unmodeled build mechanic)."
+
+        elif effective_comparison == MultidimensionalComparison.MIXED_TRADEOFF and has_defense_regression:
             loss_parts = []
             if armour_delta < 0:
                 loss_parts.append(f"Armour ({armour_delta:+d})")
@@ -195,6 +271,7 @@ class EquipmentIntelligenceEngine:
             comparison=effective_comparison,
             has_defense_regression=has_defense_regression,
             defense_tradeoff_reason=defense_tradeoff_reason,
+            downgrade_reason=downgrade_reason,
         )
 
         # 7. Actionable guidance

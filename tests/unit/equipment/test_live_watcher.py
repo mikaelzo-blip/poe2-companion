@@ -8,6 +8,7 @@ from companion.equipment.baseline_cli import run_baseline_refresh, run_baseline_
 from companion.equipment.loadout_cli import run_loadout_finalize, run_loadout_set_item, load_loadout
 from companion.equipment.precedence import Verdict
 from companion.equipment.rules import BuildProgressionStage
+from companion.equipment.schema import SlotType, WeaponSetContext
 from companion.equipment.live_watcher import (
     format_short_human_recommendation,
     resolve_live_stage,
@@ -84,6 +85,51 @@ Rarity: Normal
 Iron Ring
 Iron Ring
 --------
+"""
+
+
+SECOND_RING = """Item Class: Rings
+Rarity: Rare
+Loath Band
+Gold Ring
+--------
+Requirements:
+Level: 16
+--------
++25 to maximum Life
++15% to Cold Resistance
+"""
+
+STAFF_TEXT = """Item Class: Staves
+Rarity: Rare
+Gloom Branch
+Quarterstaff
+--------
+Requirements:
+Level: 20
+--------
++15% to Fire Resistance
++20 to maximum Life
+"""
+
+BOOTS_WITH_RES = """Item Class: Boots
+Rarity: Magic
+Fleet Iron Greaves
+Iron Greaves
+--------
+Armour: 68
+--------
++25% to Fire Resistance
+"""
+
+BOOTS_WITH_LIFE = """Item Class: Boots
+Rarity: Magic
+Stout Iron Greaves
+Iron Greaves
+--------
+Armour: 75
+--------
++40 to maximum Life
 """
 
 
@@ -504,3 +550,348 @@ def test_keyboard_interrupt_exits_cleanly(tmp_path: Path):
         output_writer=output_lines.append,
     )
     assert ret == 0
+
+
+def test_bootstrap_banner_warns_first_item_assumed_equipped(tmp_path: Path):
+    runtime_dir = _setup_test_environment(tmp_path)
+    char_id = "test_player"
+
+    def mock_reader():
+        raise KeyboardInterrupt()
+
+    output_lines = []
+    run_live_watcher(
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        bootstrap=True,
+        clipboard_reader=mock_reader,
+        output_writer=output_lines.append,
+    )
+    full_output = "\n".join(output_lines)
+    assert "Bootstrap mode: ACTIVE" in full_output
+    assert "first item copied for an unknown slot is assumed to be CURRENT EQUIPPED" in full_output
+
+
+def test_live_watcher_missing_baseline_banner_display(tmp_path: Path):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    char_id = "test_no_baseline"
+
+    # Store character state with stage, but NO baseline
+    store = CharacterStateStore(runtime_dir)
+    char_state = CharacterState(
+        character_id=char_id,
+        character_name="NoBaselineHero",
+        build_progression={"active_stage": "lvl 15-32"},
+    )
+    store.save_character(char_state)
+    store.set_active_character(char_id)
+
+    def mock_reader():
+        raise KeyboardInterrupt()
+
+    output_lines = []
+    run_live_watcher(
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        clipboard_reader=mock_reader,
+        output_writer=output_lines.append,
+    )
+    full_output = "\n".join(output_lines)
+    assert "Baseline: MISSING" in full_output
+    assert "Item-to-item comparison: AVAILABLE" in full_output
+    assert "Character-context projection: LIMITED" in full_output
+
+
+def test_live_bootstrap_no_restart_flow_single_slot(tmp_path: Path):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    char_id = "test_bootstrap_char"
+
+    store = CharacterStateStore(runtime_dir)
+    char_state = CharacterState(
+        character_id=char_id,
+        character_name="BootstrapHero",
+        build_progression={"active_stage": "lvl 15-32"},
+    )
+    store.save_character(char_state)
+    store.set_active_character(char_id)
+
+    # Empty loadout at start (no boots)
+    loadout_init = load_loadout(runtime_dir, char_id)
+    assert loadout_init.get_slot(SlotType.BOOTS) is None
+
+    # Sequential clipboard states: 1. Current boots, 2. Candidate boots
+    clipboard_items = [OLD_BOOTS, BOOTS_CANDIDATE]
+
+    def mock_reader():
+        if clipboard_items:
+            return clipboard_items.pop(0)
+        raise KeyboardInterrupt()
+
+    output_lines = []
+    run_live_watcher(
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        bootstrap=True,
+        clipboard_reader=mock_reader,
+        output_writer=output_lines.append,
+        poll_interval=0.001,
+    )
+
+    full_output = "\n".join(output_lines)
+
+    # 1. Learned current boots
+    assert "✓ CURRENT BOOTS LEARNED" in full_output
+    assert "The Knight-errant" in full_output
+
+    # 2. Immediately evaluated candidate against The Knight-errant in the same running watcher
+    assert "Storm March" in full_output
+    assert "vs The Knight-errant" in full_output
+
+    # 3. Loadout persisted The Knight-errant as equipped boots
+    loadout_persisted = load_loadout(runtime_dir, char_id)
+    boots_entry = loadout_persisted.get_slot(SlotType.BOOTS)
+    assert boots_entry is not None
+    assert boots_entry.item is not None
+    assert boots_entry.item.name == "The Knight-errant"
+
+
+def test_live_bootstrap_rings_flow(tmp_path: Path):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    char_id = "test_bootstrap_rings"
+
+    store = CharacterStateStore(runtime_dir)
+    char_state = CharacterState(
+        character_id=char_id,
+        character_name="RingHero",
+        build_progression={"active_stage": "lvl 15-32"},
+    )
+    store.save_character(char_state)
+    store.set_active_character(char_id)
+
+    # Sequence: 1. Ring 1 (Iron Ring), 2. Ring 2 (Loath Band), 3. Candidate (Dire Band)
+    clipboard_items = [ORDINARY_RING, SECOND_RING, RING_CANDIDATE]
+
+    def mock_reader():
+        if clipboard_items:
+            return clipboard_items.pop(0)
+        raise KeyboardInterrupt()
+
+    output_lines = []
+    run_live_watcher(
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        bootstrap=True,
+        clipboard_reader=mock_reader,
+        output_writer=output_lines.append,
+        poll_interval=0.001,
+    )
+
+    full_output = "\n".join(output_lines)
+
+    # First ring learned as Ring 1
+    assert "✓ CURRENT RING 1 LEARNED" in full_output
+    assert "Iron Ring" in full_output
+
+    # Second distinct ring learned as Ring 2
+    assert "✓ CURRENT RING 2 LEARNED" in full_output
+    assert "Loath Band" in full_output
+
+    # Third ring evaluated as candidate against both rings
+    assert "Dire Band" in full_output
+    assert "Ring 1" in full_output or "vs Iron Ring" in full_output
+    assert "Ring 2" in full_output or "vs Loath Band" in full_output
+
+    # Loadout check
+    loadout = load_loadout(runtime_dir, char_id)
+    r1 = loadout.get_slot(SlotType.RING_1)
+    r2 = loadout.get_slot(SlotType.RING_2)
+    assert r1 is not None and r1.item is not None
+    assert r1.item.base_type == "Iron Ring"
+    assert r2 is not None and r2.item is not None
+    assert r2.item.name == "Loath Band"
+
+
+def test_live_bootstrap_duplicate_ring_not_learned_as_ring2(tmp_path: Path):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    char_id = "test_dup_ring"
+
+    store = CharacterStateStore(runtime_dir)
+    store.save_character(CharacterState(character_id=char_id, character_name="DupHero", build_progression={"active_stage": "lvl 15-32"}))
+    store.set_active_character(char_id)
+
+    # User copies Iron Ring, then copies another item, then copies same Iron Ring again
+    clipboard_items = [ORDINARY_RING, BOOTS_CANDIDATE, ORDINARY_RING]
+
+    def mock_reader():
+        if clipboard_items:
+            return clipboard_items.pop(0)
+        raise KeyboardInterrupt()
+
+    output_lines = []
+    run_live_watcher(
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        bootstrap=True,
+        clipboard_reader=mock_reader,
+        output_writer=output_lines.append,
+        poll_interval=0.001,
+    )
+
+    full_output = "\n".join(output_lines)
+    assert "✓ CURRENT RING 1 LEARNED" in full_output
+    assert "✓ CURRENT RING 2 LEARNED" not in full_output
+
+    loadout = load_loadout(runtime_dir, char_id)
+    assert loadout.get_slot(SlotType.RING_2) is None
+
+
+def test_live_bootstrap_weapon_set_ambiguity_guard(tmp_path: Path):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    char_id = "test_weapon_guard"
+
+    store = CharacterStateStore(runtime_dir)
+    store.save_character(CharacterState(character_id=char_id, character_name="WeaponHero", build_progression={"active_stage": "lvl 15-32"}))
+    store.set_active_character(char_id)
+
+    # 1. Weapon copied without --weapon-set -> must NOT blindly equip
+    clipboard_items = [STAFF_TEXT]
+
+    def mock_reader():
+        if clipboard_items:
+            return clipboard_items.pop(0)
+        raise KeyboardInterrupt()
+
+    output_lines = []
+    run_live_watcher(
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        bootstrap=True,
+        weapon_set=None,
+        clipboard_reader=mock_reader,
+        output_writer=output_lines.append,
+        poll_interval=0.001,
+    )
+
+    full_output = "\n".join(output_lines)
+    assert "WEAPON SET CONTEXT AMBIGUOUS" in full_output or "--weapon-set" in full_output
+
+    loadout = load_loadout(runtime_dir, char_id)
+    assert loadout.get_slot(SlotType.MAIN_HAND, weapon_set=WeaponSetContext.WEAPON_SET_1) is None
+    assert loadout.get_slot(SlotType.MAIN_HAND, weapon_set=WeaponSetContext.WEAPON_SET_2) is None
+
+    # 2. Weapon copied WITH --weapon-set set_1 -> safely learned in set_1
+    clipboard_items2 = [STAFF_TEXT]
+
+    def mock_reader2():
+        if clipboard_items2:
+            return clipboard_items2.pop(0)
+        raise KeyboardInterrupt()
+
+    output_lines2 = []
+    run_live_watcher(
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        bootstrap=True,
+        weapon_set="set_1",
+        clipboard_reader=mock_reader2,
+        output_writer=output_lines2.append,
+        poll_interval=0.001,
+    )
+
+    full_output2 = "\n".join(output_lines2)
+    assert "✓ CURRENT MAIN HAND LEARNED" in full_output2 or "✓ CURRENT MAIN_HAND LEARNED" in full_output2
+    assert "Gloom Branch" in full_output2
+
+    loadout2 = load_loadout(runtime_dir, char_id)
+    m1 = loadout2.get_slot(SlotType.MAIN_HAND, weapon_set=WeaponSetContext.WEAPON_SET_1)
+    assert m1 is not None and m1.item is not None
+    assert m1.item.name == "Gloom Branch"
+
+
+def test_normal_mode_does_not_bootstrap_unknown_slot(tmp_path: Path):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    char_id = "test_normal_mode"
+
+    store = CharacterStateStore(runtime_dir)
+    store.save_character(CharacterState(character_id=char_id, character_name="NormalHero", build_progression={"active_stage": "lvl 15-32"}))
+    store.set_active_character(char_id)
+
+    # Empty loadout, normal mode (bootstrap=False)
+    clipboard_items = [OLD_BOOTS]
+
+    def mock_reader():
+        if clipboard_items:
+            return clipboard_items.pop(0)
+        raise KeyboardInterrupt()
+
+    output_lines = []
+    run_live_watcher(
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        bootstrap=False,
+        clipboard_reader=mock_reader,
+        output_writer=output_lines.append,
+        poll_interval=0.001,
+    )
+
+    full_output = "\n".join(output_lines)
+    assert "✓ CURRENT BOOTS LEARNED" not in full_output
+    assert "INSUFFICIENT DATA" in full_output or "unobserved" in full_output
+
+    loadout = load_loadout(runtime_dir, char_id)
+    assert loadout.get_slot(SlotType.BOOTS) is None
+
+
+def test_missing_baseline_reports_directly_known_deltas(tmp_path: Path):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    char_id = "test_deltas_no_baseline"
+
+    store = CharacterStateStore(runtime_dir)
+    store.save_character(CharacterState(character_id=char_id, character_name="DeltaHero", build_progression={"active_stage": "lvl 15-32"}))
+    store.set_active_character(char_id)
+
+    # Setup loadout with BOOTS_WITH_RES, NO baseline on disk
+    run_loadout_set_item(runtime_dir, char_id, "boots", BOOTS_WITH_RES)
+
+    # Candidate has +40 Life, but loses 25% Fire Res -> trade-off without baseline -> INSUFFICIENT DATA
+    clipboard_items = [BOOTS_WITH_LIFE]
+
+    def mock_reader():
+        if clipboard_items:
+            return clipboard_items.pop(0)
+        raise KeyboardInterrupt()
+
+    output_lines = []
+    run_live_watcher(
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        bootstrap=False,
+        clipboard_reader=mock_reader,
+        output_writer=output_lines.append,
+        poll_interval=0.001,
+    )
+
+    full_output = "\n".join(output_lines)
+    # Verdict must be INSUFFICIENT DATA because of resistance loss without baseline
+    assert "INSUFFICIENT DATA" in full_output
+    # Directly known item deltas MUST be reported
+    assert "+40 Life" in full_output
+    assert "25% Fire Res" in full_output
+    # Must NOT fabricate absolute projection (no arrows like 30% -> 5%)
+    assert "→" not in full_output

@@ -271,6 +271,7 @@ def build_parser() -> argparse.ArgumentParser:
     glive_p.add_argument("--weapon-set", help="Target weapon set (e.g. set_1, set_2)")
     glive_p.add_argument("--poll-interval", type=float, default=0.25, help="Clipboard polling interval in seconds")
     glive_p.add_argument("--json", action="store_true", help="Output recommendation as JSON")
+    glive_p.add_argument("--bootstrap", action="store_true", help="Enable live bootstrap mode for unequipped slots")
 
     gclip_p = gear_sub.add_parser("inspect-clipboard", help="Inspect and evaluate item from clipboard")
     gclip_p.add_argument("--slot", help="Target equipment slot")
@@ -1176,6 +1177,7 @@ def handle_gear_live(args: argparse.Namespace) -> int:
         poll_interval=getattr(args, "poll_interval", 0.25),
         as_json=getattr(args, "json", False),
         weapon_set=getattr(args, "weapon_set", None),
+        bootstrap=getattr(args, "bootstrap", False),
     )
 
 

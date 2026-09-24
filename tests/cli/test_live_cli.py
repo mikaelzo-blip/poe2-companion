@@ -79,3 +79,59 @@ def test_gear_live_cli_uses_persisted_stage(capsys: pytest.CaptureFixture[str], 
     captured = capsys.readouterr()
     assert "PoE2 Companion LIVE" in captured.out
     assert "Stage: LEVELING_53_68" in captured.out
+
+
+def test_gear_live_cli_bootstrap_flag_and_warning(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    char_id = "test_cli_bootstrap"
+    store = CharacterStateStore(tmp_path)
+    state = CharacterState(
+        character_id=char_id,
+        character_name="BootstrapCLI",
+        build_progression={"active_stage": "lvl 15-32"},
+    )
+    store.save_character(state)
+    store.set_active_character(char_id)
+
+    with patch("companion.equipment.live_watcher.get_clipboard_text", side_effect=KeyboardInterrupt()):
+        code = main([
+            "gear",
+            "live",
+            "--runtime",
+            str(tmp_path),
+            "--character-id",
+            char_id,
+            "--bootstrap",
+        ])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "Bootstrap mode: ACTIVE" in captured.out
+    assert "first item copied for an unknown slot is assumed to be CURRENT EQUIPPED" in captured.out
+
+
+def test_gear_live_cli_missing_baseline_transparency(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    char_id = "test_cli_no_baseline"
+    store = CharacterStateStore(tmp_path)
+    state = CharacterState(
+        character_id=char_id,
+        character_name="NoBaseCLI",
+        build_progression={"active_stage": "lvl 15-32"},
+    )
+    store.save_character(state)
+    store.set_active_character(char_id)
+
+    with patch("companion.equipment.live_watcher.get_clipboard_text", side_effect=KeyboardInterrupt()):
+        code = main([
+            "gear",
+            "live",
+            "--runtime",
+            str(tmp_path),
+            "--character-id",
+            char_id,
+        ])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "Baseline: MISSING" in captured.out
+    assert "Item-to-item comparison: AVAILABLE" in captured.out
+    assert "Character-context projection: LIMITED" in captured.out

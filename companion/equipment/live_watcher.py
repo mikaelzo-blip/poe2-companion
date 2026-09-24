@@ -12,7 +12,8 @@ from companion.equipment.baseline_cli import load_baseline
 from companion.equipment.baseline_gate import check_baseline_consistency
 from companion.equipment.clipboard import get_clipboard_text
 from companion.equipment.engine import EquipmentIntelligenceEngine
-from companion.equipment.loadout_cli import load_loadout
+from companion.equipment.loadout import is_item_decision_equal
+from companion.equipment.loadout_cli import load_loadout, run_loadout_set_item
 from companion.equipment.parser import (
     InvalidItemClipboardError,
     parse_item_text,
@@ -21,7 +22,7 @@ from companion.equipment.parser import (
 from companion.equipment.precedence import Verdict
 from companion.equipment.recommendation import EquipmentRecommendation
 from companion.equipment.rules import BuildProgressionStage
-from companion.equipment.schema import SlotType, WeaponSetContext
+from companion.equipment.schema import SlotOccupancy, SlotType, WeaponSetContext
 from companion.state.store import CharacterStateStore
 
 
@@ -111,14 +112,13 @@ def format_short_human_recommendation(
         lines.append("────────────────────────")
         return "\n".join(lines)
 
-    # If insufficient data due to missing or unanchored baseline
-    if rec.verdict == Verdict.INSUFFICIENT_DATA:
-        if rec.sufficiency and not rec.sufficiency.is_baseline_anchored:
-            lines.append("Character baseline is missing or stale.")
-        elif rec.sufficiency and not rec.sufficiency.is_slot_known:
-            lines.append(f"Current equipped slot '{rec.slot.value}' is unobserved.")
-        else:
-            lines.append(rec.verdict_reason or "Insufficient data for confident recommendation.")
+    # If insufficient data due to unobserved slot
+    if (
+        rec.verdict == Verdict.INSUFFICIENT_DATA
+        and rec.sufficiency is not None
+        and not rec.sufficiency.is_slot_known
+    ):
+        lines.append(f"Current equipped slot '{rec.slot.value}' is unobserved.")
         lines.append("")
         lines.append("Cannot safely say the candidate is better yet.")
         lines.append("────────────────────────")
@@ -220,6 +220,12 @@ def format_short_human_recommendation(
                 lines.append("Good survivability/stat gain but meaningful defense or mobility trade-off.")
             else:
                 lines.append(rec.verdict_reason or "Conditional upgrade: evaluate trade-offs before equipping.")
+        elif rec.verdict == Verdict.INSUFFICIENT_DATA:
+            if rec.sufficiency and not rec.sufficiency.is_baseline_anchored:
+                lines.append("Character baseline is missing or stale.")
+            else:
+                lines.append(rec.verdict_reason or "Insufficient data for confident recommendation.")
+            lines.append("Cannot safely say the candidate is better yet.")
         else:
             lines.append(rec.verdict_reason)
 
@@ -303,19 +309,39 @@ def evaluate_live_candidate(
         ]
         return "\n".join(lines)
 
-    # Non-ring slots (Boots, Helmet, Body Armour, Gloves, Belt, Amulet, Weapons)
+    # Check for weapon ambiguity
+    is_weapon = candidate.slot in (SlotType.MAIN_HAND, SlotType.OFF_HAND) or candidate.slot_occupancy in (
+        SlotOccupancy.MAIN_HAND,
+        SlotOccupancy.OFF_HAND,
+        SlotOccupancy.TWO_HAND,
+    )
+    if is_weapon and target_weapon_set is None:
+        lines = [
+            "────────────────────────",
+            "⚪ WEAPON SET CONTEXT AMBIGUOUS",
+            "",
+            "Cannot determine whether weapon belongs to Weapon Set 1 or Weapon Set 2.",
+            "Please specify weapon set context when running live mode:",
+            "  companion gear live --weapon-set set_1",
+            "  or",
+            "  companion gear live --weapon-set set_2",
+            "────────────────────────",
+        ]
+        return "\n".join(lines)
+
+    wset_ctx = WeaponSetContext.from_val(target_weapon_set) if target_weapon_set else candidate.weapon_set
     rec = engine.evaluate_candidate(
         item_text=candidate_text,
         character_id=character_id,
         target_slot=candidate.slot,
-        target_weapon_set=target_weapon_set or candidate.weapon_set,
+        target_weapon_set=wset_ctx,
         stage=stage,
     )
     vs_name = None
     if rec.displaced_items:
         vs_name = rec.displaced_items[0].name
     elif loadout:
-        entry = loadout.get_slot(rec.slot, candidate.weapon_set)
+        entry = loadout.get_slot(rec.slot, wset_ctx)
         if entry and entry.item:
             vs_name = entry.item.name
 
@@ -331,6 +357,7 @@ def run_live_watcher(
     output_writer: Callable[[str], None] = print,
     as_json: bool = False,
     weapon_set: str | None = None,
+    bootstrap: bool = False,
 ) -> int:
     """Run passive clipboard monitoring loop for PoE2 equipment."""
     r_path = Path(runtime_dir)
@@ -368,7 +395,13 @@ def run_live_watcher(
     output_writer(f"Stage: {stage.value}")
     output_writer(f"Loadout revision: {loadout_rev}")
     output_writer(f"Baseline: {baseline_status}")
-    if baseline_note:
+    if baseline_status == "MISSING":
+        output_writer("Item-to-item comparison: AVAILABLE")
+        output_writer("Character-context projection: LIMITED")
+    if bootstrap:
+        output_writer("Bootstrap mode: ACTIVE")
+        output_writer("Warning: first item copied for an unknown slot is assumed to be CURRENT EQUIPPED.")
+    if baseline_note and baseline_status != "MISSING":
         output_writer("")
         output_writer(baseline_note)
     output_writer("")
@@ -405,18 +438,108 @@ def run_live_watcher(
                     item_hash = hashlib.sha256(raw_text.strip().encode("utf-8")).hexdigest()
                     if item_hash != last_item_hash:
                         last_item_hash = item_hash
+                        wset_ctx = WeaponSetContext.from_val(weapon_set) if weapon_set else None
                         try:
-                            report = evaluate_live_candidate(
-                                candidate_text=raw_text,
-                                engine=engine,
-                                runtime_dir=r_path,
-                                character_id=character_id,
-                                stage=stage,
-                                target_weapon_set=weapon_set,
-                            )
-                            output_writer(report)
+                            candidate = parse_item_text(raw_text, target_weapon_set=wset_ctx)
                         except Exception as exc:
-                            output_writer(f"Error evaluating item: {exc}")
+                            output_writer(f"Error parsing item: {exc}")
+                            continue
+
+                        cls_lower = candidate.base_type.lower()
+                        is_ring = candidate.slot in (SlotType.RING_1, SlotType.RING_2) or "ring" in cls_lower
+                        is_weapon = candidate.slot in (SlotType.MAIN_HAND, SlotType.OFF_HAND) or candidate.slot_occupancy in (
+                            SlotOccupancy.MAIN_HAND,
+                            SlotOccupancy.OFF_HAND,
+                            SlotOccupancy.TWO_HAND,
+                        )
+
+                        bootstrapped = False
+
+                        if bootstrap:
+                            loadout = load_loadout(r_path, character_id)
+
+                            if is_ring:
+                                r1_entry = loadout.get_slot(SlotType.RING_1) if loadout else None
+                                r2_entry = loadout.get_slot(SlotType.RING_2) if loadout else None
+                                has_r1 = r1_entry is not None and r1_entry.item is not None
+                                has_r2 = r2_entry is not None and r2_entry.item is not None
+
+                                if not has_r1:
+                                    run_loadout_set_item(r_path, character_id, "ring1", raw_text)
+                                    output_writer("✓ CURRENT RING 1 LEARNED")
+                                    output_writer(candidate.name or candidate.base_type)
+                                    output_writer("")
+                                    bootstrapped = True
+                                elif not has_r2:
+                                    if not is_item_decision_equal(r1_entry.item, candidate):
+                                        run_loadout_set_item(r_path, character_id, "ring2", raw_text)
+                                        output_writer("✓ CURRENT RING 2 LEARNED")
+                                        output_writer(candidate.name or candidate.base_type)
+                                        output_writer("")
+                                        bootstrapped = True
+                                    else:
+                                        output_writer("Ring is already recorded as Ring 1. To record Ring 2, capture a distinct ring.")
+                                        output_writer("")
+                                        continue
+
+                            elif is_weapon:
+                                if weapon_set is None:
+                                    lines = [
+                                        "────────────────────────",
+                                        "⚪ WEAPON SET CONTEXT AMBIGUOUS",
+                                        "",
+                                        "Cannot determine whether weapon belongs to Weapon Set 1 or Weapon Set 2.",
+                                        "Please specify weapon set context when running live mode:",
+                                        "  companion gear live --weapon-set set_1",
+                                        "  or",
+                                        "  companion gear live --weapon-set set_2",
+                                        "────────────────────────",
+                                    ]
+                                    output_writer("\n".join(lines))
+                                    output_writer("")
+                                    continue
+                                else:
+                                    target_slot = candidate.slot
+                                    slot_entry = loadout.get_slot(target_slot, weapon_set=wset_ctx) if loadout else None
+                                    has_slot = slot_entry is not None and slot_entry.item is not None
+                                    if not has_slot:
+                                        run_loadout_set_item(
+                                            r_path,
+                                            character_id,
+                                            target_slot.value,
+                                            raw_text,
+                                            weapon_set_name=wset_ctx.value,
+                                        )
+                                        slot_disp = "MAIN HAND" if target_slot == SlotType.MAIN_HAND else ("OFF HAND" if target_slot == SlotType.OFF_HAND else target_slot.value.upper())
+                                        output_writer(f"✓ CURRENT {slot_disp} LEARNED")
+                                        output_writer(candidate.name or candidate.base_type)
+                                        output_writer("")
+                                        bootstrapped = True
+
+                            else:
+                                slot_entry = loadout.get_slot(candidate.slot) if loadout else None
+                                has_slot = slot_entry is not None and slot_entry.item is not None
+                                if not has_slot:
+                                    run_loadout_set_item(r_path, character_id, candidate.slot.value, raw_text)
+                                    slot_disp = candidate.slot.value.replace("_", " ").upper()
+                                    output_writer(f"✓ CURRENT {slot_disp} LEARNED")
+                                    output_writer(candidate.name or candidate.base_type)
+                                    output_writer("")
+                                    bootstrapped = True
+
+                        if not bootstrapped:
+                            try:
+                                report = evaluate_live_candidate(
+                                    candidate_text=raw_text,
+                                    engine=engine,
+                                    runtime_dir=r_path,
+                                    character_id=character_id,
+                                    stage=stage,
+                                    target_weapon_set=weapon_set,
+                                )
+                                output_writer(report)
+                            except Exception as exc:
+                                output_writer(f"Error evaluating item: {exc}")
 
             time.sleep(poll_interval)
     except KeyboardInterrupt:

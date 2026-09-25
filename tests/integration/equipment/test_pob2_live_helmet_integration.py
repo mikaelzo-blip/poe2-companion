@@ -161,8 +161,8 @@ def test_live_watcher_pob2_same_helmet_notices_already_equipped(tmp_path: Path):
     assert "Helmet is already recorded as Current Helmet (Brimstone Veil)" in full_output
 
 
-def test_live_watcher_non_helmet_uses_native_engine(tmp_path: Path):
-    """Copying non-helmet items seamlessly bypasses PoB2 helmet advisor to native evaluator."""
+def test_live_watcher_core_slot_uses_pob2_equipment_advisor(tmp_path: Path):
+    """Copying an approved core-slot item uses PoB2 and the generic Fubgun policy."""
     runtime_dir = _setup_runtime(tmp_path)
     char_id = "test_pob_hero"
 
@@ -196,10 +196,61 @@ def test_live_watcher_non_helmet_uses_native_engine(tmp_path: Path):
     assert ret == 0
     full_output = "\n".join(output_lines)
 
-    # Did not invoke helmet advisor analysis
-    assert "Analyzing Beryl Stride (Helmet)..." not in full_output
-    # Native evaluation was used
-    assert "Beryl Stride" in full_output
+    assert "Analyzing Beryl Stride (Boots)..." in full_output
+    assert "🟢 EQUIP NOW" in full_output
+    assert "Beryl Stride (Boots)" in full_output
+    assert "vs Brimstone Veil" in full_output
+    # The fake PoB engine's deterministic fixture reports +20 Life and +7 Lightning Res.
+    assert "+20 Life" in full_output
+    assert "+7% Lightning Res" in full_output
+    assert "+20% Movement Speed" in full_output
+    assert "Fubgun" in full_output
+
+
+def test_live_watcher_ring_and_weapon_remain_native_fallback(tmp_path: Path):
+    """Rings and weapons remain outside the core-slot PoB2 allowlist."""
+    runtime_dir = _setup_runtime(tmp_path)
+    char_id = "test_pob_hero"
+
+    fake_engine = FakePobEngine()
+    pob_session = Pob2HelmetSession(
+        character_name="BOMSHAK",
+        engine_factory=lambda: fake_engine,
+        poe_api_client=FakePoeApi(),
+    )
+    assert pob_session.initialize() is True
+
+    ring_text = """Item Class: Rings
+Rarity: Rare
+Storm Loop
+Iron Ring
+--------
+Requirements:
+Level: 1
+--------
++25 to maximum Life
++15% to Fire Resistance
+"""
+    items_to_yield = [ring_text]
+
+    def mock_reader():
+        if items_to_yield:
+            return items_to_yield.pop(0)
+        raise KeyboardInterrupt()
+
+    output_lines = []
+    ret = run_live_watcher(
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        clipboard_reader=mock_reader,
+        output_writer=output_lines.append,
+        pob_session=pob_session,
+    )
+    assert ret == 0
+    full_output = "\\n".join(output_lines)
+    assert "Analyzing Storm Loop (Ring" not in full_output
+    assert fake_engine.call_log.count("equip_item") == 0
 
 
 def test_live_watcher_fallback_when_pob2_unavailable(tmp_path: Path):

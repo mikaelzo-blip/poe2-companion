@@ -102,6 +102,7 @@ class FakePobEngine:
                 "ColdResist": -50,
                 "LightningResist": -43,
                 "ChaosResist": 0,
+                "MovementSpeed": 100.0,
             },
             "offense": {
                 "CombinedDPS": 29.07,
@@ -120,6 +121,7 @@ class FakePobEngine:
                 "ColdResist": -50,
                 "LightningResist": -36,
                 "ChaosResist": 0,
+                "MovementSpeed": 120.0,
             },
             "offense": {
                 "CombinedDPS": 27.25,

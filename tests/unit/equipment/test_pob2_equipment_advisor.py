@@ -21,15 +21,18 @@ import pytest
 
 from companion.equipment.pob2_equipment_advisor import (
     CANONICAL_EQUIPMENT_SLOTS,
+    POB2_PRODUCTION_SLOTS,
     Pob2EquipmentSession,
     PobEquipmentDelta,
     normalize_and_validate_pob_slot,
 )
+from companion.equipment.precedence import Verdict
+from companion.equipment.rules import BuildProgressionStage
+from companion.equipment.schema import SlotType
 from companion.equipment.pob2_helmet_advisor import (
     Pob2HelmetSession,
     PobHelmetDelta,
 )
-from companion.equipment.schema import SlotType
 from tests.unit.equipment.test_pob2_helmet_advisor import (
     BRIMSTONE_VEIL_RAW,
     KRAKEN_DOME_RAW,
@@ -37,6 +40,187 @@ from tests.unit.equipment.test_pob2_helmet_advisor import (
     FakePoeApi,
 )
 
+
+POB2_PRODUCTION_CORE_SLOTS: set[str] = {
+    "Helmet",
+    "Body Armour",
+    "Gloves",
+    "Boots",
+    "Belt",
+    "Amulet",
+}
+
+
+def test_production_core_slots_allowlist_matches_approved_milestone():
+    """Milestone allowlist specifies exactly the 6 core slots, excluding Rings and Weapons."""
+    from companion.equipment.live_watcher import POB2_PRODUCTION_CORE_SLOTS as PROD_SLOTS
+
+    assert PROD_SLOTS == {
+        "Helmet",
+        "Body Armour",
+        "Gloves",
+        "Boots",
+        "Belt",
+        "Amulet",
+    }
+    # Explicitly assert Rings and Weapons are NOT enabled
+    assert "Ring 1" not in PROD_SLOTS
+    assert "Ring 2" not in PROD_SLOTS
+    assert "Weapon 1" not in PROD_SLOTS
+    assert "Weapon 2" not in PROD_SLOTS
+
+
+def test_generic_fubgun_equipment_policy_evaluates_all_core_slots():
+    """evaluate_fubgun_equipment_policy handles Body Armour, Gloves, Boots, Belt, Amulet, and Helmet."""
+    from companion.equipment.fubgun_priorities import (
+        evaluate_fubgun_equipment_policy,
+        FubgunEquipmentRecommendation,
+    )
+
+    # 1. Body Armour: high Armour + Life is strong upgrade
+    ba_delta = PobEquipmentDelta(
+        slot="Body Armour",
+        candidate_id=1,
+        candidate_name="Obsidian Plate",
+        current_item_name="Plate Vest",
+        life_delta=40,
+        fire_res_delta=15,
+        cold_res_delta=0,
+        lightning_res_delta=0,
+        chaos_res_delta=0,
+        armour_delta=120,
+        evasion_delta=0,
+        es_delta=0,
+        ehp_delta=45.0,
+        dps_delta=0.0,
+    )
+    rec_ba = evaluate_fubgun_equipment_policy(ba_delta, stage=BuildProgressionStage.LEVELING_15_32)
+    assert isinstance(rec_ba, FubgunEquipmentRecommendation)
+    assert rec_ba.verdict == Verdict.EQUIP_NOW
+    assert "Body Armour" in rec_ba.formatted_output
+    assert "Obsidian Plate" in rec_ba.formatted_output
+    assert "+40 Life" in rec_ba.formatted_output
+    assert "+120 Armour" in rec_ba.formatted_output
+
+    # 2. Boots: defensive upgrade without MS or with MS
+    boots_delta = PobEquipmentDelta(
+        slot="Boots",
+        candidate_id=2,
+        candidate_name="Beryl Stride",
+        current_item_name="Rawhide Boots",
+        life_delta=25,
+        fire_res_delta=0,
+        cold_res_delta=15,
+        lightning_res_delta=0,
+        chaos_res_delta=0,
+        armour_delta=50,
+        evasion_delta=0,
+        es_delta=0,
+        movement_speed_delta=10.0,
+        ehp_delta=30.0,
+        dps_delta=0.0,
+    )
+    rec_boots = evaluate_fubgun_equipment_policy(boots_delta, stage=BuildProgressionStage.LEVELING_15_32)
+    assert isinstance(rec_boots, FubgunEquipmentRecommendation)
+    assert rec_boots.verdict == Verdict.EQUIP_NOW
+    assert "Boots" in rec_boots.formatted_output
+    assert "+25 Life" in rec_boots.formatted_output
+    assert "+15% Cold Res" in rec_boots.formatted_output
+
+    boots_loss_delta = boots_delta.model_copy(update={"movement_speed_delta": -10})
+    rec_boots_loss = evaluate_fubgun_equipment_policy(
+        boots_loss_delta,
+        stage=BuildProgressionStage.LEVELING_15_32,
+    )
+    assert rec_boots_loss.verdict != Verdict.EQUIP_NOW
+    assert "-10% Movement Speed" in rec_boots_loss.formatted_output
+
+    # 3. Gloves: Life + Resistances
+    gloves_delta = PobEquipmentDelta(
+        slot="Gloves",
+        candidate_id=3,
+        candidate_name="Bramble Mitts",
+        current_item_name="Cloth Gloves",
+        life_delta=30,
+        fire_res_delta=20,
+        cold_res_delta=0,
+        lightning_res_delta=0,
+        chaos_res_delta=0,
+        armour_delta=30,
+        evasion_delta=0,
+        es_delta=0,
+        ehp_delta=25.0,
+        dps_delta=2.5,
+    )
+    rec_gloves = evaluate_fubgun_equipment_policy(gloves_delta, stage=BuildProgressionStage.LEVELING_15_32)
+    assert isinstance(rec_gloves, FubgunEquipmentRecommendation)
+    assert rec_gloves.verdict == Verdict.EQUIP_NOW
+    assert "Gloves" in rec_gloves.formatted_output
+    assert "+30 Life" in rec_gloves.formatted_output
+
+    # 4. Belt: Life + Resistances
+    belt_delta = PobEquipmentDelta(
+        slot="Belt",
+        candidate_id=4,
+        candidate_name="Vigour Clasp",
+        current_item_name="Chain Belt",
+        life_delta=35,
+        fire_res_delta=0,
+        cold_res_delta=0,
+        lightning_res_delta=18,
+        chaos_res_delta=0,
+        armour_delta=0,
+        evasion_delta=0,
+        es_delta=0,
+        ehp_delta=35.0,
+        dps_delta=0.0,
+    )
+    rec_belt = evaluate_fubgun_equipment_policy(belt_delta, stage=BuildProgressionStage.LEVELING_15_32)
+    assert isinstance(rec_belt, FubgunEquipmentRecommendation)
+    assert rec_belt.verdict == Verdict.EQUIP_NOW
+    assert "Belt" in rec_belt.formatted_output
+    assert "+35 Life" in rec_belt.formatted_output
+
+    # 5. Amulet: Life + Resistances
+    amulet_delta = PobEquipmentDelta(
+        slot="Amulet",
+        candidate_id=5,
+        candidate_name="Torment Gorget",
+        current_item_name="Coral Amulet",
+        life_delta=20,
+        fire_res_delta=12,
+        cold_res_delta=12,
+        lightning_res_delta=0,
+        chaos_res_delta=0,
+        armour_delta=0,
+        evasion_delta=0,
+        es_delta=0,
+        ehp_delta=30.0,
+        dps_delta=1.0,
+    )
+    rec_amulet = evaluate_fubgun_equipment_policy(amulet_delta, stage=BuildProgressionStage.LEVELING_15_32)
+    assert isinstance(rec_amulet, FubgunEquipmentRecommendation)
+    assert rec_amulet.verdict == Verdict.EQUIP_NOW
+    assert "Amulet" in rec_amulet.formatted_output
+    assert "+20 Life" in rec_amulet.formatted_output
+
+
+def test_generic_session_initialization_queries_all_core_equipped_items():
+    """Pob2EquipmentSession queries and stores all core equipped slots on initialize."""
+    fake_engine = FakePobEngine()
+    fake_api = FakePoeApi()
+
+    session = Pob2EquipmentSession(
+        character_name="BOMSHAK",
+        engine_factory=lambda: fake_engine,
+        poe_api_client=fake_api,
+    )
+    assert session.initialize() is True
+
+    # Check that initialize called get_equipped for all production core slots
+    for slot in ["Helmet", "Body Armour", "Gloves", "Boots", "Belt", "Amulet"]:
+        assert slot in session.equipped_items
+        assert session.get_current_item_name(slot) is not None
 SAMPLE_BOOTS_RAW = """Item Class: Boots
 Rarity: Rare
 Beryl Stride
@@ -110,6 +294,7 @@ def test_generic_simulate_item_validates_slot_and_executes():
     assert delta.candidate_name == "Kraken Dome"
     assert delta.life_delta == 20
     assert delta.lightning_res_delta == 7
+    assert delta.movement_speed_delta == 20.0
 
 
 def test_request_bookkeeping_thread_safety_independent_from_engine_lock():
@@ -170,6 +355,39 @@ def test_backward_compatibility_facade_helmet_session():
     assert isinstance(delta, PobHelmetDelta)
     assert delta.current_helmet_name == "Brimstone Veil"
     assert delta.life_delta == 20
+
+
+def test_simulation_failure_restores_hot_engine_baseline():
+    """A failed candidate calculation must not leave the hot engine on the candidate item."""
+
+    class FailingStatsEngine(FakePobEngine):
+        def __init__(self):
+            super().__init__()
+            self.fail_next_stats = False
+
+        def call(self, action: str, **kwargs: Any) -> dict[str, Any]:
+            if action == "calc_stats" and self.fail_next_stats:
+                self.fail_next_stats = False
+                raise RuntimeError("simulated PoB2 calculation failure")
+            return super().call(action, **kwargs)
+
+    fake_engine = FailingStatsEngine()
+    session = Pob2EquipmentSession(
+        character_name="BOMSHAK",
+        engine_factory=lambda: fake_engine,
+        poe_api_client=FakePoeApi(),
+    )
+    assert session.initialize() is True
+    fake_engine.fail_next_stats = True
+
+    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW, candidate_name="Kraken Dome")
+    assert session.simulate_item(
+        slot="Helmet",
+        raw_candidate=KRAKEN_DOME_RAW,
+        candidate_id=candidate_id,
+        candidate_name="Kraken Dome",
+    ) is None
+    assert fake_engine.call_log[-1] == "import_build"
 
 
 def test_async_burst_coalescing_skips_stale_candidate_b():

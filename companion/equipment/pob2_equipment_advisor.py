@@ -7,7 +7,7 @@ RESPONSIBILITY BOUNDARY:
   increasing candidate IDs, staleness tracking, latest-wins candidate coalescing,
   and thread-safe bookkeeping independent of engine lock.
 - Generic across equipment slots conceptually (simulate_item(slot, raw_candidate)).
-- Production live watcher routing remains Helmet-only until additional slots are enabled.
+- Production live watcher routing is explicitly allowlisted for the verified core slots.
 """
 
 from __future__ import annotations
@@ -34,6 +34,12 @@ CANONICAL_EQUIPMENT_SLOTS: set[str] = {
     "Weapon 1",
     "Weapon 2",
 }
+
+# Production routing is narrower than the generic slot foundation. Rings and weapons
+# remain native-policy only until their slot-context milestones are verified.
+POB2_PRODUCTION_SLOTS: frozenset[str] = frozenset(
+    {"Helmet", "Body Armour", "Gloves", "Boots", "Belt", "Amulet"}
+)
 
 _SLOT_ALIAS_MAP: dict[str, str] = {
     "helmet": "Helmet",
@@ -158,6 +164,7 @@ class PobEquipmentDelta(BaseModel):
     armour_delta: int = 0
     evasion_delta: int = 0
     es_delta: int = 0
+    movement_speed_delta: float = 0.0
     ehp_delta: float = 0.0
     dps_delta: float = 0.0
     life_before: int = 0
@@ -239,10 +246,11 @@ class Pob2EquipmentSession:
                 self.class_name = imp_res.get("className")
                 self.level = imp_res.get("level")
 
-                # Query initial equipped helmet
-                cur_helm = self.engine.call("get_equipped", slot="Helmet")
-                if cur_helm:
-                    self.equipped_items["Helmet"] = cur_helm
+                # Query each production-enabled core slot once while the imported build is hot.
+                for slot in POB2_PRODUCTION_SLOTS:
+                    equipped = self.engine.call("get_equipped", slot=slot)
+                    if equipped:
+                        self.equipped_items[slot] = equipped
 
                 self.defenses_before = self.engine.call("get_defenses")
                 self.stats_before = self.engine.call("calc_stats")
@@ -311,9 +319,10 @@ class Pob2EquipmentSession:
             self.class_name = imp_res.get("className")
             self.level = imp_res.get("level")
 
-            cur_helm = self.engine.call("get_equipped", slot="Helmet")
-            if cur_helm:
-                self.equipped_items["Helmet"] = cur_helm
+            for slot in POB2_PRODUCTION_SLOTS:
+                equipped = self.engine.call("get_equipped", slot=slot)
+                if equipped:
+                    self.equipped_items[slot] = equipped
 
             self.defenses_before = self.engine.call("get_defenses")
             self.stats_before = self.engine.call("calc_stats")
@@ -399,11 +408,13 @@ class Pob2EquipmentSession:
             if self.is_stale(candidate_id):
                 return None
 
+            candidate_applied = False
             try:
                 # 2a. Restore baseline XML in case previous item mutated it
                 self.engine.call("import_build", xml=self.xml)
 
                 # 2b. Equip candidate item in canonical slot
+                candidate_applied = True
                 self.engine.call("equip_item", slot=canonical_slot, raw=raw_candidate)
 
                 # 2c. Read post-equip defenses and stats
@@ -412,6 +423,7 @@ class Pob2EquipmentSession:
 
                 # 2d. Restore baseline XML immediately so engine is pristine
                 self.engine.call("import_build", xml=self.xml)
+                candidate_applied = False
 
                 # 2e. Post-check staleness before building delta
                 if self.is_stale(candidate_id):
@@ -439,6 +451,10 @@ class Pob2EquipmentSession:
                 cold_delta = int((def_stats_after.get("ColdResist") or 0) - (def_stats_before.get("ColdResist") or 0))
                 lightning_delta = int((def_stats_after.get("LightningResist") or 0) - (def_stats_before.get("LightningResist") or 0))
                 chaos_delta = int((def_stats_after.get("ChaosResist") or 0) - (def_stats_before.get("ChaosResist") or 0))
+                movement_speed_delta = float(
+                    (def_stats_after.get("MovementSpeed") or 0.0)
+                    - (def_stats_before.get("MovementSpeed") or 0.0)
+                )
 
                 off_before = stats_before.get("offense", {})
                 off_after = stats_after.get("offense", {})
@@ -462,6 +478,7 @@ class Pob2EquipmentSession:
                     armour_delta=armour_delta,
                     evasion_delta=evasion_delta,
                     es_delta=es_delta,
+                    movement_speed_delta=movement_speed_delta,
                     ehp_delta=ehp_delta,
                     dps_delta=dps_delta,
                     life_before=life_before,
@@ -473,6 +490,12 @@ class Pob2EquipmentSession:
                 )
             except Exception:
                 return None
+            finally:
+                if candidate_applied:
+                    try:
+                        self.engine.call("import_build", xml=self.xml)
+                    except Exception:
+                        pass
 
     def display_recommendation(
         self,

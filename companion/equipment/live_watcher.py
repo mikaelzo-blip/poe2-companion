@@ -20,14 +20,17 @@ from companion.equipment.parser import (
     parse_item_text,
     validate_poe2_item_envelope,
 )
-from companion.equipment.fubgun_priorities import evaluate_fubgun_helmet_policy
-from companion.equipment.pob2_equipment_advisor import Pob2EquipmentSession
+from companion.equipment.fubgun_priorities import evaluate_fubgun_equipment_policy
+from companion.equipment.pob2_equipment_advisor import POB2_PRODUCTION_SLOTS, Pob2EquipmentSession
 from companion.equipment.pob2_helmet_advisor import Pob2HelmetSession
 from companion.equipment.precedence import Verdict
 from companion.equipment.recommendation import EquipmentRecommendation
 from companion.equipment.rules import BuildProgressionStage
 from companion.equipment.schema import SlotOccupancy, SlotType, WeaponSetContext
 from companion.state.store import CharacterStateStore
+
+
+POB2_PRODUCTION_CORE_SLOTS = POB2_PRODUCTION_SLOTS
 
 
 def resolve_live_stage(
@@ -503,7 +506,7 @@ def run_live_watcher(
     if pob_enabled and pob_advisor is None:
         try:
             target_char = pob_character or "BOMSHAK"
-            pob_advisor = Pob2HelmetSession(
+            pob_advisor = Pob2EquipmentSession(
                 character_name=target_char,
                 backend_path=pob_backend_path,
             )
@@ -523,7 +526,9 @@ def run_live_watcher(
         output_writer(f"Character: {pob_advisor.character_desc}")
         output_writer("Current equipment: LOADED")
         output_writer("PoB2 engine: READY")
-        output_writer(f"Current Helmet: {getattr(pob_advisor, 'current_helmet_name', None) or 'Unobserved'}")
+        for slot in sorted(POB2_PRODUCTION_CORE_SLOTS):
+            current_name = pob_advisor.get_current_item_name(slot) or "Unobserved"
+            output_writer(f"Current {slot}: {current_name}")
         output_writer("LIVE ADVICE READY")
     else:
         output_writer(f"Baseline: {baseline_status}")
@@ -761,27 +766,43 @@ def run_live_watcher(
                                     bootstrapped = True
 
                         if not bootstrapped:
-                            # 1. PoB2 Live Helmet Advisor evaluation
+                            # PoB2 is deliberately limited to the approved core-slot milestone.
+                            canonical_slot = candidate.slot
+                            pob_slot = {
+                                SlotType.HELMET: "Helmet",
+                                SlotType.BODY_ARMOUR: "Body Armour",
+                                SlotType.GLOVES: "Gloves",
+                                SlotType.BOOTS: "Boots",
+                                SlotType.BELT: "Belt",
+                                SlotType.AMULET: "Amulet",
+                            }.get(canonical_slot)
                             if (
-                                candidate.slot == SlotType.HELMET
+                                pob_slot in POB2_PRODUCTION_CORE_SLOTS
                                 and pob_advisor is not None
                                 and pob_advisor.is_available
                             ):
-                                if (
-                                    pob_advisor.current_helmet_name
-                                    and candidate.name == pob_advisor.current_helmet_name
-                                ):
+                                current_name = pob_advisor.get_current_item_name(pob_slot)
+                                if current_name and candidate.name == current_name:
+                                    current_label = (
+                                        "Current Helmet"
+                                        if pob_slot == "Helmet"
+                                        else f"Current {pob_slot}"
+                                    )
                                     output_writer(
-                                        f"Helmet is already recorded as Current Helmet ({candidate.name}). "
-                                        "To evaluate an upgrade, copy a candidate helmet."
+                                        f"{pob_slot} is already recorded as {current_label} ({candidate.name}). "
+                                        "To evaluate an upgrade, copy a candidate item."
                                     )
                                     output_writer("")
                                     continue
 
-                                output_writer(f"Analyzing {candidate.name} (Helmet)...")
-                                cid = pob_advisor.submit_candidate(raw_text, candidate_name=candidate.name)
+                                output_writer(f"Analyzing {candidate.name} ({pob_slot})...")
+                                cid = pob_advisor.submit_candidate(
+                                    raw_text,
+                                    candidate_name=candidate.name,
+                                    slot=pob_slot,
+                                )
                                 delta = pob_advisor.simulate_item(
-                                    slot="Helmet",
+                                    slot=pob_slot,
                                     raw_candidate=raw_text,
                                     candidate_id=cid,
                                     candidate_name=candidate.name,
@@ -789,13 +810,13 @@ def run_live_watcher(
                                 if delta is not None:
                                     advice = pob_advisor.display_recommendation(
                                         delta,
-                                        policy_evaluator=lambda d: evaluate_fubgun_helmet_policy(d, stage=stage),
+                                        policy_evaluator=lambda d: evaluate_fubgun_equipment_policy(d, stage=stage),
                                     )
                                     if advice:
                                         output_writer(advice)
                                         continue
 
-                            # 2. Standard native evaluation fallback
+                            # Standard native evaluation fallback
                             try:
                                 report = evaluate_live_candidate(
                                     candidate_text=raw_text,

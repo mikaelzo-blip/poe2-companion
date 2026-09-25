@@ -115,8 +115,8 @@ def get_fubgun_build_priority_short(stage: BuildProgressionStage | None = None) 
     return "Fubgun campaign — Resistance > Life"
 
 
-class FubgunHelmetRecommendation(BaseModel):
-    """Structured recommendation from applying Fubgun policy to PoB helmet deltas."""
+class FubgunEquipmentRecommendation(BaseModel):
+    """Structured recommendation from applying Fubgun policy to PoB equipment deltas."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -127,6 +127,10 @@ class FubgunHelmetRecommendation(BaseModel):
     trade_offs: list[str] = Field(default_factory=list)
     stage: BuildProgressionStage | None = None
     formatted_output: str = ""
+
+
+class FubgunHelmetRecommendation(FubgunEquipmentRecommendation):
+    """Backward-compatible recommendation type for helmet callers."""
 
 
 def _supports_color() -> bool:
@@ -290,4 +294,99 @@ def evaluate_fubgun_helmet_policy(
         trade_offs=trade_offs,
         stage=stage,
         formatted_output=formatted_output,
+    )
+
+
+def evaluate_fubgun_equipment_policy(
+    delta: Any,
+    stage: BuildProgressionStage | None = None,
+    use_color: bool | None = None,
+) -> FubgunEquipmentRecommendation:
+    """Apply the shared Fubgun defensive policy to a production-enabled core slot."""
+    if delta.slot == "Helmet":
+        return evaluate_fubgun_helmet_policy(delta, stage=stage, use_color=use_color)
+
+    if use_color is None:
+        use_color = _supports_color()
+
+    slot = delta.slot
+    stage_name = stage.value if stage else "campaign"
+    gains: list[str] = []
+    trade_offs: list[str] = []
+    for value, label in (
+        (delta.life_delta, " Life"),
+        (delta.fire_res_delta, "% Fire Res"),
+        (delta.cold_res_delta, "% Cold Res"),
+        (delta.lightning_res_delta, "% Lightning Res"),
+        (delta.chaos_res_delta, "% Chaos Res"),
+        (delta.armour_delta, " Armour"),
+        (delta.evasion_delta, " Evasion"),
+        (delta.es_delta, " Energy Shield"),
+    ):
+        if value > 0:
+            gains.append(f"+{value}{label}")
+        elif value < 0:
+            trade_offs.append(f"{value}{label}")
+    if delta.movement_speed_delta > 0.05:
+        gains.append(f"+{delta.movement_speed_delta:g}% Movement Speed")
+    elif delta.movement_speed_delta < -0.05:
+        trade_offs.append(f"{delta.movement_speed_delta:g}% Movement Speed")
+    if delta.ehp_delta > 0.05:
+        gains.append(f"+{delta.ehp_delta:.2f} Total EHP")
+    elif delta.ehp_delta < -0.05:
+        trade_offs.append(f"{delta.ehp_delta:.2f} Total EHP")
+    if delta.dps_delta > 0.05:
+        gains.append(f"+{delta.dps_delta:.2f} DPS")
+    elif delta.dps_delta < -0.05:
+        trade_offs.append(f"{delta.dps_delta:.2f} DPS")
+
+    res_gain = sum(max(0, value) for value in (
+        delta.fire_res_delta, delta.cold_res_delta, delta.lightning_res_delta
+    ))
+    res_loss = sum(min(0, value) for value in (
+        delta.fire_res_delta, delta.cold_res_delta, delta.lightning_res_delta
+    ))
+    boots_movement_gain = slot == "Boots" and delta.movement_speed_delta > 0.05
+    boots_movement_loss = slot == "Boots" and delta.movement_speed_delta < -0.05
+    primary_gain = delta.life_delta > 0 or res_gain > 0 or boots_movement_gain
+    primary_loss = delta.life_delta < 0 or res_loss < 0 or boots_movement_loss
+    secondary_gain = delta.ehp_delta > 5.0 or delta.armour_delta > 20 or delta.evasion_delta > 20 or delta.es_delta > 20
+
+    if primary_gain and not primary_loss and not boots_movement_loss and delta.ehp_delta >= -1.0:
+        verdict = Verdict.EQUIP_NOW
+        reason = f"Fubgun {stage_name} — {slot}: Life and Resistance upgrade; PoB2 confirms the defensive improvement."
+    elif primary_gain and primary_loss:
+        verdict = Verdict.CONDITIONAL_UPGRADE
+        reason = f"Fubgun {stage_name} — {slot}: Life/Resistance trade-off; equip when it satisfies the current defensive need."
+    elif secondary_gain:
+        verdict = Verdict.CONDITIONAL_UPGRADE
+        reason = f"Fubgun {stage_name} — {slot}: secondary local-defense improvement without a primary Life/Resistance gain."
+    else:
+        verdict = Verdict.REJECT
+        reason = f"Fubgun {stage_name} — {slot}: no useful Life or Resistance gain. Keep current item."
+
+    header = {
+        Verdict.EQUIP_NOW: "🟢 EQUIP NOW",
+        Verdict.REJECT: "🔴 REJECT / KEEP CURRENT",
+        Verdict.CONDITIONAL_UPGRADE: "🟡 CONDITIONAL UPGRADE",
+    }.get(verdict, f"⚪ {verdict.value}")
+    if use_color and verdict in (Verdict.EQUIP_NOW, Verdict.REJECT, Verdict.CONDITIONAL_UPGRADE):
+        color = {Verdict.EQUIP_NOW: 32, Verdict.REJECT: 31, Verdict.CONDITIONAL_UPGRADE: 33}[verdict]
+        header = f"\033[{color}m{header}\033[0m"
+
+    current = delta.current_item_name or f"Current {slot}"
+    lines = ["────────────────────────", header, "", f"{delta.candidate_name} ({slot})", f"vs {current}", ""]
+    if gains:
+        lines.extend(gains)
+    if trade_offs:
+        lines.extend(["", "Trade-offs:", *trade_offs])
+    lines.extend(["", "Recommendation:", reason, "────────────────────────"])
+    return FubgunEquipmentRecommendation(
+        verdict=verdict,
+        reason=reason,
+        delta=delta,
+        gains=gains,
+        trade_offs=trade_offs,
+        stage=stage,
+        formatted_output="\n".join(lines),
     )

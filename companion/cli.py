@@ -273,7 +273,7 @@ def build_parser() -> argparse.ArgumentParser:
     glive_p.add_argument("--json", action="store_true", help="Output recommendation as JSON")
     glive_p.add_argument("--bootstrap", action="store_true", help="Enable live bootstrap mode for unequipped slots")
     glive_p.add_argument("--pob-character", help="Character name for PoB2 live simulation (milestone default: BOMSHAK)")
-    glive_p.add_argument("--no-pob", action="store_true", help="Disable PoB2 live helmet advisor")
+    glive_p.add_argument("--no-pob", action="store_true", help="Disable PoB2 live equipment advisor")
 
     gclip_p = gear_sub.add_parser("inspect-clipboard", help="Inspect and evaluate item from clipboard")
     gclip_p.add_argument("--slot", help="Target equipment slot")

@@ -238,3 +238,97 @@ def test_live_watcher_fallback_when_pob2_unavailable(tmp_path: Path):
     assert "PoB2 engine: UNAVAILABLE" in full_output
     # Fallback to native evaluation evaluated Kraken Dome
     assert "Kraken Dome" in full_output
+
+
+def test_live_watcher_pob_context_status_display_separates_local_baseline(tmp_path: Path):
+    """When PoB character context is available but local baseline is missing,
+    watcher presents Local baseline: NOT LOADED and PoB2 character context: AVAILABLE,
+    without misleading Baseline: MISSING or Character-context projection: LIMITED."""
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    char_id = "test_pob_display_hero"
+
+    store = CharacterStateStore(runtime_dir)
+    store.save_character(
+        CharacterState(
+            character_id=char_id,
+            character_name="Hunter",
+            build_progression={"active_stage": "lvl 15-32"},
+        )
+    )
+    store.set_active_character(char_id)
+
+    fake_engine = FakePobEngine()
+    fake_api = FakePoeApi()
+    pob_session = Pob2HelmetSession(
+        character_name="BOMSHAK",
+        engine_factory=lambda: fake_engine,
+        poe_api_client=fake_api,
+    )
+    assert pob_session.initialize() is True
+
+    def mock_reader():
+        raise KeyboardInterrupt()
+
+    output_lines = []
+    ret = run_live_watcher(
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        clipboard_reader=mock_reader,
+        output_writer=output_lines.append,
+        pob_session=pob_session,
+    )
+    assert ret == 0
+    full_output = "\n".join(output_lines)
+
+    # Clearly separated PoB status
+    assert "Local baseline: NOT LOADED" in full_output
+    assert "PoB2 character context: AVAILABLE" in full_output
+    assert "Character: BOMSHAK — Level 17 Mercenary" in full_output
+    assert "Current equipment: LOADED" in full_output
+    assert "PoB2 engine: READY" in full_output
+    assert "LIVE ADVICE READY" in full_output
+
+    # MUST NOT present misleading missing/limited status
+    assert "Baseline: MISSING" not in full_output
+    assert "Character-context projection: LIMITED" not in full_output
+
+
+def test_live_watcher_pob_context_status_display_with_loaded_local_baseline(tmp_path: Path):
+    """When PoB character context is available and local baseline is loaded (READY),
+    watcher presents Local baseline: READY, PoB2 character context: AVAILABLE,
+    and no Character-context projection: LIMITED."""
+    runtime_dir = _setup_runtime(tmp_path, char_id="test_loaded_hero")
+    char_id = "test_loaded_hero"
+
+    fake_engine = FakePobEngine()
+    fake_api = FakePoeApi()
+    pob_session = Pob2HelmetSession(
+        character_name="BOMSHAK",
+        engine_factory=lambda: fake_engine,
+        poe_api_client=fake_api,
+    )
+    assert pob_session.initialize() is True
+
+    def mock_reader():
+        raise KeyboardInterrupt()
+
+    output_lines = []
+    ret = run_live_watcher(
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        clipboard_reader=mock_reader,
+        output_writer=output_lines.append,
+        pob_session=pob_session,
+    )
+    assert ret == 0
+    full_output = "\n".join(output_lines)
+
+    assert "Local baseline: READY" in full_output
+    assert "PoB2 character context: AVAILABLE" in full_output
+    assert "Character: BOMSHAK — Level 17 Mercenary" in full_output
+    assert "Current equipment: LOADED" in full_output
+    assert "Character-context projection: LIMITED" not in full_output
+

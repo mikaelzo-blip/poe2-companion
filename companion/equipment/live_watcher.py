@@ -21,6 +21,7 @@ from companion.equipment.parser import (
     validate_poe2_item_envelope,
 )
 from companion.equipment.fubgun_priorities import evaluate_fubgun_helmet_policy
+from companion.equipment.pob2_equipment_advisor import Pob2EquipmentSession
 from companion.equipment.pob2_helmet_advisor import Pob2HelmetSession
 from companion.equipment.precedence import Verdict
 from companion.equipment.recommendation import EquipmentRecommendation
@@ -454,11 +455,19 @@ def run_live_watcher(
     weapon_set: str | None = None,
     bootstrap: bool = False,
     pob_character: str | None = None,
-    pob_session: Pob2HelmetSession | None = None,
+    pob_session: Pob2EquipmentSession | Pob2HelmetSession | None = None,
     pob_enabled: bool = False,
     pob_backend_path: str | Path | None = None,
 ) -> int:
-    """Run passive clipboard monitoring loop for PoE2 equipment."""
+    """Run passive clipboard monitoring loop for PoE2 equipment.
+
+    NOTE ON MANUAL BOOTSTRAP:
+    The manual bootstrap mechanism (--bootstrap flag, where "first item copied for unknown
+    slot is assumed to be CURRENT EQUIPPED") is a legacy fallback mechanism for offline /
+    local loadouts. It must NEVER become the normal path when backed by an authoritative
+    PoB2 character import, where full character context and current equipment are loaded
+    directly from PoB2.
+    """
     r_path = Path(runtime_dir)
     engine = EquipmentIntelligenceEngine(runtime_dir=r_path)
     reader = clipboard_reader if clipboard_reader is not None else get_clipboard_text
@@ -489,8 +498,8 @@ def run_live_watcher(
             baseline_status = "STALE"
             baseline_note = "Note: Baseline is STALE (revision mismatch). Run 'companion gear baseline refresh'."
 
-    # 2. PoB2 Helmet Advisor Session
-    pob_advisor: Pob2HelmetSession | None = pob_session
+    # 2. PoB2 Advisor Session
+    pob_advisor: Pob2EquipmentSession | Pob2HelmetSession | None = pob_session
     if pob_enabled and pob_advisor is None:
         try:
             target_char = pob_character or "BOMSHAK"
@@ -506,25 +515,34 @@ def run_live_watcher(
     output_writer(f"Runtime: {r_path}")
     output_writer(f"Stage: {stage.value}")
     output_writer(f"Loadout revision: {loadout_rev}")
-    output_writer(f"Baseline: {baseline_status}")
-    if pob_advisor is not None:
-        if pob_advisor.is_available:
-            output_writer("PoB2 engine: READY")
-            output_writer(f"Character: {pob_advisor.character_name}")
-            output_writer(f"Current Helmet: {pob_advisor.current_helmet_name or 'Unobserved'}")
-            output_writer("LIVE ADVICE READY")
-        else:
+
+    if pob_advisor is not None and pob_advisor.is_available:
+        local_baseline_disp = "NOT LOADED" if baseline_status == "MISSING" else baseline_status
+        output_writer(f"Local baseline: {local_baseline_disp}")
+        output_writer("PoB2 character context: AVAILABLE")
+        output_writer(f"Character: {pob_advisor.character_desc}")
+        output_writer("Current equipment: LOADED")
+        output_writer("PoB2 engine: READY")
+        output_writer(f"Current Helmet: {getattr(pob_advisor, 'current_helmet_name', None) or 'Unobserved'}")
+        output_writer("LIVE ADVICE READY")
+    else:
+        output_writer(f"Baseline: {baseline_status}")
+        if pob_advisor is not None:
             output_writer("PoB2 engine: UNAVAILABLE")
             if pob_advisor.unavailable_reason:
                 output_writer(f"Note: {pob_advisor.unavailable_reason}")
-    if baseline_status == "MISSING":
-        output_writer("Item-to-item comparison: AVAILABLE")
-        output_writer("Character-context projection: LIMITED")
+        if baseline_status == "MISSING":
+            output_writer("Item-to-item comparison: AVAILABLE")
+            output_writer("Character-context projection: LIMITED")
+
     if bootstrap:
+        # Legacy fallback mechanism: "first item copied for unknown slot is assumed to be CURRENT EQUIPPED".
+        # This is strictly a fallback onboarding path for manual/offline setups and must
+        # never become the normal PoB-backed path.
         output_writer("Bootstrap mode: ACTIVE")
         output_writer("Warning: first item copied for an unknown slot is assumed to be CURRENT EQUIPPED.")
         output_writer("Copy CURRENT Weapon Set 1 first, then CURRENT Weapon Set 2.")
-    if baseline_note and baseline_status != "MISSING":
+    if baseline_note and baseline_status != "MISSING" and (pob_advisor is None or not pob_advisor.is_available):
         output_writer("")
         output_writer(baseline_note)
     output_writer("")
@@ -762,7 +780,12 @@ def run_live_watcher(
 
                                 output_writer(f"Analyzing {candidate.name} (Helmet)...")
                                 cid = pob_advisor.submit_candidate(raw_text, candidate_name=candidate.name)
-                                delta = pob_advisor.simulate_candidate(cid, raw_text, candidate_name=candidate.name)
+                                delta = pob_advisor.simulate_item(
+                                    slot="Helmet",
+                                    raw_candidate=raw_text,
+                                    candidate_id=cid,
+                                    candidate_name=candidate.name,
+                                )
                                 if delta is not None:
                                     advice = pob_advisor.display_recommendation(
                                         delta,

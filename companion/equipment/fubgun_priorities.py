@@ -390,3 +390,195 @@ def evaluate_fubgun_equipment_policy(
         stage=stage,
         formatted_output="\n".join(lines),
     )
+
+
+class DualRingRecommendation(BaseModel):
+    """Stacked dual-slot recommendation for Ring 1 vs Ring 2."""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    ring1_recommendation: FubgunEquipmentRecommendation
+    ring2_recommendation: FubgunEquipmentRecommendation
+    recommended_slot: str | None = None  # "Ring 1", "Ring 2", or None
+    summary_verdict: str = ""
+    trade_off_notes: list[str] = Field(default_factory=list)
+    formatted_output: str = ""
+
+
+def evaluate_dual_ring_policy(
+    delta1: Any,
+    delta2: Any,
+    stage: BuildProgressionStage | None = None,
+    empty_ring1: bool = False,
+    empty_ring2: bool = False,
+    use_color: bool | None = None,
+) -> DualRingRecommendation:
+    """Evaluate dual ring placements against canonical Fubgun policy and formatting.
+
+    Adheres strictly to:
+    1. Independent policy evaluation for each slot placement.
+    2. No arbitrary numeric weighted score.
+    3. Recommends slot only when one placement is clearly preferred by policy or dominance.
+    4. When both placements are viable but trade different stats, outputs:
+       'Both placements viable / No safe automatic slot preference' with trade-off details.
+    5. Compact stacked UI format.
+    """
+    if use_color is None:
+        use_color = _supports_color()
+
+    rec1 = evaluate_fubgun_equipment_policy(delta1, stage=stage, use_color=use_color)
+    rec2 = evaluate_fubgun_equipment_policy(delta2, stage=stage, use_color=use_color)
+
+    recommended_slot: str | None = None
+    summary_verdict: str = ""
+    trade_off_notes: list[str] = []
+
+    # Case 1: Empty slot presence
+    if empty_ring2 and not empty_ring1:
+        if rec2.verdict == Verdict.EQUIP_NOW:
+            recommended_slot = "Ring 2"
+            summary_verdict = "Recommended placement: Ring 2 (slot is empty)"
+    elif empty_ring1 and not empty_ring2:
+        if rec1.verdict == Verdict.EQUIP_NOW:
+            recommended_slot = "Ring 1"
+            summary_verdict = "Recommended placement: Ring 1 (slot is empty)"
+
+    # Case 2: One placement is EQUIP_NOW and other is REJECT or CONDITIONAL
+    if recommended_slot is None:
+        if rec1.verdict == Verdict.EQUIP_NOW and rec2.verdict == Verdict.REJECT:
+            recommended_slot = "Ring 1"
+            summary_verdict = "Recommended placement: Ring 1 (direct upgrade; replacing Ring 2 is a regression)"
+        elif rec2.verdict == Verdict.EQUIP_NOW and rec1.verdict == Verdict.REJECT:
+            recommended_slot = "Ring 2"
+            summary_verdict = "Recommended placement: Ring 2 (direct upgrade; replacing Ring 1 is a regression)"
+        elif rec1.verdict == Verdict.EQUIP_NOW and rec2.verdict == Verdict.CONDITIONAL_UPGRADE:
+            recommended_slot = "Ring 1"
+            summary_verdict = "Recommended placement: Ring 1 (unconditional upgrade; Ring 2 incurs trade-offs)"
+        elif rec2.verdict == Verdict.EQUIP_NOW and rec1.verdict == Verdict.CONDITIONAL_UPGRADE:
+            recommended_slot = "Ring 2"
+            summary_verdict = "Recommended placement: Ring 2 (unconditional upgrade; Ring 1 incurs trade-offs)"
+
+    # Case 3: Both are REJECT
+    if recommended_slot is None and rec1.verdict == Verdict.REJECT and rec2.verdict == Verdict.REJECT:
+        recommended_slot = None
+        summary_verdict = "Neither placement recommended (keep current rings)"
+
+    # Case 4: Both are EQUIP_NOW or both are CONDITIONAL_UPGRADE -> Test Pareto Dominance
+    if recommended_slot is None:
+        d1_gains_over_d2 = (
+            delta1.life_delta >= delta2.life_delta
+            and delta1.fire_res_delta >= delta2.fire_res_delta
+            and delta1.cold_res_delta >= delta2.cold_res_delta
+            and delta1.lightning_res_delta >= delta2.lightning_res_delta
+            and delta1.chaos_res_delta >= delta2.chaos_res_delta
+            and delta1.ehp_delta >= delta2.ehp_delta
+            and delta1.dps_delta >= delta2.dps_delta
+        )
+        d1_strictly_greater = (
+            delta1.life_delta > delta2.life_delta
+            or delta1.fire_res_delta > delta2.fire_res_delta
+            or delta1.cold_res_delta > delta2.cold_res_delta
+            or delta1.lightning_res_delta > delta2.lightning_res_delta
+            or delta1.chaos_res_delta > delta2.chaos_res_delta
+            or delta1.ehp_delta > (delta2.ehp_delta + 1.0)
+            or delta1.dps_delta > (delta2.dps_delta + 0.5)
+        )
+        d2_gains_over_d1 = (
+            delta2.life_delta >= delta1.life_delta
+            and delta2.fire_res_delta >= delta1.fire_res_delta
+            and delta2.cold_res_delta >= delta1.cold_res_delta
+            and delta2.lightning_res_delta >= delta1.lightning_res_delta
+            and delta2.chaos_res_delta >= delta1.chaos_res_delta
+            and delta2.ehp_delta >= delta1.ehp_delta
+            and delta2.dps_delta >= delta1.dps_delta
+        )
+        d2_strictly_greater = (
+            delta2.life_delta > delta1.life_delta
+            or delta2.fire_res_delta > delta1.fire_res_delta
+            or delta2.cold_res_delta > delta1.cold_res_delta
+            or delta2.lightning_res_delta > delta1.lightning_res_delta
+            or delta2.chaos_res_delta > delta1.chaos_res_delta
+            or delta2.ehp_delta > (delta1.ehp_delta + 1.0)
+            or delta2.dps_delta > (delta1.dps_delta + 0.5)
+        )
+
+        if d1_gains_over_d2 and d1_strictly_greater and not (d2_gains_over_d1 and d2_strictly_greater):
+            recommended_slot = "Ring 1"
+            summary_verdict = "Recommended placement: Ring 1 (higher Life and Resistance gains)"
+        elif d2_gains_over_d1 and d2_strictly_greater and not (d1_gains_over_d2 and d1_strictly_greater):
+            recommended_slot = "Ring 2"
+            summary_verdict = "Recommended placement: Ring 2 (higher Life and Resistance gains)"
+        else:
+            # Neither dominates: Material trade-offs!
+            recommended_slot = None
+            summary_verdict = "Both placements viable / No safe automatic slot preference"
+            trade_off_notes.append(
+                f"Replacing Ring 1: {delta1.life_delta:+d} Life, "
+                f"Res (F:{delta1.fire_res_delta:+d}% C:{delta1.cold_res_delta:+d}% L:{delta1.lightning_res_delta:+d}%)."
+            )
+            trade_off_notes.append(
+                f"Replacing Ring 2: {delta2.life_delta:+d} Life, "
+                f"Res (F:{delta2.fire_res_delta:+d}% C:{delta2.cold_res_delta:+d}% L:{delta2.lightning_res_delta:+d}%)."
+            )
+
+    # Format the UI sections
+    current_1 = "EMPTY" if empty_ring1 else (delta1.current_item_name or "Current Ring 1")
+    current_2 = "EMPTY" if empty_ring2 else (delta2.current_item_name or "Current Ring 2")
+
+    header_1 = {
+        Verdict.EQUIP_NOW: "🟢 EQUIP NOW",
+        Verdict.REJECT: "🔴 REJECT / KEEP CURRENT",
+        Verdict.CONDITIONAL_UPGRADE: "🟡 CONDITIONAL UPGRADE",
+    }.get(rec1.verdict, f"⚪ {rec1.verdict.value}")
+    if use_color and rec1.verdict in (Verdict.EQUIP_NOW, Verdict.REJECT, Verdict.CONDITIONAL_UPGRADE):
+        c1 = {Verdict.EQUIP_NOW: 32, Verdict.REJECT: 31, Verdict.CONDITIONAL_UPGRADE: 33}[rec1.verdict]
+        header_1 = f"\033[{c1}m{header_1}\033[0m"
+
+    header_2 = {
+        Verdict.EQUIP_NOW: "🟢 EQUIP NOW",
+        Verdict.REJECT: "🔴 REJECT / KEEP CURRENT",
+        Verdict.CONDITIONAL_UPGRADE: "🟡 CONDITIONAL UPGRADE",
+    }.get(rec2.verdict, f"⚪ {rec2.verdict.value}")
+    if use_color and rec2.verdict in (Verdict.EQUIP_NOW, Verdict.REJECT, Verdict.CONDITIONAL_UPGRADE):
+        c2 = {Verdict.EQUIP_NOW: 32, Verdict.REJECT: 31, Verdict.CONDITIONAL_UPGRADE: 33}[rec2.verdict]
+        header_2 = f"\033[{c2}m{header_2}\033[0m"
+
+    lines: list[str] = [
+        "────────────────────────",
+        f"Vs Ring 1: {current_1}",
+        header_1,
+    ]
+    if rec1.gains:
+        lines.extend(rec1.gains)
+    if rec1.trade_offs:
+        lines.extend(["", "Trade-offs:", *rec1.trade_offs])
+
+    lines.extend([
+        "",
+        f"Vs Ring 2: {current_2}",
+        header_2,
+    ])
+    if rec2.gains:
+        lines.extend(rec2.gains)
+    if rec2.trade_offs:
+        lines.extend(["", "Trade-offs:", *rec2.trade_offs])
+
+    lines.extend([
+        "",
+        "────────────────────────",
+        "Summary:",
+        summary_verdict,
+    ])
+    if trade_off_notes:
+        lines.extend(trade_off_notes)
+    lines.append("────────────────────────")
+
+    formatted_output = "\n".join(lines)
+    return DualRingRecommendation(
+        ring1_recommendation=rec1,
+        ring2_recommendation=rec2,
+        recommended_slot=recommended_slot,
+        summary_verdict=summary_verdict,
+        trade_off_notes=trade_off_notes,
+        formatted_output=formatted_output,
+    )

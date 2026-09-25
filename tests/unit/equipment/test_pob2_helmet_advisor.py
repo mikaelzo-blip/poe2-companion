@@ -145,12 +145,22 @@ class FakePobEngine:
                 "xml": "<PathOfBuilding><Build/></PathOfBuilding>",
             }
         elif action == "get_equipped":
+            slot = kwargs.get("slot")
+            if hasattr(self, "equipped_by_slot") and slot in self.equipped_by_slot:
+                return self.equipped_by_slot[slot]
             return self.equipped_helmet
         elif action == "get_defenses":
+            last_equip_slot = getattr(self, "_last_equip_slot", None)
+            if hasattr(self, "defenses_by_slot") and last_equip_slot in self.defenses_by_slot:
+                return self.defenses_by_slot[last_equip_slot] if "equip_item" in self.call_log[-3:] else self.defenses_before
             return self.defenses_after if "equip_item" in self.call_log[-3:] else self.defenses_before
         elif action == "calc_stats":
+            last_equip_slot = getattr(self, "_last_equip_slot", None)
+            if hasattr(self, "stats_by_slot") and last_equip_slot in self.stats_by_slot:
+                return self.stats_by_slot[last_equip_slot] if "equip_item" in self.call_log[-3:] else self.stats_before
             return self.stats_after if "equip_item" in self.call_log[-3:] else self.stats_before
         elif action == "equip_item":
+            self._last_equip_slot = kwargs.get("slot")
             with self._lock:
                 self.in_flight_simulations += 1
                 if self.in_flight_simulations > self.max_concurrent_simulations:

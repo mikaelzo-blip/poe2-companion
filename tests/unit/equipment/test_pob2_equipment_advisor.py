@@ -462,3 +462,246 @@ def test_async_burst_coalescing_skips_stale_candidate_b():
     equip_calls_after_c = fake_engine.call_log.count("equip_item")
     assert equip_calls_after_c == 2, "Only A and C should have invoked engine simulation"
 
+
+RING_CANDIDATE_RAW = """Item Class: Rings
+Rarity: Rare
+Storm Loop
+Iron Ring
+--------
+Requirements:
+Level: 15
+--------
++25 to maximum Life
++15% to Cold Resistance
+"""
+
+RING1_EQUIPPED_RAW = """Item Class: Rings
+Rarity: Rare
+Gloom Band
+Iron Ring
+--------
+Requirements:
+Level: 10
+--------
++10 to maximum Life
+"""
+
+RING2_EQUIPPED_RAW = """Item Class: Rings
+Rarity: Rare
+Blood Coil
+Coral Ring
+--------
+Requirements:
+Level: 12
+--------
++30 to maximum Life
++20% to Fire Resistance
+"""
+
+
+def test_pob2_production_slots_includes_rings():
+    """POB2_PRODUCTION_SLOTS must include Ring 1 and Ring 2 for production PoB2 evaluation."""
+    from companion.equipment.pob2_equipment_advisor import POB2_PRODUCTION_SLOTS
+    assert "Ring 1" in POB2_PRODUCTION_SLOTS
+    assert "Ring 2" in POB2_PRODUCTION_SLOTS
+
+
+def test_simulate_ring_candidate_same_baseline_invariant():
+    """Dual ring simulation must evaluate Ring 1 and Ring 2 from the exact same baseline, restoring baseline after each."""
+    fake_engine = FakePobEngine()
+    fake_engine.equipped_by_slot = {
+        "Ring 1": {"equipped": True, "name": "Gloom Band", "raw": RING1_EQUIPPED_RAW},
+        "Ring 2": {"equipped": True, "name": "Blood Coil", "raw": RING2_EQUIPPED_RAW},
+    }
+    fake_engine.defenses_by_slot = {
+        "Ring 1": {"Life": 376, "Armour": 253, "Evasion": 70, "EnergyShield": 32, "TotalEHP": 305.0},
+        "Ring 2": {"Life": 356, "Armour": 253, "Evasion": 70, "EnergyShield": 32, "TotalEHP": 280.0},
+    }
+    fake_engine.stats_by_slot = {
+        "Ring 1": {
+            "defense": {"FireResist": -35, "ColdResist": -35, "LightningResist": -43, "ChaosResist": 0, "MovementSpeed": 100.0},
+            "offense": {"CombinedDPS": 29.07},
+        },
+        "Ring 2": {
+            "defense": {"FireResist": -55, "ColdResist": -35, "LightningResist": -43, "ChaosResist": 0, "MovementSpeed": 100.0},
+            "offense": {"CombinedDPS": 29.07},
+        },
+    }
+    session = Pob2EquipmentSession(
+        character_name="BOMSHAK",
+        engine_factory=lambda: fake_engine,
+        poe_api_client=FakePoeApi(),
+    )
+    assert session.initialize() is True
+
+    # Initial call log reset for clean assertion
+    fake_engine.call_log.clear()
+
+    res = session.simulate_ring_candidate(raw_candidate=RING_CANDIDATE_RAW, candidate_name="Storm Loop")
+    assert res is not None
+    assert res.ring1_delta is not None
+    assert res.ring2_delta is not None
+    assert res.ring1_delta.slot == "Ring 1"
+    assert res.ring2_delta.slot == "Ring 2"
+
+    # Verify the exact execution pattern and baseline restorations:
+    # 1. import_build (baseline) -> equip_item (Ring 1) -> get_defenses -> calc_stats -> import_build (restore)
+    # 2. import_build (baseline) -> equip_item (Ring 2) -> get_defenses -> calc_stats -> import_build (restore)
+    equip_indices = [i for i, call in enumerate(fake_engine.call_log) if call == "equip_item"]
+    import_indices = [i for i, call in enumerate(fake_engine.call_log) if call == "import_build"]
+
+    assert len(equip_indices) == 2, "Must equip candidate twice (once per ring slot)"
+    assert len(import_indices) >= 3, "Baseline must be restored before/after each slot equip"
+    # Ensure an import_build occurred between the two equip_item calls!
+    assert any(equip_indices[0] < imp_idx < equip_indices[1] for imp_idx in import_indices), (
+        "Baseline must be restored between Ring 1 and Ring 2 simulations"
+    )
+    # Ensure an import_build occurred after the second equip_item call!
+    assert any(imp_idx > equip_indices[1] for imp_idx in import_indices), (
+        "Baseline must be restored after Ring 2 simulation"
+    )
+
+
+def test_simulate_ring_candidate_skips_ring2_when_stale_after_ring1():
+    """If a newer candidate arrives after Ring 1 simulation completes, Ring 2 MUST be skipped immediately."""
+    fake_engine = FakePobEngine()
+    fake_engine.equipped_by_slot = {
+        "Ring 1": {"equipped": True, "name": "Gloom Band", "raw": RING1_EQUIPPED_RAW},
+        "Ring 2": {"equipped": True, "name": "Blood Coil", "raw": RING2_EQUIPPED_RAW},
+    }
+    session = Pob2EquipmentSession(
+        character_name="BOMSHAK",
+        engine_factory=lambda: fake_engine,
+        poe_api_client=FakePoeApi(),
+    )
+    assert session.initialize() is True
+
+    cid_a = session.submit_candidate(RING_CANDIDATE_RAW, candidate_name="Candidate A")
+
+    # Hook into fake_engine.call to inject candidate B right after Ring 1 finishes (during get_defenses or calc_stats)
+    orig_call = fake_engine.call
+
+    def side_effect(action: str, **kwargs):
+        res = orig_call(action, **kwargs)
+        if action == "equip_item" and kwargs.get("slot") == "Ring 1":
+            # Candidate B arrives while Ring 1 equip is finishing!
+            session.submit_candidate(RING_CANDIDATE_RAW, candidate_name="Candidate B")
+        return res
+
+    fake_engine.call = side_effect
+    fake_engine.call_log.clear()
+
+    res_a = session.simulate_ring_candidate(RING_CANDIDATE_RAW, candidate_id=cid_a, candidate_name="Candidate A")
+    # A was detected as stale between Ring 1 and Ring 2, so it returns None
+    assert res_a is None
+
+    # Ring 1 was equipped, but Ring 2 MUST NOT have been called!
+    assert fake_engine.call_log.count("equip_item") == 1, (
+        "Candidate A was stale after Ring 1; Ring 2 simulation must be skipped to save engine time"
+    )
+
+
+def test_dual_ring_policy_clear_preference():
+    """When one placement is an upgrade (EQUIP_NOW) and the other is a regression (REJECT), pick the upgrade."""
+    from companion.equipment.fubgun_priorities import evaluate_dual_ring_policy
+    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
+    from companion.equipment.recommendation import Verdict
+
+    delta1 = PobEquipmentDelta(
+        slot="Ring 1",
+        candidate_id=1,
+        candidate_name="Storm Loop",
+        current_item_name="Gloom Band",
+        life_delta=25,
+        cold_res_delta=15,
+        ehp_delta=30.0,
+    )
+    delta2 = PobEquipmentDelta(
+        slot="Ring 2",
+        candidate_id=1,
+        candidate_name="Storm Loop",
+        current_item_name="Blood Coil",
+        life_delta=-30,
+        fire_res_delta=-20,
+        ehp_delta=-40.0,
+    )
+
+    rec = evaluate_dual_ring_policy(delta1, delta2)
+    assert rec.ring1_recommendation.verdict == Verdict.EQUIP_NOW
+    assert rec.ring2_recommendation.verdict == Verdict.REJECT
+    assert rec.recommended_slot == "Ring 1"
+    assert "Ring 1" in rec.summary_verdict
+    assert "Vs Ring 1: Gloom Band" in rec.formatted_output
+    assert "Vs Ring 2: Blood Coil" in rec.formatted_output
+    assert "Recommended placement: Ring 1" in rec.formatted_output
+
+
+def test_dual_ring_policy_empty_slot_as_known_pob_state():
+    """Empty Ring 2 is treated as a known empty slot (not missing data), recommending equipping into EMPTY."""
+    from companion.equipment.fubgun_priorities import evaluate_dual_ring_policy
+    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
+    from companion.equipment.recommendation import Verdict
+
+    delta1 = PobEquipmentDelta(
+        slot="Ring 1",
+        candidate_id=1,
+        candidate_name="Storm Loop",
+        current_item_name="Gloom Band",
+        life_delta=-5,
+        cold_res_delta=15,
+        ehp_delta=10.0,
+    )
+    # Ring 2 was empty, so candidate gives pure positive stats without losing anything
+    delta2 = PobEquipmentDelta(
+        slot="Ring 2",
+        candidate_id=1,
+        candidate_name="Storm Loop",
+        current_item_name=None,  # Empty slot
+        life_delta=25,
+        cold_res_delta=15,
+        ehp_delta=50.0,
+    )
+
+    rec = evaluate_dual_ring_policy(delta1, delta2, empty_ring2=True)
+    assert rec.ring2_recommendation.verdict == Verdict.EQUIP_NOW
+    assert rec.recommended_slot == "Ring 2"
+    assert "Vs Ring 2: EMPTY" in rec.formatted_output
+    assert "Recommended placement: Ring 2 (slot is empty)" in rec.formatted_output
+
+
+def test_dual_ring_policy_material_tradeoffs_neither_dominates():
+    """When both placements are viable but trade different stats, do NOT invent a score; state both viable."""
+    from companion.equipment.fubgun_priorities import evaluate_dual_ring_policy
+    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
+    from companion.equipment.recommendation import Verdict
+
+    # Ring 1 gains Life but loses Fire Res
+    delta1 = PobEquipmentDelta(
+        slot="Ring 1",
+        candidate_id=1,
+        candidate_name="Storm Loop",
+        current_item_name="Ruby Ring",
+        life_delta=30,
+        fire_res_delta=-15,
+        cold_res_delta=15,
+        ehp_delta=15.0,
+    )
+    # Ring 2 gains Cold Res but loses Life
+    delta2 = PobEquipmentDelta(
+        slot="Ring 2",
+        candidate_id=1,
+        candidate_name="Storm Loop",
+        current_item_name="Coral Ring",
+        life_delta=-20,
+        cold_res_delta=15,
+        lightning_res_delta=20,
+        ehp_delta=10.0,
+    )
+
+    rec = evaluate_dual_ring_policy(delta1, delta2)
+    assert rec.recommended_slot is None
+    assert rec.summary_verdict in (
+        "Both placements viable / No safe automatic slot preference",
+        "NO SAFE AUTOMATIC SLOT PREFERENCE",
+    ) or "Both placements viable" in rec.summary_verdict
+    assert "Both placements viable / No safe automatic slot preference" in rec.formatted_output

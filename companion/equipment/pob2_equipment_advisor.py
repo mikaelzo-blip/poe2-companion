@@ -35,11 +35,12 @@ CANONICAL_EQUIPMENT_SLOTS: set[str] = {
     "Weapon 2",
 }
 
-# Production routing is narrower than the generic slot foundation. Rings and weapons
-# remain native-policy only until their slot-context milestones are verified.
-POB2_PRODUCTION_SLOTS: frozenset[str] = frozenset(
+POB2_PRODUCTION_CORE_SLOTS: frozenset[str] = frozenset(
     {"Helmet", "Body Armour", "Gloves", "Boots", "Belt", "Amulet"}
 )
+POB2_PRODUCTION_RING_SLOTS: frozenset[str] = frozenset({"Ring 1", "Ring 2"})
+POB2_PRODUCTION_SLOTS: frozenset[str] = POB2_PRODUCTION_CORE_SLOTS | POB2_PRODUCTION_RING_SLOTS
+
 
 _SLOT_ALIAS_MAP: dict[str, str] = {
     "helmet": "Helmet",
@@ -173,6 +174,17 @@ class PobEquipmentDelta(BaseModel):
     ehp_after: float = 0.0
     dps_before: float = 0.0
     dps_after: float = 0.0
+
+
+class DualRingSimulationResult(BaseModel):
+    """Container holding the independent baseline-anchored simulation results for Ring 1 and Ring 2."""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    candidate_id: int
+    candidate_name: str
+    ring1_delta: PobEquipmentDelta | None = None
+    ring2_delta: PobEquipmentDelta | None = None
 
 
 class Pob2EquipmentSession:
@@ -372,6 +384,82 @@ class Pob2EquipmentSession:
             return item.get("name")
         return None
 
+    def is_slot_empty(self, slot: str) -> bool:
+        """Return True if the specified canonical slot is empty in the loaded PoB2 build."""
+        item = self.get_equipped_item(slot)
+        if not item:
+            return True
+        return not item.get("equipped", False)
+
+    def _build_delta(
+        self,
+        canonical_slot: str,
+        candidate_id: int,
+        candidate_name: str,
+        def_after: dict[str, Any],
+        stats_after: dict[str, Any],
+    ) -> PobEquipmentDelta:
+        """Compute delta between baseline stats and post-equip stats for a slot."""
+        def_before = self.defenses_before or {}
+        stats_before = self.stats_before or {}
+
+        life_before = int(def_before.get("Life") or 0)
+        life_after = int(def_after.get("Life") or 0)
+        life_delta = life_after - life_before
+
+        armour_delta = int((def_after.get("Armour") or 0) - (def_before.get("Armour") or 0))
+        evasion_delta = int((def_after.get("Evasion") or 0) - (def_before.get("Evasion") or 0))
+        es_delta = int((def_after.get("EnergyShield") or 0) - (def_before.get("EnergyShield") or 0))
+
+        ehp_before = float(def_before.get("TotalEHP") or 0.0)
+        ehp_after = float(def_after.get("TotalEHP") or 0.0)
+        ehp_delta = ehp_after - ehp_before
+
+        def_stats_before = stats_before.get("defense", {})
+        def_stats_after = stats_after.get("defense", {})
+
+        fire_delta = int((def_stats_after.get("FireResist") or 0) - (def_stats_before.get("FireResist") or 0))
+        cold_delta = int((def_stats_after.get("ColdResist") or 0) - (def_stats_before.get("ColdResist") or 0))
+        lightning_delta = int((def_stats_after.get("LightningResist") or 0) - (def_stats_before.get("LightningResist") or 0))
+        chaos_delta = int((def_stats_after.get("ChaosResist") or 0) - (def_stats_before.get("ChaosResist") or 0))
+        movement_speed_delta = float(
+            (def_stats_after.get("MovementSpeed") or 0.0)
+            - (def_stats_before.get("MovementSpeed") or 0.0)
+        )
+
+        off_before = stats_before.get("offense", {})
+        off_after = stats_after.get("offense", {})
+        dps_before = float(off_before.get("CombinedDPS") or 0.0)
+        dps_after = float(off_after.get("CombinedDPS") or 0.0)
+        dps_delta = dps_after - dps_before
+
+        cur_name = self.get_current_item_name(canonical_slot)
+
+        return PobEquipmentDelta(
+            slot=canonical_slot,
+            candidate_id=candidate_id,
+            candidate_name=candidate_name or f"Candidate {canonical_slot}",
+            current_item_name=cur_name,
+            current_helmet_name=cur_name if canonical_slot == "Helmet" else None,
+            life_delta=life_delta,
+            fire_res_delta=fire_delta,
+            cold_res_delta=cold_delta,
+            lightning_res_delta=lightning_delta,
+            chaos_res_delta=chaos_delta,
+            armour_delta=armour_delta,
+            evasion_delta=evasion_delta,
+            es_delta=es_delta,
+            movement_speed_delta=movement_speed_delta,
+            ehp_delta=ehp_delta,
+            dps_delta=dps_delta,
+            life_before=life_before,
+            life_after=life_after,
+            ehp_before=ehp_before,
+            ehp_after=ehp_after,
+            dps_before=dps_before,
+            dps_after=dps_after,
+        )
+
     def simulate_item(
         self,
         slot: str | SlotType,
@@ -429,64 +517,12 @@ class Pob2EquipmentSession:
                 if self.is_stale(candidate_id):
                     return None
 
-                def_before = self.defenses_before
-                stats_before = self.stats_before
-
-                life_before = int(def_before.get("Life") or 0)
-                life_after = int(def_after.get("Life") or 0)
-                life_delta = life_after - life_before
-
-                armour_delta = int((def_after.get("Armour") or 0) - (def_before.get("Armour") or 0))
-                evasion_delta = int((def_after.get("Evasion") or 0) - (def_before.get("Evasion") or 0))
-                es_delta = int((def_after.get("EnergyShield") or 0) - (def_before.get("EnergyShield") or 0))
-
-                ehp_before = float(def_before.get("TotalEHP") or 0.0)
-                ehp_after = float(def_after.get("TotalEHP") or 0.0)
-                ehp_delta = ehp_after - ehp_before
-
-                def_stats_before = stats_before.get("defense", {})
-                def_stats_after = stats_after.get("defense", {})
-
-                fire_delta = int((def_stats_after.get("FireResist") or 0) - (def_stats_before.get("FireResist") or 0))
-                cold_delta = int((def_stats_after.get("ColdResist") or 0) - (def_stats_before.get("ColdResist") or 0))
-                lightning_delta = int((def_stats_after.get("LightningResist") or 0) - (def_stats_before.get("LightningResist") or 0))
-                chaos_delta = int((def_stats_after.get("ChaosResist") or 0) - (def_stats_before.get("ChaosResist") or 0))
-                movement_speed_delta = float(
-                    (def_stats_after.get("MovementSpeed") or 0.0)
-                    - (def_stats_before.get("MovementSpeed") or 0.0)
-                )
-
-                off_before = stats_before.get("offense", {})
-                off_after = stats_after.get("offense", {})
-                dps_before = float(off_before.get("CombinedDPS") or 0.0)
-                dps_after = float(off_after.get("CombinedDPS") or 0.0)
-                dps_delta = dps_after - dps_before
-
-                cur_name = self.get_current_item_name(canonical_slot)
-
-                return PobEquipmentDelta(
-                    slot=canonical_slot,
+                return self._build_delta(
+                    canonical_slot=canonical_slot,
                     candidate_id=candidate_id,
-                    candidate_name=candidate_name or f"Candidate {canonical_slot}",
-                    current_item_name=cur_name,
-                    current_helmet_name=cur_name if canonical_slot == "Helmet" else None,
-                    life_delta=life_delta,
-                    fire_res_delta=fire_delta,
-                    cold_res_delta=cold_delta,
-                    lightning_res_delta=lightning_delta,
-                    chaos_res_delta=chaos_delta,
-                    armour_delta=armour_delta,
-                    evasion_delta=evasion_delta,
-                    es_delta=es_delta,
-                    movement_speed_delta=movement_speed_delta,
-                    ehp_delta=ehp_delta,
-                    dps_delta=dps_delta,
-                    life_before=life_before,
-                    life_after=life_after,
-                    ehp_before=ehp_before,
-                    ehp_after=ehp_after,
-                    dps_before=dps_before,
-                    dps_after=dps_after,
+                    candidate_name=candidate_name,
+                    def_after=def_after,
+                    stats_after=stats_after,
                 )
             except Exception:
                 return None
@@ -496,6 +532,86 @@ class Pob2EquipmentSession:
                         self.engine.call("import_build", xml=self.xml)
                     except Exception:
                         pass
+
+    def simulate_ring_candidate(
+        self,
+        raw_candidate: str,
+        candidate_id: int | None = None,
+        candidate_name: str = "",
+    ) -> DualRingSimulationResult | None:
+        """Execute serialized dual-simulation for a ring candidate against Ring 1 and Ring 2.
+
+        Enforces:
+        - Exact same baseline invariant (restores baseline before and after each ring simulation).
+        - Stale check before Ring 1.
+        - Stale check after Ring 1 / before Ring 2 (skips Ring 2 simulation if candidate became stale).
+        - Stale check after Ring 2.
+        - Baseline restoration guaranteed via finally blocks.
+        """
+        if candidate_id is None:
+            candidate_id = self.submit_candidate(raw_candidate, candidate_name=candidate_name, slot="Ring 1")
+
+        if not self.is_available or self.engine is None or not self.xml:
+            return None
+
+        # 1. Pre-check staleness before waiting for engine lock
+        if self.is_stale(candidate_id):
+            return None
+
+        with self._engine_lock:
+            # Re-check staleness immediately upon acquiring lock
+            if self.is_stale(candidate_id):
+                return None
+
+            delta1: PobEquipmentDelta | None = None
+            delta2: PobEquipmentDelta | None = None
+
+            # Step 1: Simulate candidate in Ring 1
+            try:
+                self.engine.call("import_build", xml=self.xml)
+                self.engine.call("equip_item", slot="Ring 1", raw=raw_candidate)
+                def_after_1 = self.engine.call("get_defenses")
+                stats_after_1 = self.engine.call("calc_stats")
+                delta1 = self._build_delta("Ring 1", candidate_id, candidate_name, def_after_1, stats_after_1)
+            except Exception:
+                delta1 = None
+            finally:
+                # Guaranteed baseline restoration
+                try:
+                    self.engine.call("import_build", xml=self.xml)
+                except Exception:
+                    pass
+
+            # Step 2: Staleness check between Ring 1 and Ring 2 (Requirement 4)
+            if self.is_stale(candidate_id):
+                return None
+
+            # Step 3: Simulate candidate in Ring 2
+            try:
+                self.engine.call("import_build", xml=self.xml)
+                self.engine.call("equip_item", slot="Ring 2", raw=raw_candidate)
+                def_after_2 = self.engine.call("get_defenses")
+                stats_after_2 = self.engine.call("calc_stats")
+                delta2 = self._build_delta("Ring 2", candidate_id, candidate_name, def_after_2, stats_after_2)
+            except Exception:
+                delta2 = None
+            finally:
+                # Guaranteed baseline restoration
+                try:
+                    self.engine.call("import_build", xml=self.xml)
+                except Exception:
+                    pass
+
+            # Step 4: Staleness check after Ring 2
+            if self.is_stale(candidate_id):
+                return None
+
+            return DualRingSimulationResult(
+                candidate_id=candidate_id,
+                candidate_name=candidate_name or "Candidate Ring",
+                ring1_delta=delta1,
+                ring2_delta=delta2,
+            )
 
     def display_recommendation(
         self,

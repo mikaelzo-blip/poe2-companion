@@ -6,10 +6,15 @@ import pytest
 from companion.equipment.baseline_cli import run_baseline_set
 from companion.equipment.live_watcher import run_live_watcher
 from companion.equipment.loadout_cli import run_loadout_finalize, run_loadout_set_item
+from companion.equipment.pob2_equipment_advisor import Pob2EquipmentSession
 from companion.equipment.pob2_helmet_advisor import Pob2HelmetSession
 from companion.equipment.rules import BuildProgressionStage
 from companion.state.schema import CharacterState
 from companion.state.store import CharacterStateStore
+from tests.unit.equipment.test_pob2_equipment_advisor import (
+    RING1_EQUIPPED_RAW,
+    RING2_EQUIPPED_RAW,
+)
 from tests.unit.equipment.test_pob2_helmet_advisor import (
     BRIMSTONE_VEIL_RAW,
     KRAKEN_DOME_RAW,
@@ -207,13 +212,17 @@ def test_live_watcher_core_slot_uses_pob2_equipment_advisor(tmp_path: Path):
     assert "Fubgun" in full_output
 
 
-def test_live_watcher_ring_and_weapon_remain_native_fallback(tmp_path: Path):
-    """Rings and weapons remain outside the core-slot PoB2 allowlist."""
+def test_live_watcher_ring_uses_pob2_dual_ring_advisor(tmp_path: Path):
+    """Rings use PoB2 dual-simulation advisor when PoB is available."""
     runtime_dir = _setup_runtime(tmp_path)
     char_id = "test_pob_hero"
 
     fake_engine = FakePobEngine()
-    pob_session = Pob2HelmetSession(
+    fake_engine.equipped_by_slot = {
+        "Ring 1": {"equipped": True, "name": "Gloom Band", "raw": RING1_EQUIPPED_RAW},
+        "Ring 2": {"equipped": True, "name": "Blood Coil", "raw": RING2_EQUIPPED_RAW},
+    }
+    pob_session = Pob2EquipmentSession(
         character_name="BOMSHAK",
         engine_factory=lambda: fake_engine,
         poe_api_client=FakePoeApi(),
@@ -248,8 +257,57 @@ Level: 1
         pob_session=pob_session,
     )
     assert ret == 0
-    full_output = "\\n".join(output_lines)
-    assert "Analyzing Storm Loop (Ring" not in full_output
+    full_output = "\n".join(output_lines)
+    assert "Analyzing Storm Loop (Rings)..." in full_output
+    assert "Vs Ring 1: Gloom Band" in full_output
+    assert "Vs Ring 2: Blood Coil" in full_output
+    assert "Summary:" in full_output
+    # Both Ring 1 and Ring 2 were simulated in PoB
+    assert fake_engine.call_log.count("equip_item") == 2
+
+
+def test_live_watcher_weapon_remains_native_fallback(tmp_path: Path):
+    """Weapons remain outside the PoB2 allowlist until their milestone."""
+    runtime_dir = _setup_runtime(tmp_path)
+    char_id = "test_pob_hero"
+
+    fake_engine = FakePobEngine()
+    pob_session = Pob2EquipmentSession(
+        character_name="BOMSHAK",
+        engine_factory=lambda: fake_engine,
+        poe_api_client=FakePoeApi(),
+    )
+    assert pob_session.initialize() is True
+
+    crossbow_text = """Item Class: Crossbows
+Rarity: Rare
+Gloom Piercer
+Bombard Crossbow
+--------
+Requirements:
+Level: 10
+--------
+Adds 5 to 15 Physical Damage
+"""
+    items_to_yield = [crossbow_text]
+
+    def mock_reader():
+        if items_to_yield:
+            return items_to_yield.pop(0)
+        raise KeyboardInterrupt()
+
+    output_lines = []
+    ret = run_live_watcher(
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        clipboard_reader=mock_reader,
+        output_writer=output_lines.append,
+        pob_session=pob_session,
+    )
+    assert ret == 0
+    full_output = "\n".join(output_lines)
+    assert "Analyzing Gloom Piercer (Weapon" not in full_output
     assert fake_engine.call_log.count("equip_item") == 0
 
 

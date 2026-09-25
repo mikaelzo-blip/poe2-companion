@@ -20,17 +20,22 @@ from companion.equipment.parser import (
     parse_item_text,
     validate_poe2_item_envelope,
 )
-from companion.equipment.fubgun_priorities import evaluate_fubgun_equipment_policy
-from companion.equipment.pob2_equipment_advisor import POB2_PRODUCTION_SLOTS, Pob2EquipmentSession
+from companion.equipment.fubgun_priorities import (
+    evaluate_dual_ring_policy,
+    evaluate_fubgun_equipment_policy,
+)
+from companion.equipment.pob2_equipment_advisor import (
+    POB2_PRODUCTION_CORE_SLOTS,
+    POB2_PRODUCTION_RING_SLOTS,
+    POB2_PRODUCTION_SLOTS,
+    Pob2EquipmentSession,
+)
 from companion.equipment.pob2_helmet_advisor import Pob2HelmetSession
 from companion.equipment.precedence import Verdict
 from companion.equipment.recommendation import EquipmentRecommendation
 from companion.equipment.rules import BuildProgressionStage
 from companion.equipment.schema import SlotOccupancy, SlotType, WeaponSetContext
 from companion.state.store import CharacterStateStore
-
-
-POB2_PRODUCTION_CORE_SLOTS = POB2_PRODUCTION_SLOTS
 
 
 def resolve_live_stage(
@@ -766,7 +771,47 @@ def run_live_watcher(
                                     bootstrapped = True
 
                         if not bootstrapped:
-                            # PoB2 is deliberately limited to the approved core-slot milestone.
+                            # 1. Ring dual-simulation routing (Ring 1 & Ring 2)
+                            cls_lower = candidate.base_type.lower()
+                            is_ring = candidate.slot in (SlotType.RING_1, SlotType.RING_2) or "ring" in cls_lower
+
+                            if is_ring and pob_advisor is not None and pob_advisor.is_available:
+                                r1_name = pob_advisor.get_current_item_name("Ring 1")
+                                r2_name = pob_advisor.get_current_item_name("Ring 2")
+                                if (r1_name and candidate.name == r1_name) and (r2_name and candidate.name == r2_name):
+                                    output_writer(
+                                        f"Rings are already recorded as {candidate.name}. "
+                                        "To evaluate an upgrade, copy a candidate item."
+                                    )
+                                    output_writer("")
+                                    continue
+
+                                output_writer(f"Analyzing {candidate.name} (Rings)...")
+                                cid = pob_advisor.submit_candidate(
+                                    raw_text,
+                                    candidate_name=candidate.name,
+                                    slot="Ring 1",
+                                )
+                                dual_result = pob_advisor.simulate_ring_candidate(
+                                    raw_candidate=raw_text,
+                                    candidate_id=cid,
+                                    candidate_name=candidate.name,
+                                )
+                                if dual_result is not None:
+                                    empty1 = pob_advisor.is_slot_empty("Ring 1")
+                                    empty2 = pob_advisor.is_slot_empty("Ring 2")
+                                    advice = evaluate_dual_ring_policy(
+                                        dual_result.ring1_delta,
+                                        dual_result.ring2_delta,
+                                        stage=stage,
+                                        empty_ring1=empty1,
+                                        empty_ring2=empty2,
+                                    )
+                                    if advice and advice.formatted_output:
+                                        output_writer(advice.formatted_output)
+                                        continue
+
+                            # 2. Approved core-slot routing (Helmet, Body Armour, Gloves, Boots, Belt, Amulet)
                             canonical_slot = candidate.slot
                             pob_slot = {
                                 SlotType.HELMET: "Helmet",

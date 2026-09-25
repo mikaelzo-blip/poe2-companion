@@ -43,6 +43,7 @@ def test_gear_live_cli_starts_with_explicit_stage(capsys: pytest.CaptureFixture[
             char_id,
             "--stage",
             "lvl 15-32",
+            "--no-pob",
         ])
 
     assert code == 0
@@ -73,6 +74,7 @@ def test_gear_live_cli_uses_persisted_stage(capsys: pytest.CaptureFixture[str], 
             str(tmp_path),
             "--character-id",
             char_id,
+            "--no-pob",
         ])
 
     assert code == 0
@@ -101,6 +103,7 @@ def test_gear_live_cli_bootstrap_flag_and_warning(capsys: pytest.CaptureFixture[
             "--character-id",
             char_id,
             "--bootstrap",
+            "--no-pob",
         ])
 
     assert code == 0
@@ -128,6 +131,7 @@ def test_gear_live_cli_missing_baseline_transparency(capsys: pytest.CaptureFixtu
             str(tmp_path),
             "--character-id",
             char_id,
+            "--no-pob",
         ])
 
     assert code == 0
@@ -135,3 +139,33 @@ def test_gear_live_cli_missing_baseline_transparency(capsys: pytest.CaptureFixtu
     assert "Baseline: MISSING" in captured.out
     assert "Item-to-item comparison: AVAILABLE" in captured.out
     assert "Character-context projection: LIMITED" in captured.out
+
+
+def test_gear_live_cli_pob_character_configuration(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    char_id = "test_cli_pob_char"
+    store = CharacterStateStore(tmp_path)
+    state = CharacterState(
+        character_id=char_id,
+        character_name="PobCharCLI",
+        build_progression={"active_stage": "lvl 15-32"},
+    )
+    store.save_character(state)
+    store.set_active_character(char_id)
+
+    with patch("companion.equipment.live_watcher.run_live_watcher") as mock_watcher:
+        mock_watcher.return_value = 0
+        code = main([
+            "gear",
+            "live",
+            "--runtime",
+            str(tmp_path),
+            "--character-id",
+            char_id,
+            "--pob-character",
+            "CustomCharacterName",
+        ])
+        assert code == 0
+        assert mock_watcher.called
+        call_kwargs = mock_watcher.call_args[1]
+        assert call_kwargs.get("pob_character") == "CustomCharacterName"
+        assert call_kwargs.get("pob_enabled") is True

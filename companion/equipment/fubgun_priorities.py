@@ -7,11 +7,19 @@ Target build progression: Campaign leveling (lvl 1-14, lvl 15-32, lvl 33-51, lvl
 
 from __future__ import annotations
 
+import math
+import os
 import re
-from typing import Any
+import sys
+from typing import TYPE_CHECKING, Any
+from pydantic import BaseModel, ConfigDict, Field
 
+from companion.equipment.precedence import Verdict
 from companion.equipment.rules import BuildProgressionStage
 from companion.equipment.schema import SlotType
+
+if TYPE_CHECKING:
+    from companion.equipment.pob2_helmet_advisor import PobHelmetDelta
 
 FUBGUN_GUIDE_PROVENANCE = "Fubgun 0.5.5 Flameblast / Oil Grenade Mobalytics guide"
 
@@ -105,3 +113,181 @@ def get_fubgun_build_priority_short(stage: BuildProgressionStage | None = None) 
     if stage and stage.is_pre_swap:
         return f"Fubgun {stage.value} — Resistance > Life"
     return "Fubgun campaign — Resistance > Life"
+
+
+class FubgunHelmetRecommendation(BaseModel):
+    """Structured recommendation from applying Fubgun policy to PoB helmet deltas."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    verdict: Verdict
+    reason: str
+    delta: Any
+    gains: list[str] = Field(default_factory=list)
+    trade_offs: list[str] = Field(default_factory=list)
+    stage: BuildProgressionStage | None = None
+    formatted_output: str = ""
+
+
+def _supports_color() -> bool:
+    if "NO_COLOR" in os.environ:
+        return False
+    if os.environ.get("FORCE_COLOR") in ("1", "true", "TRUE"):
+        return True
+    return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+
+
+def evaluate_fubgun_helmet_policy(
+    delta: PobHelmetDelta,
+    stage: BuildProgressionStage | None = None,
+    use_color: bool | None = None,
+) -> FubgunHelmetRecommendation:
+    """Evaluate PoB helmet mathematical deltas against canonical Fubgun campaign policy.
+
+    Core Fubgun Campaign Rules for Helmet:
+    1. Primary leveling priorities: Resistance > Life.
+    2. Local defense trades (Armour vs Evasion vs Energy Shield) are secondary tie-breakers
+       provided Total EHP is not catastrophically reduced.
+    3. Small negative DPS deltas resulting from an Accuracy affix drop are non-material for
+       campaign helmet evaluation and MUST NOT block defensive upgrades.
+    4. No arbitrary numeric weighted scoring.
+    """
+    if use_color is None:
+        use_color = _supports_color()
+
+    stage_name = stage.value if stage else "campaign"
+
+    gains: list[str] = []
+    trade_offs: list[str] = []
+
+    # Compile Gains
+    if delta.life_delta > 0:
+        gains.append(f"+{delta.life_delta} Life")
+    if delta.fire_res_delta > 0:
+        gains.append(f"+{delta.fire_res_delta}% Fire Res")
+    if delta.cold_res_delta > 0:
+        gains.append(f"+{delta.cold_res_delta}% Cold Res")
+    if delta.lightning_res_delta > 0:
+        gains.append(f"+{delta.lightning_res_delta}% Lightning Res")
+    if delta.chaos_res_delta > 0:
+        gains.append(f"+{delta.chaos_res_delta}% Chaos Res")
+    if delta.armour_delta > 0:
+        gains.append(f"+{delta.armour_delta} Armour")
+    if delta.evasion_delta > 0:
+        gains.append(f"+{delta.evasion_delta} Evasion")
+    if delta.es_delta > 0:
+        gains.append(f"+{delta.es_delta} Energy Shield")
+    if delta.ehp_delta > 0.05:
+        gains.append(f"+{delta.ehp_delta:.2f} Total EHP")
+    if delta.dps_delta > 0.05:
+        gains.append(f"+{delta.dps_delta:.2f} DPS")
+
+    # Compile Trade-offs / Losses
+    if delta.life_delta < 0:
+        trade_offs.append(f"{delta.life_delta} Life")
+    if delta.fire_res_delta < 0:
+        trade_offs.append(f"{delta.fire_res_delta}% Fire Res")
+    if delta.cold_res_delta < 0:
+        trade_offs.append(f"{delta.cold_res_delta}% Cold Res")
+    if delta.lightning_res_delta < 0:
+        trade_offs.append(f"{delta.lightning_res_delta}% Lightning Res")
+    if delta.chaos_res_delta < 0:
+        trade_offs.append(f"{delta.chaos_res_delta}% Chaos Res")
+    if delta.armour_delta < 0:
+        trade_offs.append(f"{delta.armour_delta} Armour")
+    if delta.evasion_delta < 0:
+        trade_offs.append(f"{delta.evasion_delta} Evasion")
+    if delta.es_delta < 0:
+        trade_offs.append(f"{delta.es_delta} Energy Shield")
+    if delta.ehp_delta < -0.05:
+        trade_offs.append(f"{delta.ehp_delta:.2f} Total EHP")
+
+    # Evaluate DPS delta materiality
+    # Minor negative DPS on campaign helmet typically stems from accuracy on replaced gear
+    if delta.dps_delta < -0.05:
+        trade_offs.append(
+            f"{delta.dps_delta:.2f} DPS (Accuracy loss is non-material for campaign helmet)"
+        )
+
+    # Core Decision Logic
+    elem_res_gain = max(0, delta.fire_res_delta) + max(0, delta.cold_res_delta) + max(0, delta.lightning_res_delta)
+    elem_res_loss = min(0, delta.fire_res_delta) + min(0, delta.cold_res_delta) + min(0, delta.lightning_res_delta)
+
+    has_primary_gain = delta.life_delta > 0 or elem_res_gain > 0
+    has_primary_loss = delta.life_delta < 0 or elem_res_loss < 0
+
+    if has_primary_gain and not has_primary_loss and (delta.ehp_delta >= -1.0):
+        verdict = Verdict.EQUIP_NOW
+        reason = (
+            f"Fubgun {stage_name} — Resistance > Life (defensive upgrade takes precedence over minor accuracy DPS change)."
+        )
+    elif has_primary_gain and has_primary_loss:
+        verdict = Verdict.CONDITIONAL_UPGRADE
+        reason = (
+            f"Fubgun {stage_name} — Trade-off between Life ({delta.life_delta:+d}) and Elemental Resistance ({elem_res_loss:+d}%). "
+            f"Equip if needed to satisfy elemental resistance thresholds."
+        )
+    elif not has_primary_gain and (delta.ehp_delta > 5.0 or delta.armour_delta > 20):
+        verdict = Verdict.CONDITIONAL_UPGRADE
+        reason = f"Fubgun {stage_name} — Secondary local defense improvement; no primary Life or Resistance gains."
+    else:
+        verdict = Verdict.REJECT
+        reason = f"Fubgun {stage_name} — No gain in primary helmet priorities (Resistance > Life). Keep current item."
+
+    # Render formatted output in companion terminal style
+    lines: list[str] = ["────────────────────────"]
+    if verdict == Verdict.EQUIP_NOW:
+        hdr = "🟢 EQUIP NOW"
+        lines.append(f"\033[32m{hdr}\033[0m" if use_color else hdr)
+    elif verdict == Verdict.REJECT:
+        hdr = "🔴 REJECT / KEEP CURRENT"
+        lines.append(f"\033[31m{hdr}\033[0m" if use_color else hdr)
+    elif verdict == Verdict.CONDITIONAL_UPGRADE:
+        hdr = "🟡 CONDITIONAL UPGRADE"
+        lines.append(f"\033[33m{hdr}\033[0m" if use_color else hdr)
+    else:
+        lines.append(f"⚪ {verdict.value}")
+
+    lines.append("")
+    vs_name = delta.current_helmet_name or "Current Helmet"
+    lines.append(f"{delta.candidate_name} (Helmet)")
+    lines.append(f"vs {vs_name}")
+    lines.append("")
+
+    if verdict == Verdict.REJECT:
+        if trade_offs:
+            lines.append("Main losses:")
+            for item in trade_offs:
+                lines.append(item)
+            lines.append("")
+        lines.append("No useful stat gain.")
+        lines.append("")
+        lines.append(reason)
+    else:
+        for g in gains:
+            lines.append(g)
+
+        if trade_offs:
+            lines.append("")
+            lines.append("Trade-offs:")
+            for t in trade_offs:
+                lines.append(t)
+
+        lines.append("")
+        lines.append("Recommendation:")
+        if verdict == Verdict.EQUIP_NOW:
+            lines.append("Strong direct upgrade.")
+        lines.append(reason)
+
+    lines.append("────────────────────────")
+    formatted_output = "\n".join(lines)
+
+    return FubgunHelmetRecommendation(
+        verdict=verdict,
+        reason=reason,
+        delta=delta,
+        gains=gains,
+        trade_offs=trade_offs,
+        stage=stage,
+        formatted_output=formatted_output,
+    )

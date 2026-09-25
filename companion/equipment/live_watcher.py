@@ -20,6 +20,8 @@ from companion.equipment.parser import (
     parse_item_text,
     validate_poe2_item_envelope,
 )
+from companion.equipment.fubgun_priorities import evaluate_fubgun_helmet_policy
+from companion.equipment.pob2_helmet_advisor import Pob2HelmetSession
 from companion.equipment.precedence import Verdict
 from companion.equipment.recommendation import EquipmentRecommendation
 from companion.equipment.rules import BuildProgressionStage
@@ -451,6 +453,10 @@ def run_live_watcher(
     as_json: bool = False,
     weapon_set: str | None = None,
     bootstrap: bool = False,
+    pob_character: str | None = None,
+    pob_session: Pob2HelmetSession | None = None,
+    pob_enabled: bool = False,
+    pob_backend_path: str | Path | None = None,
 ) -> int:
     """Run passive clipboard monitoring loop for PoE2 equipment."""
     r_path = Path(runtime_dir)
@@ -483,11 +489,34 @@ def run_live_watcher(
             baseline_status = "STALE"
             baseline_note = "Note: Baseline is STALE (revision mismatch). Run 'companion gear baseline refresh'."
 
+    # 2. PoB2 Helmet Advisor Session
+    pob_advisor: Pob2HelmetSession | None = pob_session
+    if pob_enabled and pob_advisor is None:
+        try:
+            target_char = pob_character or "BOMSHAK"
+            pob_advisor = Pob2HelmetSession(
+                character_name=target_char,
+                backend_path=pob_backend_path,
+            )
+            pob_advisor.initialize()
+        except Exception:
+            pob_advisor = None
+
     output_writer("PoE2 Companion LIVE")
     output_writer(f"Runtime: {r_path}")
     output_writer(f"Stage: {stage.value}")
     output_writer(f"Loadout revision: {loadout_rev}")
     output_writer(f"Baseline: {baseline_status}")
+    if pob_advisor is not None:
+        if pob_advisor.is_available:
+            output_writer("PoB2 engine: READY")
+            output_writer(f"Character: {pob_advisor.character_name}")
+            output_writer(f"Current Helmet: {pob_advisor.current_helmet_name or 'Unobserved'}")
+            output_writer("LIVE ADVICE READY")
+        else:
+            output_writer("PoB2 engine: UNAVAILABLE")
+            if pob_advisor.unavailable_reason:
+                output_writer(f"Note: {pob_advisor.unavailable_reason}")
     if baseline_status == "MISSING":
         output_writer("Item-to-item comparison: AVAILABLE")
         output_writer("Character-context projection: LIMITED")
@@ -714,6 +743,36 @@ def run_live_watcher(
                                     bootstrapped = True
 
                         if not bootstrapped:
+                            # 1. PoB2 Live Helmet Advisor evaluation
+                            if (
+                                candidate.slot == SlotType.HELMET
+                                and pob_advisor is not None
+                                and pob_advisor.is_available
+                            ):
+                                if (
+                                    pob_advisor.current_helmet_name
+                                    and candidate.name == pob_advisor.current_helmet_name
+                                ):
+                                    output_writer(
+                                        f"Helmet is already recorded as Current Helmet ({candidate.name}). "
+                                        "To evaluate an upgrade, copy a candidate helmet."
+                                    )
+                                    output_writer("")
+                                    continue
+
+                                output_writer(f"Analyzing {candidate.name} (Helmet)...")
+                                cid = pob_advisor.submit_candidate(raw_text, candidate_name=candidate.name)
+                                delta = pob_advisor.simulate_candidate(cid, raw_text, candidate_name=candidate.name)
+                                if delta is not None:
+                                    advice = pob_advisor.display_recommendation(
+                                        delta,
+                                        policy_evaluator=lambda d: evaluate_fubgun_helmet_policy(d, stage=stage),
+                                    )
+                                    if advice:
+                                        output_writer(advice)
+                                        continue
+
+                            # 2. Standard native evaluation fallback
                             try:
                                 report = evaluate_live_candidate(
                                     candidate_text=raw_text,
@@ -731,3 +790,6 @@ def run_live_watcher(
     except KeyboardInterrupt:
         output_writer("\nExiting live clipboard mode.")
         return 0
+    finally:
+        if pob_advisor is not None:
+            pob_advisor.close()

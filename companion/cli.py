@@ -272,6 +272,8 @@ def build_parser() -> argparse.ArgumentParser:
     glive_p.add_argument("--poll-interval", type=float, default=0.25, help="Clipboard polling interval in seconds")
     glive_p.add_argument("--json", action="store_true", help="Output recommendation as JSON")
     glive_p.add_argument("--bootstrap", action="store_true", help="Enable live bootstrap mode for unequipped slots")
+    glive_p.add_argument("--pob-character", help="Character name for PoB2 live simulation (milestone default: BOMSHAK)")
+    glive_p.add_argument("--no-pob", action="store_true", help="Disable PoB2 live helmet advisor")
 
     gclip_p = gear_sub.add_parser("inspect-clipboard", help="Inspect and evaluate item from clipboard")
     gclip_p.add_argument("--slot", help="Target equipment slot")
@@ -1170,6 +1172,9 @@ def handle_gear_live(args: argparse.Namespace) -> int:
         sys.stderr.write(f"Error: {err}\n")
         return 1
 
+    pob_enabled = not getattr(args, "no_pob", False)
+    pob_char = getattr(args, "pob_character", None) or "BOMSHAK"
+
     return run_live_watcher(
         runtime_dir=args.runtime,
         character_id=char_id,
@@ -1178,6 +1183,8 @@ def handle_gear_live(args: argparse.Namespace) -> int:
         as_json=getattr(args, "json", False),
         weapon_set=getattr(args, "weapon_set", None),
         bootstrap=getattr(args, "bootstrap", False),
+        pob_character=pob_char,
+        pob_enabled=pob_enabled,
     )
 
 

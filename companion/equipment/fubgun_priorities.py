@@ -305,6 +305,8 @@ def evaluate_fubgun_equipment_policy(
     """Apply the shared Fubgun defensive policy to a production-enabled core slot."""
     if delta.slot == "Helmet":
         return evaluate_fubgun_helmet_policy(delta, stage=stage, use_color=use_color)
+    if delta.slot in ("Weapon 1", "Weapon 2", "Weapon 1 Swap", "Weapon 2 Swap"):
+        return evaluate_fubgun_weapon_policy(delta, stage=stage, use_color=use_color)
 
     if use_color is None:
         use_color = _supports_color()
@@ -577,6 +579,219 @@ def evaluate_dual_ring_policy(
     return DualRingRecommendation(
         ring1_recommendation=rec1,
         ring2_recommendation=rec2,
+        recommended_slot=recommended_slot,
+        summary_verdict=summary_verdict,
+        trade_off_notes=trade_off_notes,
+        formatted_output=formatted_output,
+    )
+
+
+def evaluate_fubgun_weapon_policy(
+    delta: Any,
+    skill_context: str | None = None,
+    stage: BuildProgressionStage | None = None,
+    use_color: bool | None = None,
+) -> FubgunEquipmentRecommendation:
+    """Apply the Fubgun weapon policy (offensive scaling & defensive baseline)."""
+    if use_color is None:
+        use_color = _supports_color()
+
+    slot = delta.slot
+    stage_name = stage.value if stage else "campaign"
+    skill_str = f" [{skill_context}]" if skill_context else ""
+
+    gains: list[str] = []
+    trade_offs: list[str] = []
+
+    if delta.dps_delta > 0.05:
+        gains.append(f"+{delta.dps_delta:.2f} DPS")
+    elif delta.dps_delta < -0.05:
+        trade_offs.append(f"{delta.dps_delta:.2f} DPS")
+
+    for value, label in (
+        (delta.life_delta, " Life"),
+        (delta.fire_res_delta, "% Fire Res"),
+        (delta.cold_res_delta, "% Cold Res"),
+        (delta.lightning_res_delta, "% Lightning Res"),
+        (delta.chaos_res_delta, "% Chaos Res"),
+        (delta.armour_delta, " Armour"),
+        (delta.evasion_delta, " Evasion"),
+        (delta.es_delta, " Energy Shield"),
+    ):
+        if value > 0:
+            gains.append(f"+{value}{label}")
+        elif value < 0:
+            trade_offs.append(f"{value}{label}")
+
+    if delta.movement_speed_delta > 0.05:
+        gains.append(f"+{delta.movement_speed_delta:g}% Movement Speed")
+    elif delta.movement_speed_delta < -0.05:
+        trade_offs.append(f"{delta.movement_speed_delta:g}% Movement Speed")
+
+    if delta.ehp_delta > 0.05:
+        gains.append(f"+{delta.ehp_delta:.2f} Total EHP")
+    elif delta.ehp_delta < -0.05:
+        trade_offs.append(f"{delta.ehp_delta:.2f} Total EHP")
+
+    res_loss = sum(min(0, value) for value in (
+        delta.fire_res_delta, delta.cold_res_delta, delta.lightning_res_delta
+    ))
+    defensive_loss = delta.life_delta < 0 or res_loss < 0
+    dps_gain = delta.dps_delta > 0.05
+    dps_loss = delta.dps_delta < -0.05
+
+    if dps_gain and not defensive_loss:
+        verdict = Verdict.EQUIP_NOW
+        reason = f"Fubgun {stage_name} — {slot}{skill_str}: DPS upgrade without defensive trade-offs; PoB2 confirms the improvement."
+    elif dps_gain and defensive_loss:
+        verdict = Verdict.CONDITIONAL_UPGRADE
+        reason = f"Fubgun {stage_name} — {slot}{skill_str}: DPS upgrade with defensive loss ({trade_offs[0] if trade_offs else 'defenses'}); equip if offense outweighs defense."
+    elif not dps_loss and (delta.life_delta > 0 or delta.ehp_delta > 5.0):
+        verdict = Verdict.CONDITIONAL_UPGRADE
+        reason = f"Fubgun {stage_name} — {slot}{skill_str}: defensive utility gain without DPS loss."
+    else:
+        verdict = Verdict.REJECT
+        reason = f"Fubgun {stage_name} — {slot}{skill_str}: no DPS upgrade. Keep current weapon."
+
+    header = {
+        Verdict.EQUIP_NOW: "🟢 EQUIP NOW",
+        Verdict.REJECT: "🔴 REJECT / KEEP CURRENT",
+        Verdict.CONDITIONAL_UPGRADE: "🟡 CONDITIONAL UPGRADE",
+    }.get(verdict, f"⚪ {verdict.value}")
+    if use_color and verdict in (Verdict.EQUIP_NOW, Verdict.REJECT, Verdict.CONDITIONAL_UPGRADE):
+        color = {Verdict.EQUIP_NOW: 32, Verdict.REJECT: 31, Verdict.CONDITIONAL_UPGRADE: 33}[verdict]
+        header = f"\033[{color}m{header}\033[0m"
+
+    current = delta.current_item_name or f"Current {slot}"
+    lines = [
+        "────────────────────────",
+        header,
+        "",
+        f"{delta.candidate_name} ({slot}{skill_str})",
+        f"vs {current}",
+        "",
+    ]
+    if gains:
+        lines.extend(gains)
+    if trade_offs:
+        lines.extend(["", "Trade-offs:", *trade_offs])
+    lines.extend(["", "Recommendation:", reason, "────────────────────────"])
+
+    return FubgunEquipmentRecommendation(
+        verdict=verdict,
+        reason=reason,
+        delta=delta,
+        gains=gains,
+        trade_offs=trade_offs,
+        stage=stage,
+        formatted_output="\n".join(lines),
+    )
+
+
+class DualWeaponRecommendation(BaseModel):
+    """Stacked dual-slot recommendation for ambiguous 1H weapon placement."""
+
+    model_config = ConfigDict(frozen=True)
+
+    slot1_recommendation: FubgunEquipmentRecommendation
+    slot2_recommendation: FubgunEquipmentRecommendation
+    recommended_slot: str | None = None
+    summary_verdict: str
+    trade_off_notes: list[str] = Field(default_factory=list)
+    formatted_output: str
+
+
+def evaluate_dual_weapon_policy(
+    delta1: Any,
+    delta2: Any,
+    stage: BuildProgressionStage | None = None,
+    use_color: bool | None = None,
+    empty_slot1: bool = False,
+    empty_slot2: bool = False,
+) -> DualWeaponRecommendation:
+    """Evaluate dual weapon placements against canonical Fubgun policy and formatting."""
+    rec1 = evaluate_fubgun_weapon_policy(delta1, stage=stage, use_color=use_color)
+    rec2 = evaluate_fubgun_weapon_policy(delta2, stage=stage, use_color=use_color)
+
+    slot1_name = delta1.slot
+    slot2_name = delta2.slot
+
+    trade_off_notes: list[str] = []
+    if empty_slot2 and not empty_slot1:
+        recommended_slot = slot2_name
+        summary_verdict = f"Recommended placement: {slot2_name} (slot is empty)"
+    elif empty_slot1 and not empty_slot2:
+        recommended_slot = slot1_name
+        summary_verdict = f"Recommended placement: {slot1_name} (slot is empty)"
+    elif rec1.verdict == Verdict.EQUIP_NOW and rec2.verdict != Verdict.EQUIP_NOW:
+        recommended_slot = slot1_name
+        summary_verdict = f"Recommended placement: {slot1_name} (direct upgrade; replacing {slot2_name} is a regression)"
+    elif rec2.verdict == Verdict.EQUIP_NOW and rec1.verdict != Verdict.EQUIP_NOW:
+        recommended_slot = slot2_name
+        summary_verdict = f"Recommended placement: {slot2_name} (direct upgrade; replacing {slot1_name} is a regression)"
+    elif rec1.verdict == Verdict.EQUIP_NOW and rec2.verdict == Verdict.EQUIP_NOW:
+        if delta1.dps_delta > delta2.dps_delta:
+            recommended_slot = slot1_name
+            summary_verdict = f"Recommended placement: {slot1_name} (higher DPS gain)"
+        elif delta2.dps_delta > delta1.dps_delta:
+            recommended_slot = slot2_name
+            summary_verdict = f"Recommended placement: {slot2_name} (higher DPS gain)"
+        else:
+            recommended_slot = slot1_name
+            summary_verdict = f"Both placements are valid upgrades ({slot1_name} or {slot2_name})"
+    else:
+        recommended_slot = None
+        summary_verdict = f"Neither placement recommended (keep current weapons)"
+
+    header_1 = {
+        Verdict.EQUIP_NOW: "🟢 EQUIP NOW",
+        Verdict.REJECT: "🔴 REJECT / KEEP CURRENT",
+        Verdict.CONDITIONAL_UPGRADE: "🟡 CONDITIONAL UPGRADE",
+    }.get(rec1.verdict, f"⚪ {rec1.verdict.value}")
+
+    header_2 = {
+        Verdict.EQUIP_NOW: "🟢 EQUIP NOW",
+        Verdict.REJECT: "🔴 REJECT / KEEP CURRENT",
+        Verdict.CONDITIONAL_UPGRADE: "🟡 CONDITIONAL UPGRADE",
+    }.get(rec2.verdict, f"⚪ {rec2.verdict.value}")
+
+    current_1 = "EMPTY" if empty_slot1 else (delta1.current_item_name or f"Current {slot1_name}")
+    current_2 = "EMPTY" if empty_slot2 else (delta2.current_item_name or f"Current {slot2_name}")
+
+    lines = [
+        "────────────────────────",
+        f"Ambiguous 1H Weapon Evaluation: {delta1.candidate_name}",
+        "",
+        f"Vs {slot1_name}: {current_1}",
+        header_1,
+    ]
+    if rec1.gains:
+        lines.extend(rec1.gains)
+    if rec1.trade_offs:
+        lines.extend(["", "Trade-offs:", *rec1.trade_offs])
+
+    lines.extend([
+        "",
+        f"Vs {slot2_name}: {current_2}",
+        header_2,
+    ])
+    if rec2.gains:
+        lines.extend(rec2.gains)
+    if rec2.trade_offs:
+        lines.extend(["", "Trade-offs:", *rec2.trade_offs])
+
+    lines.extend([
+        "",
+        "────────────────────────",
+        "Summary:",
+        summary_verdict,
+    ])
+    lines.append("────────────────────────")
+
+    formatted_output = "\n".join(lines)
+    return DualWeaponRecommendation(
+        slot1_recommendation=rec1,
+        slot2_recommendation=rec2,
         recommended_slot=recommended_slot,
         summary_verdict=summary_verdict,
         trade_off_notes=trade_off_notes,

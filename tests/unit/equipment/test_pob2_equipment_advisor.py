@@ -506,6 +506,18 @@ def test_pob2_production_slots_includes_rings():
     assert "Ring 2" in POB2_PRODUCTION_SLOTS
 
 
+def test_pob2_production_slots_includes_weapons():
+    """POB2_PRODUCTION_SLOTS must include canonical weapon slots for modular weapon subsystems."""
+    from companion.equipment.pob2_equipment_advisor import (
+        POB2_PRODUCTION_SLOTS,
+        POB2_PRODUCTION_WEAPON_SLOTS,
+    )
+    for w_slot in ("Weapon 1", "Weapon 2", "Weapon 1 Swap", "Weapon 2 Swap"):
+        assert w_slot in POB2_PRODUCTION_WEAPON_SLOTS
+        assert w_slot in POB2_PRODUCTION_SLOTS
+
+
+
 def test_simulate_ring_candidate_same_baseline_invariant():
     """Dual ring simulation must evaluate Ring 1 and Ring 2 from the exact same baseline, restoring baseline after each."""
     fake_engine = FakePobEngine()

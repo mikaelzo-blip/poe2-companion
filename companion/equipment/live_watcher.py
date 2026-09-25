@@ -22,11 +22,22 @@ from companion.equipment.parser import (
 )
 from companion.equipment.fubgun_priorities import (
     evaluate_dual_ring_policy,
+    evaluate_dual_weapon_policy,
     evaluate_fubgun_equipment_policy,
+    evaluate_fubgun_weapon_policy,
+)
+from companion.equipment.fubgun_weapon_router import (
+    FubgunWeaponProfileRouter,
+    WeaponSimulationContext,
+)
+from companion.equipment.weapon_topology import (
+    WeaponArchetype,
+    derive_weapon_archetype,
 )
 from companion.equipment.pob2_equipment_advisor import (
     POB2_PRODUCTION_CORE_SLOTS,
     POB2_PRODUCTION_RING_SLOTS,
+    POB2_PRODUCTION_WEAPON_SLOTS,
     POB2_PRODUCTION_SLOTS,
     Pob2EquipmentSession,
 )
@@ -534,6 +545,10 @@ def run_live_watcher(
         for slot in sorted(POB2_PRODUCTION_CORE_SLOTS):
             current_name = pob_advisor.get_current_item_name(slot) or "Unobserved"
             output_writer(f"Current {slot}: {current_name}")
+        for w_slot in ("Weapon 1", "Weapon 2", "Weapon 1 Swap", "Weapon 2 Swap"):
+            w_name = pob_advisor.get_current_item_name(w_slot)
+            if w_name:
+                output_writer(f"Current {w_slot}: {w_name}")
         output_writer("LIVE ADVICE READY")
     else:
         output_writer(f"Baseline: {baseline_status}")
@@ -860,6 +875,93 @@ def run_live_watcher(
                                     if advice:
                                         output_writer(advice)
                                         continue
+
+                            # 3. Modular weapon routing (Weapon Set 1 & Set 2)
+                            is_weapon_slot = candidate.slot in (SlotType.MAIN_HAND, SlotType.OFF_HAND)
+                            weapon_arch = derive_weapon_archetype(candidate)
+                            is_weapon_candidate = is_weapon_slot or weapon_arch != WeaponArchetype.UNKNOWN_WEAPON
+
+                            if is_weapon_candidate and pob_advisor is not None and pob_advisor.is_available:
+                                router = FubgunWeaponProfileRouter()
+                                currently_equipped_weapons = {
+                                    "Weapon 1": pob_advisor.get_current_item_name("Weapon 1"),
+                                    "Weapon 2": pob_advisor.get_current_item_name("Weapon 2"),
+                                    "Weapon 1 Swap": pob_advisor.get_current_item_name("Weapon 1 Swap"),
+                                    "Weapon 2 Swap": pob_advisor.get_current_item_name("Weapon 2 Swap"),
+                                }
+                                cid = pob_advisor.submit_candidate(
+                                    raw_text,
+                                    candidate_name=candidate.name,
+                                    slot="Weapon 1",
+                                )
+                                route_res = router.route_candidate(
+                                    candidate=candidate,
+                                    stage=stage,
+                                    raw_text=raw_text,
+                                    candidate_id=cid,
+                                    currently_equipped=currently_equipped_weapons,
+                                )
+                                if not route_res.is_valid:
+                                    header = "🔴 REJECT / INCOMPATIBLE" if "breaker" not in route_res.rejection_reason.lower() else "🔴 REJECT / BUILD BREAKER"
+                                    lines = [
+                                        "────────────────────────",
+                                        header,
+                                        "",
+                                        f"{candidate.name or candidate.base_type} ({candidate.slot.value})",
+                                        "",
+                                        "Reason:",
+                                        route_res.rejection_reason,
+                                        "────────────────────────",
+                                    ]
+                                    output_writer("\n".join(lines))
+                                    output_writer("")
+                                    continue
+
+                                # Candidate matches currently equipped weapon in target slot
+                                current_in_target = pob_advisor.get_current_item_name(route_res.target_slot)
+                                if current_in_target and candidate.name == current_in_target:
+                                    output_writer(
+                                        f"{route_res.target_slot} is already recorded as Current Weapon ({candidate.name}). "
+                                        "To evaluate an upgrade, copy a candidate item."
+                                    )
+                                    output_writer("")
+                                    continue
+
+                                if route_res.topology_plan and route_res.topology_plan.is_ambiguous_placement:
+                                    output_writer(f"Analyzing {candidate.name} ({route_res.target_set.value})...")
+                                    dual_wep = pob_advisor.simulate_ambiguous_1h_weapon(
+                                        raw_candidate=raw_text,
+                                        candidate_id=cid,
+                                        candidate_name=candidate.name,
+                                        target_set=route_res.target_set,
+                                        build_stage=stage,
+                                    )
+                                    if dual_wep is not None and dual_wep.slot1_delta and dual_wep.slot2_delta:
+                                        advice_dual = evaluate_dual_weapon_policy(
+                                            dual_wep.slot1_delta,
+                                            dual_wep.slot2_delta,
+                                            stage=stage,
+                                        )
+                                        if advice_dual and advice_dual.formatted_output:
+                                            output_writer(advice_dual.formatted_output)
+                                            output_writer("")
+                                            continue
+                                elif route_res.context:
+                                    output_writer(f"Analyzing {candidate.name} ({route_res.target_slot})...")
+                                    delta = pob_advisor.simulate_weapon_plan(route_res.context)
+                                    if delta is not None:
+                                        advice = pob_advisor.display_recommendation(
+                                            delta,
+                                            policy_evaluator=lambda d: evaluate_fubgun_weapon_policy(
+                                                d,
+                                                skill_context=route_res.skill_context,
+                                                stage=stage,
+                                            ),
+                                        )
+                                        if advice:
+                                            output_writer(advice)
+                                            output_writer("")
+                                            continue
 
                             # Standard native evaluation fallback
                             try:

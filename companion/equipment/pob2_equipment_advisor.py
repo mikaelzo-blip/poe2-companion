@@ -33,13 +33,20 @@ CANONICAL_EQUIPMENT_SLOTS: set[str] = {
     "Belt",
     "Weapon 1",
     "Weapon 2",
+    "Weapon 1 Swap",
+    "Weapon 2 Swap",
 }
 
 POB2_PRODUCTION_CORE_SLOTS: frozenset[str] = frozenset(
     {"Helmet", "Body Armour", "Gloves", "Boots", "Belt", "Amulet"}
 )
 POB2_PRODUCTION_RING_SLOTS: frozenset[str] = frozenset({"Ring 1", "Ring 2"})
-POB2_PRODUCTION_SLOTS: frozenset[str] = POB2_PRODUCTION_CORE_SLOTS | POB2_PRODUCTION_RING_SLOTS
+POB2_PRODUCTION_WEAPON_SLOTS: frozenset[str] = frozenset(
+    {"Weapon 1", "Weapon 2", "Weapon 1 Swap", "Weapon 2 Swap"}
+)
+POB2_PRODUCTION_SLOTS: frozenset[str] = (
+    POB2_PRODUCTION_CORE_SLOTS | POB2_PRODUCTION_RING_SLOTS | POB2_PRODUCTION_WEAPON_SLOTS
+)
 
 
 _SLOT_ALIAS_MAP: dict[str, str] = {
@@ -75,6 +82,14 @@ _SLOT_ALIAS_MAP: dict[str, str] = {
     "weapon 2": "Weapon 2",
     "off_hand": "Weapon 2",
     "off hand": "Weapon 2",
+    "weapon1_swap": "Weapon 1 Swap",
+    "weapon_1_swap": "Weapon 1 Swap",
+    "weapon 1 swap": "Weapon 1 Swap",
+    "main_hand_swap": "Weapon 1 Swap",
+    "weapon2_swap": "Weapon 2 Swap",
+    "weapon_2_swap": "Weapon 2 Swap",
+    "weapon 2 swap": "Weapon 2 Swap",
+    "off_hand_swap": "Weapon 2 Swap",
 }
 
 
@@ -147,6 +162,42 @@ def resolve_pob2_backend_path(backend_path: str | Path | None = None) -> Path | 
     return None
 
 
+def _set_weapon_set_in_xml(xml_str: str, set_num: int) -> str:
+    """Toggle useSecondWeaponSet ('true' for Set 2, 'false' for Set 1) in PoB XML."""
+    import xml.etree.ElementTree as ET
+
+    try:
+        root = ET.fromstring(xml_str)
+        items = root.find("Items")
+        val = "true" if set_num == 2 else "false"
+        if items is None:
+            items = ET.SubElement(root, "Items")
+        items.set("useSecondWeaponSet", val)
+        isets = items.findall("ItemSet")
+        if not isets:
+            ET.SubElement(items, "ItemSet", {"id": "1", "useSecondWeaponSet": val})
+        else:
+            for iset in isets:
+                iset.set("useSecondWeaponSet", val)
+        return ET.tostring(root, encoding="unicode")
+    except Exception:
+        return xml_str
+
+
+def _clear_slots_in_xml(xml_str: str, clear_slots: tuple[str, ...] | list[str]) -> str:
+    """Clear specific slot itemIds (set to 0) in PoB XML."""
+    import re
+
+    mutated = xml_str
+    for cs in clear_slots:
+        mutated = re.sub(
+            rf'(<Slot\s+name="{re.escape(cs)}"\s+itemId=")\d+(")',
+            r'\g<1>0\g<2>',
+            mutated,
+        )
+    return mutated
+
+
 class PobEquipmentDelta(BaseModel):
     """Mathematical stat deltas from PoB2 simulation for any equipment slot."""
 
@@ -185,6 +236,17 @@ class DualRingSimulationResult(BaseModel):
     candidate_name: str
     ring1_delta: PobEquipmentDelta | None = None
     ring2_delta: PobEquipmentDelta | None = None
+
+
+class DualWeaponSimulationResult(BaseModel):
+    """Container holding independent baseline-anchored simulation results for two weapon placements (e.g. Weapon 1 vs Weapon 2)."""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    candidate_id: int
+    candidate_name: str
+    slot1_delta: PobEquipmentDelta | None = None
+    slot2_delta: PobEquipmentDelta | None = None
 
 
 class Pob2EquipmentSession:
@@ -391,6 +453,40 @@ class Pob2EquipmentSession:
             return True
         return not item.get("equipped", False)
 
+    def find_socket_group_for_skill(self, skill_context: str | None) -> int | None:
+        """Find the 1-based socket group index in PoB2 corresponding to skill_context."""
+        if not skill_context or not self.engine:
+            return None
+        try:
+            skills = self.engine.call("list_skills")
+            groups = skills.get("groups", [])
+            target = skill_context.lower()
+
+            # 1. Exact or substring match on activeSkill
+            for g in groups:
+                active = (g.get("activeSkill") or "").lower()
+                if active and (target in active or active in target):
+                    return g.get("index")
+
+            # 2. Match gem name in gemList
+            for g in groups:
+                for gem in g.get("gems", []):
+                    name = (gem.get("name") or "").lower()
+                    if name and (target in name or target.replace(" ", "") in name.replace(" ", "")):
+                        return g.get("index")
+
+            # 3. Handle CROSSBOW_LEVELING alias
+            if "crossbow" in target or "leveling" in target:
+                for candidate_skill in ("explosive grenade", "crossbow shot", "gas grenade", "fragmentation rounds"):
+                    for g in groups:
+                        active = (g.get("activeSkill") or "").lower()
+                        if candidate_skill in active:
+                            return g.get("index")
+                return skills.get("mainSocketGroup")
+        except Exception:
+            return None
+        return None
+
     def _build_delta(
         self,
         canonical_slot: str,
@@ -398,10 +494,14 @@ class Pob2EquipmentSession:
         candidate_name: str,
         def_after: dict[str, Any],
         stats_after: dict[str, Any],
+        def_before: dict[str, Any] | None = None,
+        stats_before: dict[str, Any] | None = None,
     ) -> PobEquipmentDelta:
         """Compute delta between baseline stats and post-equip stats for a slot."""
-        def_before = self.defenses_before or {}
-        stats_before = self.stats_before or {}
+        if def_before is None:
+            def_before = self.defenses_before or {}
+        if stats_before is None:
+            stats_before = self.stats_before or {}
 
         life_before = int(def_before.get("Life") or 0)
         life_after = int(def_after.get("Life") or 0)
@@ -611,6 +711,205 @@ class Pob2EquipmentSession:
                 candidate_name=candidate_name or "Candidate Ring",
                 ring1_delta=delta1,
                 ring2_delta=delta2,
+            )
+
+    def simulate_weapon_plan(
+        self,
+        context: Any,
+    ) -> PobEquipmentDelta | None:
+        """Execute mathematical simulation of a weapon swap plan on hot PoB2 build.
+
+        MATHEMATICAL ONLY:
+        - Receives already-resolved WeaponSimulationContext.
+        - Acquires engine lock, validates staleness before and after lock.
+        - Activates appropriate target weapon set in XML (Set 1 vs Set 2).
+        - Selects intended active skill context if present.
+        - Measures baseline defenses and stats in target context.
+        - Applies clear_slots (e.g. un-equipping conflicting offhand).
+        - Equips candidate in target_slot.
+        - Reads defenses and stats deltas against the context-specific baseline.
+        - Strictly restores original baseline XML in finally block.
+        - Returns PobEquipmentDelta or None if stale/failed.
+        - Does NOT decide EQUIP/REJECT.
+        """
+        candidate_id = context.candidate_id
+        if self.is_stale(candidate_id):
+            return None
+
+        if not self.is_available or self.engine is None or not self.xml:
+            return None
+
+        with self._engine_lock:
+            if self.is_stale(candidate_id):
+                return None
+
+            candidate_applied = False
+            try:
+                # 1. Determine target weapon set (Set 1 vs Set 2)
+                from companion.equipment.schema import WeaponSetContext
+                target_set = getattr(context, "target_set", None)
+                target_slot_str = str(getattr(context, "target_slot", "")).lower()
+                set_num = 2 if (target_set == WeaponSetContext.WEAPON_SET_2 or "swap" in target_slot_str) else 1
+
+                # 2. Activate target weapon set in XML
+                context_xml = _set_weapon_set_in_xml(self.xml, set_num)
+                self.engine.call("import_build", xml=context_xml)
+
+                # 3. Select active skill context if specified
+                skill_context = getattr(context, "skill_context", None)
+                group_idx = self.find_socket_group_for_skill(skill_context)
+                if group_idx is not None:
+                    try:
+                        self.engine.call("set_main_skill", group=group_idx)
+                    except Exception:
+                        pass
+
+                # 4. Measure baseline defenses and stats in this exact context
+                def_before = self.engine.call("get_defenses")
+                stats_before = self.engine.call("calc_stats")
+
+                # 5. If topology requires clearing slots (e.g. offhand unequipped for 2H):
+                clear_slots = getattr(getattr(context, "topology_plan", None), "clear_slots", ())
+                if clear_slots:
+                    cleared_xml = _clear_slots_in_xml(context_xml, clear_slots)
+                    if cleared_xml != context_xml:
+                        self.engine.call("import_build", xml=cleared_xml)
+                        if group_idx is not None:
+                            try:
+                                self.engine.call("set_main_skill", group=group_idx)
+                            except Exception:
+                                pass
+
+                # 6. Equip candidate item in target slot
+                candidate_applied = True
+                self.engine.call("equip_item", slot=context.target_slot, raw=context.raw_candidate)
+                if group_idx is not None:
+                    try:
+                        self.engine.call("set_main_skill", group=group_idx)
+                    except Exception:
+                        pass
+
+                # 7. Read post-equip defenses and stats
+                def_after = self.engine.call("get_defenses")
+                stats_after = self.engine.call("calc_stats")
+
+                # 8. Restore baseline XML immediately
+                self.engine.call("import_build", xml=self.xml)
+                candidate_applied = False
+
+                # 9. Staleness check
+                if self.is_stale(candidate_id):
+                    return None
+
+                return self._build_delta(
+                    canonical_slot=context.target_slot,
+                    candidate_id=candidate_id,
+                    candidate_name=context.candidate_name,
+                    def_after=def_after,
+                    stats_after=stats_after,
+                    def_before=def_before,
+                    stats_before=stats_before,
+                )
+            except Exception:
+                return None
+            finally:
+                try:
+                    self.engine.call("import_build", xml=self.xml)
+                except Exception:
+                    pass
+
+    def simulate_ambiguous_1h_weapon(
+        self,
+        raw_candidate: str,
+        candidate_id: int | None = None,
+        candidate_name: str = "",
+        target_set: Any = None,
+        build_stage: Any = None,
+    ) -> DualWeaponSimulationResult | None:
+        """Execute serialized dual-simulation for an ambiguous 1H weapon candidate.
+
+        Simulates candidate in slot 1 (e.g. 'Weapon 1') and slot 2 (e.g. 'Weapon 2')
+        against the exact same baseline, with no arbitrary weighted winner.
+        """
+        from companion.equipment.schema import WeaponSetContext
+
+        if target_set == WeaponSetContext.WEAPON_SET_2:
+            slot1, slot2 = "Weapon 1 Swap", "Weapon 2 Swap"
+            set_num = 2
+        else:
+            slot1, slot2 = "Weapon 1", "Weapon 2"
+            set_num = 1
+
+        if candidate_id is None:
+            candidate_id = self.submit_candidate(raw_candidate, candidate_name=candidate_name, slot=slot1)
+
+        if not self.is_available or self.engine is None or not self.xml:
+            return None
+
+        if self.is_stale(candidate_id):
+            return None
+
+        with self._engine_lock:
+            if self.is_stale(candidate_id):
+                return None
+
+            delta1: PobEquipmentDelta | None = None
+            delta2: PobEquipmentDelta | None = None
+            context_xml = _set_weapon_set_in_xml(self.xml, set_num)
+
+            # Slot 1 simulation
+            try:
+                self.engine.call("import_build", xml=context_xml)
+                def_before_1 = self.engine.call("get_defenses")
+                stats_before_1 = self.engine.call("calc_stats")
+
+                self.engine.call("equip_item", slot=slot1, raw=raw_candidate)
+                def1 = self.engine.call("get_defenses")
+                st1 = self.engine.call("calc_stats")
+                delta1 = self._build_delta(
+                    slot1, candidate_id, candidate_name, def1, st1,
+                    def_before=def_before_1, stats_before=stats_before_1,
+                )
+            except Exception:
+                delta1 = None
+            finally:
+                try:
+                    self.engine.call("import_build", xml=self.xml)
+                except Exception:
+                    pass
+
+            if self.is_stale(candidate_id):
+                return None
+
+            # Slot 2 simulation
+            try:
+                self.engine.call("import_build", xml=context_xml)
+                def_before_2 = self.engine.call("get_defenses")
+                stats_before_2 = self.engine.call("calc_stats")
+
+                self.engine.call("equip_item", slot=slot2, raw=raw_candidate)
+                def2 = self.engine.call("get_defenses")
+                st2 = self.engine.call("calc_stats")
+                delta2 = self._build_delta(
+                    slot2, candidate_id, candidate_name, def2, st2,
+                    def_before=def_before_2, stats_before=stats_before_2,
+                )
+            except Exception:
+                delta2 = None
+            finally:
+                try:
+                    self.engine.call("import_build", xml=self.xml)
+                except Exception:
+                    pass
+
+            if self.is_stale(candidate_id):
+                return None
+
+            return DualWeaponSimulationResult(
+                candidate_id=candidate_id,
+                candidate_name=candidate_name or "Candidate Weapon",
+                slot1_delta=delta1,
+                slot2_delta=delta2,
             )
 
     def display_recommendation(

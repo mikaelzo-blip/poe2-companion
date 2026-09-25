@@ -266,8 +266,8 @@ Level: 1
     assert fake_engine.call_log.count("equip_item") == 2
 
 
-def test_live_watcher_weapon_remains_native_fallback(tmp_path: Path):
-    """Weapons remain outside the PoB2 allowlist until their milestone."""
+def test_live_watcher_weapon_uses_pob2_equipment_advisor(tmp_path: Path):
+    """Weapons are now routed to PoB2 equipment advisor."""
     runtime_dir = _setup_runtime(tmp_path)
     char_id = "test_pob_hero"
 
@@ -307,8 +307,8 @@ Adds 5 to 15 Physical Damage
     )
     assert ret == 0
     full_output = "\n".join(output_lines)
-    assert "Analyzing Gloom Piercer (Weapon" not in full_output
-    assert fake_engine.call_log.count("equip_item") == 0
+    assert "Analyzing Gloom Piercer (Weapon" in full_output
+    assert fake_engine.call_log.count("equip_item") >= 1
 
 
 def test_live_watcher_fallback_when_pob2_unavailable(tmp_path: Path):

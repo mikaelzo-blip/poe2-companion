@@ -34,6 +34,31 @@ Level: 45
 """
 
 
+def test_partial_unrelated_resistances_do_not_block_known_boots_upgrade(tmp_path: Path):
+    """Unknown resistances untouched by the candidate must not cause false insufficiency."""
+    runtime_dir = tmp_path / "runtime"
+    char_id = "partial_boots_char"
+    run_loadout_set_item(runtime_dir, char_id, "boots", BOOTS_OLD)
+    run_loadout_finalize(runtime_dir, char_id)
+    run_baseline_set(
+        runtime_dir,
+        char_id,
+        life=2500,
+        fire_res=70,
+        fire_raw=70,
+        movement_speed=10,
+    )
+
+    rec = EquipmentIntelligenceEngine(runtime_dir=runtime_dir).evaluate_candidate(
+        item_text=BOOTS_UPGRADE,
+        character_id=char_id,
+        target_slot="boots",
+    )
+
+    assert rec.sufficiency.is_sufficient_for_equip_now is True
+    assert rec.verdict == Verdict.EQUIP_NOW
+
+
 def test_engine_evaluates_upgrade(tmp_path: Path):
     runtime_dir = tmp_path / "runtime"
     char_id = "test_engine_char"

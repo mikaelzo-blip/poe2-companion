@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PoE2 Hermes Companion Suite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- TOP STATUS BAR / HEADER -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="brand">
+          <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+          <div class="brand-text">
+            <span class="brand-title">HERMES POE2</span>
+            <span class="brand-subtitle">COMPANION SUITE</span>
+          </div>
+        </div>
+        <div class="session-badge" id="session-badge">
+          <span class="pulse-dot idle" id="status-dot"></span>
+          <span class="status-label" id="status-label">RUNTIME: DISCONNECTED</span>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <!-- Active Character Switcher -->
+        <div class="character-switcher-container">
+          <div class="char-switcher-header">
+            <span class="acc-tag">ACCOUNT: <strong>mikaelzo#5674</strong></span>
+          </div>
+          <div class="char-dropdown-row">
+            <select id="header-char-select" class="header-char-dropdown" title="Pilih karakter aktif">
+              <option value="BOMSHAK">BOMSHAK (Lvl 19 Mercenary)</option>
+            </select>
+            <button class="btn btn-sm btn-quick-sync" id="btn-quick-sync-char" title="Tarik data equipment terbaru dari server GGG">
+              🔄 Sync
+            </button>
+            <span class="char-lvl-tag">LVL <strong id="hdr-char-level">19</strong></span>
+            <span class="char-zone-tag" id="hdr-char-zone">Zone: G2_1</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <!-- Storage / Folder Access Controls -->
+        <div class="file-source-control">
+          <button class="btn btn-primary" id="btn-select-folder">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span>Buka Folder /runtime</span>
+          </button>
+          <!-- Hidden fallback folder input -->
+          <input type="file" id="fallback-folder-input" webkitdirectory directory multiple style="display: none;">
+          <button class="btn btn-secondary" id="btn-load-demo" title="Muat data contoh saat offline">
+            <span>Demo Data</span>
+          </button>
+          <button class="btn btn-secondary" id="btn-open-sync-modal" style="background: rgba(216, 169, 56, 0.15); border-color: var(--accent-gold); color: var(--accent-gold);" title="Sinkronisasi akun atau impor JSON item dari PoE">
+            <span>🌐 Impor Akun / JSON</span>
+          </button>
+        </div>
+        <div class="live-indicator" id="live-indicator">
+          <span class="sync-time" id="last-sync-time">Belum Terhubung</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- MAIN DASHBOARD CONTENT -->
+    <div class="main-body">
+      <!-- SIDEBAR NAV -->
+      <nav class="sidebar">
+        <ul class="nav-list">
+          <li class="nav-item active" data-tab="tab-overview">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="7" height="9"></rect>
+              <rect x="14" y="3" width="7" height="5"></rect>
+              <rect x="14" y="12" width="7" height="9"></rect>
+              <rect x="3" y="16" width="7" height="5"></rect>
+            </svg>
+            <span class="nav-label">Live Overview</span>
+          </li>
+          <li class="nav-item" data-tab="tab-objectives">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <circle cx="12" cy="12" r="6"></circle>
+              <circle cx="12" cy="12" r="2"></circle>
+            </svg>
+            <span class="nav-label">Objectives</span>
+            <span class="badge" id="badge-obj-count">0</span>
+          </li>
+          <li class="nav-item" data-tab="tab-gear">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <path d="M16 10a4 4 0 0 1-8 0"></path>
+            </svg>
+            <span class="nav-label">Gear & PoB2</span>
+          </li>
+          <li class="nav-item" data-tab="tab-transition">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="13 17 18 12 13 7"></polyline>
+              <polyline points="6 17 11 12 6 7"></polyline>
+            </svg>
+            <span class="nav-label">Lvl 52 Transition</span>
+          </li>
+          <li class="nav-item" data-tab="tab-logs">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="4 17 10 11 4 5"></polyline>
+              <line x1="12" y1="19" x2="20" y2="19"></line>
+            </svg>
+            <span class="nav-label">Telemetry & Log</span>
+          </li>
+        </ul>
+
+        <div class="sidebar-footer">
+          <div class="guide-tag">
+            <span class="guide-label">BUILD GUIDE:</span>
+            <select id="guide-select" class="sidebar-dropdown">
+              <option value="fubgun_flameblast">Fubgun Flameblast (Mercenary)</option>
+              <option value="generic_pob2">Generic PoB2 Optimizer (Any Class)</option>
+            </select>
+            <span class="guide-label" style="margin-top: 8px;">PROGRESSION STAGE:</span>
+            <select id="stage-select" class="sidebar-dropdown">
+              <option value="auto">Auto (Berdasarkan Level)</option>
+              <option value="lvl 1-14">lvl 1-14</option>
+              <option value="lvl 15-32">lvl 15-32</option>
+              <option value="lvl 33-51">lvl 33-51</option>
+              <option value="lvl 52 swap">lvl 52 Swap</option>
+              <option value="lvl 53-68">lvl 53-68</option>
+              <option value="lvl 85">lvl 85</option>
+              <option value="endgame">Endgame</option>
+              <option value="mageblood">Mageblood</option>
+              <option value="dot cap">DoT Cap</option>
+            </select>
+            <div style="margin-top: 6px; font-size: 10px; color: var(--text-dim);" id="guide-status-note">
+              Aktif: <span id="sb-build-target">Fubgun 0.5.5 Flameblast</span> (<span id="sb-build-stage">lvl 1-14</span>)
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <!-- CONTENT PANES -->
+      <main class="content-pane">
+        
+        <!-- ================= TAB 1: OVERVIEW ================= -->
+        <section class="tab-content active" id="tab-overview">
+          <!-- TOP HERO: PRIMARY OBJECTIVE & ALERTS -->
+          <div class="hero-grid">
+            <!-- CURRENT OBJECTIVE CARD -->
+            <div class="card card-featured primary-objective-card">
+              <div class="card-header">
+                <div class="card-tag tag-primary">TARGET OBJECTIVE</div>
+                <div class="priority-chip" id="obj-priority-chip">PRIORITY 5</div>
+              </div>
+              <div class="card-body">
+                <h2 class="objective-title" id="primary-obj-title">Audit Passive Tree: Ascendancy Notable</h2>
+                <p class="objective-action" id="primary-obj-action">Inspect passive tree to verify allocation</p>
+                <div class="objective-meta-grid">
+                  <div class="meta-item">
+                    <span class="meta-label">SOURCE</span>
+                    <span class="meta-val" id="primary-obj-source">Passive Delta Evaluator</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">RATIONALE</span>
+                    <span class="meta-val" id="primary-obj-rationale">UNOBSERVED_SUBSYSTEM</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">HORIZON</span>
+                    <span class="meta-val" id="primary-obj-horizon">Next 1 Zone</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">PENALTY RISK</span>
+                    <span class="meta-val risk-medium" id="primary-obj-risk">Medium (2)</span>
+                  </div>
+                </div>
+              </div>
+              <div class="card-footer objective-footer">
+                <span class="hint-text">Automatic read-only evaluation. No game automation or memory modification.</span>
+              </div>
+            </div>
+
+            <!-- RUNTIME TELEMETRY CARD -->
+            <div class="card telemetry-card">
+              <div class="card-header">
+                <div class="card-tag tag-telemetry">SENSOR STATUS</div>
+                <div class="game-status-tag" id="game-status-tag">GAME RUNNING (PID 14384)</div>
+              </div>
+              <div class="card-body stat-grid">
+                <div class="stat-box">
+                  <span class="stat-label">DEATH COUNT</span>
+                  <span class="stat-value death-val" id="stat-deaths">1</span>
+                  <span class="stat-sub">Watermark Verified</span>
+                </div>
+                <div class="stat-box">
+                  <span class="stat-label">CHARACTER LEVEL</span>
+                  <span class="stat-value" id="stat-level">17</span>
+                  <span class="stat-sub" id="stat-class-sub">Gemling Legionnaire</span>
+                </div>
+                <div class="stat-box">
+                  <span class="stat-label">CURRENT ZONE</span>
+                  <span class="stat-value zone-val" id="stat-zone">G2_1</span>
+                  <span class="stat-sub">Act 1 (Observed)</span>
+                </div>
+                <div class="stat-box">
+                  <span class="stat-label">WEAPON SET</span>
+                  <span class="stat-value" id="stat-weapon-set">Set 1</span>
+                  <span class="stat-sub">Crossbow Main</span>
+                </div>
+              </div>
+              <div class="card-footer">
+                <div class="heartbeat-row">
+                  <span>Sensor Heartbeat:</span>
+                  <strong id="stat-heartbeat">Active (Just now)</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ATTRIBUTES & DEFENSES SUMMARY -->
+          <div class="overview-subgrid">
+            <!-- Core Attributes & Resists -->
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">Attributes & Progression Stats</span>
+              </div>
+              <div class="card-body">
+                <div class="attr-bars">
+                  <div class="attr-row">
+                    <span class="attr-name">Strength</span>
+                    <div class="attr-bar-wrap">
+                      <div class="attr-bar str-bar" id="bar-str" style="width: 25%;"></div>
+                    </div>
+                    <span class="attr-num" id="val-str">10</span>
+                  </div>
+                  <div class="attr-row">
+                    <span class="attr-name">Dexterity</span>
+                    <div class="attr-bar-wrap">
+                      <div class="attr-bar dex-bar" id="bar-dex" style="width: 30%;"></div>
+                    </div>
+                    <span class="attr-num" id="val-dex">14</span>
+                  </div>
+                  <div class="attr-row">
+                    <span class="attr-name">Intelligence</span>
+                    <div class="attr-bar-wrap">
+                      <div class="attr-bar int-bar" id="bar-int" style="width: 20%;"></div>
+                    </div>
+                    <span class="attr-num" id="val-int">10</span>
+                  </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="defenses-summary">
+                  <div class="def-item">
+                    <span class="def-label">Armour</span>
+                    <strong class="def-val" id="def-armour">32</strong>
+                  </div>
+                  <div class="def-item">
+                    <span class="def-label">Evasion</span>
+                    <strong class="def-val" id="def-evasion">0</strong>
+                  </div>
+                  <div class="def-item">
+                    <span class="def-label">Energy Shield</span>
+                    <strong class="def-val" id="def-es">0</strong>
+                  </div>
+                  <div class="def-item">
+                    <span class="def-label">Bonus Life</span>
+                    <strong class="def-val highlight-life" id="def-life">+10</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Recent Notifications & Advisor Warnings -->
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">Advisor Notifications & Alerts</span>
+                <span class="badge-soft">Safe-Zone Filtered</span>
+              </div>
+              <div class="card-body notification-list" id="notif-feed">
+                <!-- Notifications injected dynamically -->
+                <div class="notif-item notif-warning">
+                  <div class="notif-indicator"></div>
+                  <div class="notif-content">
+                    <div class="notif-head">
+                      <strong class="notif-title">Passive Tree Audit Needed</strong>
+                      <span class="notif-time">Safe zone</span>
+                    </div>
+                    <p class="notif-msg">Ascendancy allocation unverified in current state. Open passive panel to confirm.</p>
+                  </div>
+                </div>
+                <div class="notif-item notif-info">
+                  <div class="notif-indicator"></div>
+                  <div class="notif-content">
+                    <div class="notif-head">
+                      <strong class="notif-title">Zone Transition</strong>
+                      <span class="notif-time">Act 1</span>
+                    </div>
+                    <p class="notif-msg">Entered zone G2_1. Next build milestone target: lvl 15-32 stage swap.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= TAB 2: OBJECTIVES ================= -->
+        <section class="tab-content" id="tab-objectives">
+          <div class="section-toolbar">
+            <h2 class="section-heading">Active Journey Objectives</h2>
+            <div class="filter-group">
+              <button class="filter-btn active" data-filter="all">All</button>
+              <button class="filter-btn" data-filter="p5">Priority 5</button>
+              <button class="filter-btn" data-filter="corrective">Corrective</button>
+            </div>
+          </div>
+          <div class="objectives-table-wrap">
+            <table class="data-table" id="objectives-table">
+              <thead>
+                <tr>
+                  <th style="width: 90px;">Priority</th>
+                  <th>Title & Requirement</th>
+                  <th>Action</th>
+                  <th>Source / Evaluator</th>
+                  <th>Trust & Risk</th>
+                </tr>
+              </thead>
+              <tbody id="objectives-tbody">
+                <!-- Injected via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ================= TAB 3: GEAR & POB2 ================= -->
+        <section class="tab-content" id="tab-gear">
+          <div class="gear-view-layout">
+            <!-- Equipment Paperdoll / Slot Grid -->
+            <div class="card paperdoll-card">
+              <div class="card-header">
+                <span class="card-title" id="equipped-loadout-title">Equipped Loadout (BOMSHAK)</span>
+                <span class="badge-soft" id="gear-finalized-badge">Revision 1 (Draft)</span>
+              </div>
+              <div class="card-body">
+                <div class="slots-grid" id="slots-grid">
+                  <!-- Slots filled dynamically -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Item Detail & Advisor Inspection -->
+            <div class="card item-inspector-card">
+              <div class="card-header">
+                <span class="card-title">PoB2 Live Equipment Advisor</span>
+                <div class="slot-switch-group">
+                  <span class="selected-slot-name" id="selected-slot-name">Select a slot</span>
+                </div>
+              </div>
+              <!-- Subtabs for Inspector vs Compare -->
+              <div class="inspector-subtabs">
+                <button class="subtab-btn active" id="subtab-view-equipped">Equipped Item</button>
+                <button class="subtab-btn" id="subtab-view-compare">⚡ Versus Candidate (Compare)</button>
+              </div>
+              <div class="card-body item-detail-body" id="item-inspector-content">
+                <div class="empty-state">
+                  <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                  <p>Klik salah satu slot perlengkapan di samping untuk melihat tooltip, modifikasi, dan rekomendasi upgrade PoB2.</p>
+                </div>
+              </div>
+
+              <!-- Versus Comparison Tool Panel -->
+              <div class="card-body item-detail-body" id="item-compare-content" style="display: none;">
+                <div class="compare-box">
+                  <!-- Active Target Slot Bar -->
+                  <div class="compare-slot-header" id="compare-slot-header">
+                    <div class="slot-banner-left">
+                      <span class="slot-banner-icon">🎯</span>
+                      <div>
+                        <div class="slot-banner-label">TARGET LOADOUT SLOT</div>
+                        <div class="slot-banner-title" id="compare-target-slot-title">HELMET</div>
+                      </div>
+                    </div>
+                    <div class="slot-banner-right" id="compare-slot-status-badge">
+                      <span class="badge-status-neutral">BELUM DIBANDINGKAN</span>
+                    </div>
+                  </div>
+
+                  <div class="compare-instruction">
+                    <strong>Auto-Scan Aktif (Hanya perlu tekan Ctrl+C di Game):</strong>
+                    <p>Saat Anda mengarahkan kursor ke item di PoE2 dan menekan <strong>Ctrl+C</strong>, sistem otomatis mendeteksi slot loadout yang sesuai, memisahkan hasil perbandingan, dan menyimpan riwayatnya.</p>
+                  </div>
+                  <div class="auto-scan-toggle-row">
+                    <label class="switch-wrap">
+                      <input type="checkbox" id="toggle-autoscan" checked>
+                      <span class="slider"></span>
+                    </label>
+                    <span class="autoscan-label" id="autoscan-status-text">⚡ Auto-Scan Game Clipboard: <strong>AKTIF</strong></span>
+
+                    <label class="switch-wrap" style="margin-left: 18px;">
+                      <input type="checkbox" id="toggle-autoequip-empty" checked>
+                      <span class="slider"></span>
+                    </label>
+                    <span class="autoscan-label" id="autoequip-status-text" title="Bila aktif, item yang disalin via Ctrl+C langsung terpasang jika slot loadout masih kosong">🛡️ Auto-Pasang Slot Kosong: <strong>AKTIF</strong></span>
+                  </div>
+                  <div class="clipboard-action-row" style="margin-top: 6px;">
+                    <button class="btn btn-primary" id="btn-paste-clipboard">
+                      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                        <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                      </svg>
+                      <span>Paste dari Clipboard (Ctrl+V)</span>
+                    </button>
+                    <button class="btn btn-secondary" id="btn-demo-candidate">Contoh Candidate Upgrade</button>
+                  </div>
+                  <textarea id="candidate-textarea" class="candidate-input" rows="5" placeholder="Contoh teks item PoE2:
+Item Class: Boots
+Rarity: Rare
+Brimstone Greaves
+Iron Greaves
+--------
+Armour: 45
+--------
+Requirements: Level 12
+--------
++15% to Fire Resistance
++12% to Cold Resistance
+15% increased Movement Speed"></textarea>
+                  <button class="btn btn-primary btn-block" id="btn-run-compare" style="margin-top: 10px;">
+                    <span>Bandingkan Sekarang (PoB2 Engine)</span>
+                  </button>
+
+                  <!-- Comparison Result Container -->
+                  <div id="compare-verdict-result" style="display: block; margin-top: 16px;"></div>
+
+                  <!-- Per-Slot & Loadout Compare History Section -->
+                  <div class="compare-history-container" id="compare-history-container">
+                    <div class="history-header-row">
+                      <div class="history-title-group">
+                        <span class="history-title">📜 Riwayat Perbandingan</span>
+                        <div class="history-filter-pills">
+                          <button class="filter-pill active" id="filter-history-slot">Slot Ini (<span id="slot-history-count">0</span>)</button>
+                          <button class="filter-pill" id="filter-history-all">Semua Loadout (<span id="all-history-count">0</span>)</button>
+                        </div>
+                      </div>
+                      <button class="btn-text-danger" id="btn-clear-history" title="Hapus riwayat perbandingan">Hapus Riwayat</button>
+                    </div>
+                    <div class="history-list" id="compare-history-list">
+                      <!-- Rendered history cards -->
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= TAB 4: LVL 52 TRANSITION ================= -->
+        <section class="tab-content" id="tab-transition">
+          <div class="transition-container">
+            <div class="card transition-summary-card">
+              <div class="card-header">
+                <div>
+                  <div class="card-tag tag-transition">PROGRESSION MILESTONE</div>
+                  <h2 class="transition-title">Level 52 Build Swap Readiness</h2>
+                </div>
+                <div class="readiness-gauge" id="transition-gauge">
+                  <span class="readiness-pct" id="transition-pct">0%</span>
+                  <span class="readiness-sub">Readiness</span>
+                </div>
+              </div>
+              <div class="card-body">
+                <p class="transition-desc">
+                  Level 52 adalah titik balik kritis di mana build bertransisi ke setup <strong>Flameblast / Oil Grenade Swap</strong>.
+                  Sistem mengevaluasi kondisi secara ketat (Tri-State: SATISFIED, UNSATISFIED, UNKNOWN) untuk mencegah build breaker.
+                </p>
+                <div class="transition-req-grid">
+                  <div class="req-box req-unknown">
+                    <span class="req-title">Gold Respec Reserve</span>
+                    <span class="req-status">UNKNOWN</span>
+                    <p class="req-hint">Kebutuhan estimasi ~50,000 gold untuk refund skill tree.</p>
+                  </div>
+                  <div class="req-box req-unknown">
+                    <span class="req-title">Core Gem Setup</span>
+                    <span class="req-status">UNKNOWN</span>
+                    <p class="req-hint">Flameblast + Oil Grenade uncut gems di inventory / stash.</p>
+                  </div>
+                  <div class="req-box req-future">
+                    <span class="req-title">Cast on Dodge (Lvl 58+)</span>
+                    <span class="req-status">FUTURE (ISOLATED)</span>
+                    <p class="req-hint">Dikecualikan dari blocker Level 52 (tidak memicu false alert).</p>
+                  </div>
+                  <div class="req-box req-unsatisfied">
+                    <span class="req-title">Required Character Level</span>
+                    <span class="req-status" id="req-status-level">LVL 17 / 52</span>
+                    <p class="req-hint">Belum mencapai level minimum transisi.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= TAB 5: TELEMETRY & LOGS ================= -->
+        <section class="tab-content" id="tab-logs">
+          <div class="logs-layout">
+            <div class="card terminal-card">
+              <div class="card-header">
+                <span class="card-title">Live Client Log & State Stream</span>
+                <span class="badge-soft" id="log-watermark">Offset: 0</span>
+              </div>
+              <div class="card-body terminal-body" id="terminal-output">
+                <div class="log-line">[SYSTEM] Client log tailer initialized in read-only observation mode.</div>
+                <div class="log-line">[SYSTEM] No-input guarantee: Zero input simulation or memory hooking active.</div>
+                <div class="log-line">[LOG] 2026-09-23T19:28:05 : BOMSHAK reached level 17 in zone G2_1</div>
+                <div class="log-line">[STATE] CharacterState BOMSHAK synchronized (Act 1, 1 Death recorded).</div>
+                <div class="log-line">[OBJECTIVE] Evaluated 23 active progression objectives. Primary: Ascendancy Notable audit.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Modal Sync Akun / Import JSON -->
+  <div class="modal-overlay" id="modal-sync-profile" style="display: none;">
+    <div class="sync-modal-box">
+      <div class="modal-header">
+        <h3 style="color: var(--accent-gold); margin: 0; font-size: 15px;">🌐 Sinkronisasi Akun / Impor Item PoE2</h3>
+        <button class="modal-close-btn" id="btn-close-sync-modal">✕</button>
+      </div>
+      <div class="modal-subtabs">
+        <button class="modal-tab-btn active" id="mtab-public-profile">Opsi A: Tarik Profil Publik</button>
+        <button class="modal-tab-btn" id="mtab-paste-json">Opsi B: Paste Character JSON</button>
+      </div>
+
+      <!-- Tab 1: Tarik Profil Publik -->
+      <div class="modal-tab-content" id="mcontent-public">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
+          Tarik perlengkapan langsung dari server resmi Path of Exile. Pastikan akun diset <strong>Public</strong> (di situs pathofexile.com: Privacy Settings → Uncheck <em>"Hide Characters tab"</em>).
+        </p>
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 4px;">NAMA AKUN POE (Account Name):</label>
+          <input type="text" id="sync-account-name" class="modal-input" placeholder="Contoh: Fikri#1234 atau username akun PoE">
+        </div>
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 4px;">NAMA KARAKTER:</label>
+          <input type="text" id="sync-character-name" class="modal-input" value="BOMSHAK">
+        </div>
+        <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted);">
+          <input type="checkbox" id="sync-public-overwrite" checked style="accent-color: var(--accent-gold); cursor: pointer;">
+          <label for="sync-public-overwrite" style="cursor: pointer;">Timpa perlengkapan manual / demo yang ada saat ini</label>
+        </div>
+        <button class="btn btn-primary btn-block" id="btn-do-fetch-public" style="background: var(--accent-gold); color: #000; font-weight: 700;">
+          🔄 Tarik Seluruh Equipment dari GGG
+        </button>
+        <div id="sync-public-msg" style="margin-top: 10px; font-size: 11px; line-height: 1.4; display: none;"></div>
+      </div>
+
+      <!-- Tab 2: Paste Character JSON -->
+      <div class="modal-tab-content" id="mcontent-json" style="display: none;">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.4;">
+          Buka link berikut di browser (Chrome / Edge) tempat Anda sudah login pathofexile.com:
+        </p>
+        <div style="font-size: 11px; margin-bottom: 10px; padding: 6px 8px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-subtle); border-radius: 4px; font-family: var(--font-mono); color: var(--accent-gold); word-break: break-all;" id="direct-json-link-box">
+          https://www.pathofexile.com/character-window/get-items?accountName=NAMA_AKUN&character=BOMSHAK
+        </div>
+        <textarea id="sync-json-textarea" class="modal-textarea" rows="6" placeholder="Paste seluruh output teks JSON dari browser di sini (Ctrl+V)..."></textarea>
+        <div style="margin-top: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted);">
+          <input type="checkbox" id="sync-json-overwrite" checked style="accent-color: var(--accent-green); cursor: pointer;">
+          <label for="sync-json-overwrite" style="cursor: pointer;">Timpa perlengkapan manual / demo yang ada saat ini</label>
+        </div>
+        <button class="btn btn-primary btn-block" id="btn-do-import-json" style="margin-top: 10px; background: var(--accent-green); color: #000; font-weight: 700;">
+          📥 Terapkan Seluruh Equipment ke Loadout
+        </button>
+        <div id="sync-json-msg" style="margin-top: 10px; font-size: 11px; line-height: 1.4; display: none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Folder Drop Overlay for Drag & Drop convenience -->
+  <div class="drag-drop-overlay" id="drag-drop-overlay">
+    <div class="drop-modal">
+      <svg class="drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline points="17 8 12 3 7 8"></polyline>
+        <line x1="12" y1="3" x2="12" y2="15"></line>
+      </svg>
+      <h3>Drop Folder <code>/runtime</code> Di Sini</h3>
+      <p>Lepaskan folder runtime untuk memuat status karakter, loadout item, dan objektif secara live.</p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

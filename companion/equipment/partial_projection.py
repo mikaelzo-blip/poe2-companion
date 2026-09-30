@@ -76,11 +76,13 @@ def project_candidate_on_loadout(
 ) -> PartialLoadoutProjection:
     displaced_items: list[ItemCandidate] = []
     displaced_contribs: list[ItemContribution] = []
-    cand_contrib = build_item_contribution(candidate, target_weapon_set=weapon_set)
+    effective_weapon_set = weapon_set or candidate.weapon_set
+    cand_contrib = build_item_contribution(candidate, target_weapon_set=effective_weapon_set)
 
     is_weapon_slot = slot in (SlotType.MAIN_HAND, SlotType.OFF_HAND)
     if is_weapon_slot:
-        wset = weapon_set or WeaponSetContext.WEAPON_SET_1
+        wset = effective_weapon_set or WeaponSetContext.WEAPON_SET_1
+        effective_weapon_set = wset
         occ = compute_weapon_occupancy_contribution(loadout, candidate, target_set=wset)
         displaced_items = [e.item for e in occ.displaced_entries]
         displaced_contribs = occ.displaced_contributions
@@ -205,7 +207,7 @@ def project_candidate_on_loadout(
 
     return PartialLoadoutProjection(
         slot=slot,
-        target_weapon_set=weapon_set,
+        target_weapon_set=effective_weapon_set,
         candidate=candidate,
         displaced_items=displaced_items,
         life=make_linear_proj(net_life, life_val, life_known),

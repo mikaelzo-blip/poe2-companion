@@ -269,19 +269,24 @@ def analyze_data_sufficiency(
                 else:
                     reasons.append(f"{stat_name} is unknown and {other_suffix}.")
 
-        # Check critical resistance facts
+        # Track only unknown facts that the current comparison actually depends on.
+        # Unrelated missing resistance values are still unknown for reporting, but
+        # must not block a deterministic swap that does not change those values.
         res_checks = [
-            ("effective_fire_res", baseline.effective_fire_res),
-            ("effective_cold_res", baseline.effective_cold_res),
-            ("effective_lightning_res", baseline.effective_lightning_res),
-            ("effective_chaos_res", baseline.effective_chaos_res),
+            ("effective_fire_res", baseline.effective_fire_res, fact_dependencies.needs_fire_res),
+            ("effective_cold_res", baseline.effective_cold_res, fact_dependencies.needs_cold_res),
+            ("effective_lightning_res", baseline.effective_lightning_res, fact_dependencies.needs_lightning_res),
+            ("effective_chaos_res", baseline.effective_chaos_res, fact_dependencies.needs_chaos_res),
         ]
-        for field_name, fact in res_checks:
-            if fact.value is None or fact.verification == VerificationState.UNKNOWN:
+        for field_name, fact, is_needed in res_checks:
+            if is_needed and (fact.value is None or fact.verification == VerificationState.UNKNOWN):
                 unobserved_facts.append(field_name)
 
-        # Check defensive facts
-        if baseline.life.value is None or baseline.life.verification == VerificationState.UNKNOWN:
+        # Life is relevant only when the candidate changes Life or a downstream
+        # decision explicitly requested it.
+        if fact_dependencies.needs_life and (
+            baseline.life.value is None or baseline.life.verification == VerificationState.UNKNOWN
+        ):
             unobserved_facts.append("life")
 
     # 4. Build-breaker safety evaluation certainty

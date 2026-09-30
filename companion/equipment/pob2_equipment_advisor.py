@@ -186,16 +186,17 @@ def _set_weapon_set_in_xml(xml_str: str, set_num: int) -> str:
 
 def _clear_slots_in_xml(xml_str: str, clear_slots: tuple[str, ...] | list[str]) -> str:
     """Clear specific slot itemIds (set to 0) in PoB XML."""
-    import re
+    import xml.etree.ElementTree as ET
 
-    mutated = xml_str
-    for cs in clear_slots:
-        mutated = re.sub(
-            rf'(<Slot\s+name="{re.escape(cs)}"\s+itemId=")\d+(")',
-            r'\g<1>0\g<2>',
-            mutated,
-        )
-    return mutated
+    try:
+        root = ET.fromstring(xml_str)
+        requested = set(clear_slots)
+        for slot in root.iter("Slot"):
+            if slot.get("name") in requested and slot.get("itemId") is not None:
+                slot.set("itemId", "0")
+        return ET.tostring(root, encoding="unicode")
+    except (ET.ParseError, TypeError):
+        return xml_str
 
 
 class PobEquipmentDelta(BaseModel):
@@ -439,6 +440,68 @@ class Pob2EquipmentSession:
                 pass
         return None
 
+    def equip_item(self, slot: str | SlotType, raw_item: str) -> bool:
+        """Equip an item directly into the active PoB2 baseline build.
+
+        Mutates the baseline XML, updates equipped_items, and recalculates
+        defenses_before and stats_before so subsequent simulations compare
+        against the freshly equipped item.
+        """
+        canonical_slot = normalize_and_validate_pob_slot(slot)
+        if not self.is_available or self.engine is None or not self.xml:
+            return False
+
+        with self._engine_lock:
+            try:
+                # 1. Restore current baseline XML
+                self.engine.call("import_build", xml=self.xml)
+                # 2. Equip new item
+                self.engine.call("equip_item", slot=canonical_slot, raw=raw_item)
+                # 3. Export new baseline XML
+                export_res = self.engine.call("export_xml")
+                if not export_res or not export_res.get("xml"):
+                    return False
+                self.xml = export_res["xml"]
+                # 4. Refresh equipped_items and baseline defense/stats
+                self.equipped_items[canonical_slot] = self.engine.call("get_equipped", slot=canonical_slot)
+                self.defenses_before = self.engine.call("get_defenses")
+                self.stats_before = self.engine.call("calc_stats")
+                return True
+            except Exception as exc:
+                logging.getLogger(__name__).warning("Failed to equip item in PoB2 session: %s", exc)
+                return False
+
+    def sync_character(self, raw_json: str | dict | None = None) -> bool:
+        """Re-import character from GGG API or raw JSON and refresh all baseline caches."""
+        if not self.is_available or self.engine is None:
+            return False
+
+        with self._engine_lock:
+            try:
+                if raw_json is None:
+                    if self.poe_api_client is not None:
+                        raw_json = self.poe_api_client.fetch_character_raw(self.character_name)
+                    else:
+                        from pob_mcp import poe_api
+                        raw_json = poe_api.fetch_character_raw(self.character_name)
+
+                imp_res = self.engine.call("import_character", json=raw_json)
+                self.xml = imp_res.get("xml")
+                self.class_name = imp_res.get("className")
+                self.level = imp_res.get("level")
+
+                for slot in POB2_PRODUCTION_SLOTS:
+                    equipped = self.engine.call("get_equipped", slot=slot)
+                    if equipped:
+                        self.equipped_items[slot] = equipped
+
+                self.defenses_before = self.engine.call("get_defenses")
+                self.stats_before = self.engine.call("calc_stats")
+                return True
+            except Exception as exc:
+                logging.getLogger(__name__).warning("Failed to sync character in PoB2 session: %s", exc)
+                return False
+
     def get_current_item_name(self, slot: str) -> str | None:
         """Get the current equipped item name for a given slot."""
         item = self.get_equipped_item(slot)
@@ -487,6 +550,40 @@ class Pob2EquipmentSession:
             return None
         return None
 
+    def get_primary_socket_group(self, skill_context: str | None = None) -> int | None:
+        """Find the 1-based socket group index of the main damaging skill in PoB2."""
+        if not self.engine:
+            return None
+        if skill_context:
+            idx = self.find_socket_group_for_skill(skill_context)
+            if idx:
+                return idx
+        try:
+            skills = self.engine.call("list_skills")
+            groups = skills.get("groups", [])
+            primary_skills = (
+                "explosive grenade",
+                "gas grenade",
+                "flameblast",
+                "toxic grenade",
+                "crossbow shot",
+                "flash grenade",
+                "fragmentation rounds",
+            )
+            for cand in primary_skills:
+                for g in groups:
+                    active = (g.get("activeSkill") or "").lower()
+                    if cand in active:
+                        return g.get("index")
+                    for gem in g.get("gems", []):
+                        gname = (gem.get("name") or "").lower()
+                        if cand in gname:
+                            return g.get("index")
+
+            return skills.get("mainSocketGroup")
+        except Exception:
+            return None
+
     def _build_delta(
         self,
         canonical_slot: str,
@@ -502,6 +599,32 @@ class Pob2EquipmentSession:
             def_before = self.defenses_before or {}
         if stats_before is None:
             stats_before = self.stats_before or {}
+
+        required_defense_keys = {"Life", "Armour", "Evasion", "EnergyShield", "TotalEHP"}
+        required_stat_defense_keys = {
+            "FireResist", "ColdResist", "LightningResist", "ChaosResist"
+        }
+        missing_metrics = sorted(
+            key for key in required_defense_keys if key not in def_before or key not in def_after
+        )
+        defense_before = stats_before.get("defense")
+        defense_after = stats_after.get("defense")
+        offense_before = stats_before.get("offense")
+        offense_after = stats_after.get("offense")
+        if not isinstance(defense_before, dict) or not isinstance(defense_after, dict):
+            missing_metrics.append("defense")
+        else:
+            missing_metrics.extend(
+                f"defense.{key}"
+                for key in sorted(required_stat_defense_keys)
+                if key not in defense_before or key not in defense_after
+            )
+        if not isinstance(offense_before, dict) or not isinstance(offense_after, dict):
+            missing_metrics.append("offense")
+        elif "CombinedDPS" not in offense_before or "CombinedDPS" not in offense_after:
+            missing_metrics.append("offense.CombinedDPS")
+        if missing_metrics:
+            raise ValueError(f"Missing PoB2 metrics: {', '.join(sorted(set(missing_metrics)))}")
 
         life_before = int(def_before.get("Life") or 0)
         life_after = int(def_after.get("Life") or 0)
@@ -600,10 +723,17 @@ class Pob2EquipmentSession:
             try:
                 # 2a. Restore baseline XML in case previous item mutated it
                 self.engine.call("import_build", xml=self.xml)
+                primary_group = self.get_primary_socket_group()
+                if primary_group:
+                    self.engine.call("set_main_skill", group=primary_group)
+                def_before = self.engine.call("get_defenses")
+                stats_before = self.engine.call("calc_stats")
 
                 # 2b. Equip candidate item in canonical slot
                 candidate_applied = True
                 self.engine.call("equip_item", slot=canonical_slot, raw=raw_candidate)
+                if primary_group:
+                    self.engine.call("set_main_skill", group=primary_group)
 
                 # 2c. Read post-equip defenses and stats
                 def_after = self.engine.call("get_defenses")
@@ -611,6 +741,8 @@ class Pob2EquipmentSession:
 
                 # 2d. Restore baseline XML immediately so engine is pristine
                 self.engine.call("import_build", xml=self.xml)
+                if primary_group:
+                    self.engine.call("set_main_skill", group=primary_group)
                 candidate_applied = False
 
                 # 2e. Post-check staleness before building delta
@@ -623,15 +755,18 @@ class Pob2EquipmentSession:
                     candidate_name=candidate_name,
                     def_after=def_after,
                     stats_after=stats_after,
+                    def_before=def_before,
+                    stats_before=stats_before,
                 )
-            except Exception:
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning("PoB2 simulation failed for slot %s: %s", canonical_slot, exc)
                 return None
             finally:
-                if candidate_applied:
-                    try:
-                        self.engine.call("import_build", xml=self.xml)
-                    except Exception:
-                        pass
+                try:
+                    self.engine.call("import_build", xml=self.xml)
+                except Exception:
+                    pass
 
     def simulate_ring_candidate(
         self,
@@ -704,6 +839,8 @@ class Pob2EquipmentSession:
 
             # Step 4: Staleness check after Ring 2
             if self.is_stale(candidate_id):
+                return None
+            if delta1 is None or delta2 is None:
                 return None
 
             return DualRingSimulationResult(

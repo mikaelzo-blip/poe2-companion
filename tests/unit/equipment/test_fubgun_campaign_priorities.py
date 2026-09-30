@@ -183,6 +183,94 @@ def test_body_armour_campaign_priority():
     assert "Evasion" in note or "hybrid" in note.lower()
 
 
+def test_chaos_resistance_is_a_primary_gain_for_fubgun_equipment():
+    from companion.equipment.fubgun_priorities import evaluate_fubgun_equipment_policy
+    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
+
+    delta = PobEquipmentDelta(
+        slot="Gloves",
+        candidate_id=101,
+        candidate_name="Chaos Mitts",
+        current_item_name="Cloth Gloves",
+        chaos_res_delta=30,
+    )
+
+    recommendation = evaluate_fubgun_equipment_policy(
+        delta,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        use_color=False,
+    )
+
+    assert recommendation.verdict != Verdict.REJECT
+    assert "+30% Chaos Res" in recommendation.formatted_output
+
+
+def test_chaos_resistance_loss_blocks_unconditional_life_upgrade():
+    from companion.equipment.fubgun_priorities import evaluate_fubgun_equipment_policy
+    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
+
+    delta = PobEquipmentDelta(
+        slot="Gloves",
+        candidate_id=102,
+        candidate_name="Life Mitts",
+        current_item_name="Chaos Mitts",
+        life_delta=20,
+        chaos_res_delta=-30,
+    )
+
+    recommendation = evaluate_fubgun_equipment_policy(
+        delta,
+        stage=BuildProgressionStage.LEVELING_15_32,
+        use_color=False,
+    )
+
+    assert recommendation.verdict != Verdict.EQUIP_NOW
+    assert "-30% Chaos Res" in recommendation.formatted_output
+
+
+def test_weapon_dps_gain_with_large_ehp_loss_is_conditional():
+    from companion.equipment.fubgun_priorities import evaluate_fubgun_weapon_policy
+    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
+
+    delta = PobEquipmentDelta(
+        slot="Weapon 1",
+        candidate_id=103,
+        candidate_name="Glass Cannon",
+        current_item_name="Tower Shield Setup",
+        dps_delta=5.0,
+        ehp_delta=-350.0,
+        armour_delta=-800,
+    )
+
+    recommendation = evaluate_fubgun_weapon_policy(delta, use_color=False)
+
+    assert recommendation.verdict == Verdict.CONDITIONAL_UPGRADE
+    assert "-350.00 Total EHP" in recommendation.formatted_output
+
+
+def test_weapon_empty_slot_does_not_recommend_rejected_candidate():
+    from companion.equipment.fubgun_priorities import evaluate_dual_weapon_policy
+    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
+
+    delta1 = PobEquipmentDelta(
+        slot="Weapon 1",
+        candidate_id=104,
+        candidate_name="Weak Weapon",
+        dps_delta=-10.0,
+    )
+    delta2 = delta1.model_copy(update={"slot": "Weapon 2"})
+
+    recommendation = evaluate_dual_weapon_policy(
+        delta1,
+        delta2,
+        empty_slot2=True,
+        use_color=False,
+    )
+
+    assert recommendation.recommended_slot is None
+    assert "Neither placement recommended" in recommendation.summary_verdict
+
+
 def test_weapon_lvl15_32_fubgun_priority():
     """Weapon lvl 15-32 priority: highest damage crossbow, % Physical desirable, Attack speed low value."""
     from companion.equipment.fubgun_priorities import get_fubgun_slot_priority_note

@@ -116,7 +116,10 @@ def evaluate_contextual_verdict(
 
     # 5. Insufficient data for confident equip
     if data_sufficiency is not None:
-        if data_sufficiency.sufficiency == RecommendationDataSufficiency.INSUFFICIENT_FOR_CONFIDENT_EQUIP:
+        if (
+            data_sufficiency.sufficiency == RecommendationDataSufficiency.INSUFFICIENT_FOR_CONFIDENT_EQUIP
+            or not data_sufficiency.is_sufficient_for_equip_now
+        ):
             flags.append("INSUFFICIENT_DATA")
             reason_msg = "; ".join(data_sufficiency.reasons) if data_sufficiency.reasons else "Insufficient data for confident equip."
             return (

@@ -27,6 +27,21 @@ def test_slot_type_members():
     assert SlotType.OFF_HAND.value == "off_hand"
 
 
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [
+        ("Weapon 1", SlotType.MAIN_HAND),
+        ("weapon1", SlotType.MAIN_HAND),
+        ("weapon_1", SlotType.MAIN_HAND),
+        ("Weapon 2", SlotType.OFF_HAND),
+        ("weapon2", SlotType.OFF_HAND),
+        ("weapon_2", SlotType.OFF_HAND),
+    ],
+)
+def test_weapon_slot_aliases_route_to_the_correct_hand(label, expected):
+    assert SlotType.from_str(label) == expected
+
+
 def test_slot_occupancy_members():
     assert SlotOccupancy.SINGLE_SLOT == "SINGLE_SLOT"
     assert SlotOccupancy.MAIN_HAND == "MAIN_HAND"

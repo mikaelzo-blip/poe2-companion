@@ -24,6 +24,7 @@ from companion.equipment.pob2_equipment_advisor import (
     POB2_PRODUCTION_SLOTS,
     Pob2EquipmentSession,
     PobEquipmentDelta,
+    _clear_slots_in_xml,
     normalize_and_validate_pob_slot,
 )
 from companion.equipment.precedence import Verdict
@@ -203,6 +204,94 @@ def test_generic_fubgun_equipment_policy_evaluates_all_core_slots():
     assert rec_amulet.verdict == Verdict.EQUIP_NOW
     assert "Amulet" in rec_amulet.formatted_output
     assert "+20 Life" in rec_amulet.formatted_output
+
+    # 7. Core armor slot with resistance gain despite minor ES / EHP delta
+    gloves_res_delta = PobEquipmentDelta(
+        slot="Gloves",
+        candidate_id=7,
+        candidate_name="Rune Mitts",
+        current_item_name="Silk Gloves",
+        life_delta=0,
+        fire_res_delta=14,
+        cold_res_delta=0,
+        lightning_res_delta=0,
+        chaos_res_delta=0,
+        armour_delta=30,
+        evasion_delta=0,
+        es_delta=-25,
+        ehp_delta=-3.2,
+        dps_delta=0.0,
+    )
+    rec_gloves_res = evaluate_fubgun_equipment_policy(gloves_res_delta, stage=BuildProgressionStage.LEVELING_15_32)
+    assert rec_gloves_res.verdict == Verdict.EQUIP_NOW
+    assert "+14% Fire Res" in rec_gloves_res.formatted_output
+
+
+def test_clear_slots_in_xml_is_independent_of_attribute_order():
+    xml = '<PathOfBuilding><ItemSet><Slot itemId="12" name="Weapon 2" active="true"/></ItemSet></PathOfBuilding>'
+
+    cleared = _clear_slots_in_xml(xml, ["Weapon 2"])
+
+    assert 'name="Weapon 2"' in cleared
+    assert 'itemId="0"' in cleared
+
+
+def test_build_delta_rejects_missing_metrics_instead_of_fabricating_zeroes():
+    fake_engine = FakePobEngine()
+    session = Pob2EquipmentSession(
+        character_name="BOMSHAK",
+        engine_factory=lambda: fake_engine,
+        poe_api_client=FakePoeApi(),
+    )
+
+    with pytest.raises(ValueError, match="Missing PoB2 metrics"):
+        session._build_delta(
+            canonical_slot="Helmet",
+            candidate_id=105,
+            candidate_name="Partial Helmet",
+            def_after={"Life": 320},
+            stats_after={"defense": {}, "offense": {}},
+            def_before={"Life": 300, "TotalEHP": 300.0},
+            stats_before={"defense": {"FireResist": 10}, "offense": {"CombinedDPS": 20.0}},
+        )
+
+
+def test_build_delta_tolerates_missing_movement_speed_when_no_mods_in_pob2():
+    """PoB2 omits MovementSpeed from defense table when EffectiveMovementSpeedMod is nil.
+    
+    _build_delta must not reject simulation or raise ValueError, defaulting movement delta to 0.0.
+    """
+    fake_engine = FakePobEngine()
+    session = Pob2EquipmentSession(
+        character_name="BOMSHAK",
+        engine_factory=lambda: fake_engine,
+        poe_api_client=FakePoeApi(),
+    )
+
+    def_before = {"Life": 300, "Armour": 100, "Evasion": 50, "EnergyShield": 20, "TotalEHP": 250.0}
+    def_after = {"Life": 320, "Armour": 120, "Evasion": 50, "EnergyShield": 20, "TotalEHP": 270.0}
+    stats_before = {
+        "defense": {"FireResist": 10, "ColdResist": 10, "LightningResist": 10, "ChaosResist": 0},
+        "offense": {"CombinedDPS": 20.0},
+    }
+    stats_after = {
+        "defense": {"FireResist": 20, "ColdResist": 10, "LightningResist": 10, "ChaosResist": 0},
+        "offense": {"CombinedDPS": 20.0},
+    }
+
+    delta = session._build_delta(
+        canonical_slot="Helmet",
+        candidate_id=1,
+        candidate_name="Test Helm",
+        def_after=def_after,
+        stats_after=stats_after,
+        def_before=def_before,
+        stats_before=stats_before,
+    )
+    assert delta.movement_speed_delta == 0.0
+    assert delta.fire_res_delta == 10
+    assert delta.life_delta == 20
+
 
 
 def test_generic_session_initialization_queries_all_core_equipped_items():
@@ -574,6 +663,31 @@ def test_simulate_ring_candidate_same_baseline_invariant():
     )
 
 
+def test_simulate_ring_candidate_returns_none_when_one_placement_fails():
+    """A partial dual-ring result must not be sent to the policy evaluator."""
+    class Ring2FailureEngine(FakePobEngine):
+        def call(self, action: str, **kwargs: Any) -> dict[str, Any]:
+            if action == "equip_item" and kwargs.get("slot") == "Ring 2":
+                raise RuntimeError("ring 2 simulation failed")
+            return super().call(action, **kwargs)
+
+    fake_engine = Ring2FailureEngine()
+    fake_engine.equipped_by_slot = {
+        "Ring 1": {"equipped": True, "name": "Gloom Band", "raw": RING_CANDIDATE_RAW},
+        "Ring 2": {"equipped": True, "name": "Blood Coil", "raw": RING_CANDIDATE_RAW},
+    }
+    session = Pob2EquipmentSession(
+        character_name="BOMSHAK",
+        engine_factory=lambda: fake_engine,
+        poe_api_client=FakePoeApi(),
+    )
+    assert session.initialize() is True
+
+    result = session.simulate_ring_candidate(RING_CANDIDATE_RAW, candidate_name="Storm Loop")
+
+    assert result is None
+
+
 def test_simulate_ring_candidate_skips_ring2_when_stale_after_ring1():
     """If a newer candidate arrives after Ring 1 simulation completes, Ring 2 MUST be skipped immediately."""
     fake_engine = FakePobEngine()
@@ -714,6 +828,42 @@ def test_dual_ring_policy_material_tradeoffs_neither_dominates():
     assert rec.recommended_slot is None
     assert rec.summary_verdict in (
         "Both placements viable / No safe automatic slot preference",
-        "NO SAFE AUTOMATIC SLOT PREFERENCE",
-    ) or "Both placements viable" in rec.summary_verdict
-    assert "Both placements viable / No safe automatic slot preference" in rec.formatted_output
+        "Neither placement recommended (keep current rings)",
+    )
+    assert len(rec.trade_off_notes) == 2
+
+
+def test_dual_ring_policy_rejected_empty_slot_is_not_overwritten_by_pareto_dominance():
+    """If an empty ring slot rejects the candidate, Pareto dominance must not overwrite it to replace the equipped ring."""
+    from companion.equipment.fubgun_priorities import evaluate_dual_ring_policy
+    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
+    from companion.equipment.recommendation import Verdict
+
+    # Delta on Ring 1 has positive stats vs equipped Ring 1
+    delta1 = PobEquipmentDelta(
+        slot="Ring 1",
+        candidate_id=1,
+        candidate_name="Mediocre Band",
+        current_item_name="Old Iron Ring",
+        life_delta=15,
+        cold_res_delta=10,
+        ehp_delta=12.0,
+    )
+    # Delta on Ring 2 (empty) has zero gains, so rec2 is REJECT
+    delta2 = PobEquipmentDelta(
+        slot="Ring 2",
+        candidate_id=1,
+        candidate_name="Mediocre Band",
+        current_item_name=None,
+        life_delta=0,
+        fire_res_delta=0,
+        cold_res_delta=0,
+        lightning_res_delta=0,
+        chaos_res_delta=0,
+        ehp_delta=0.0,
+    )
+
+    rec = evaluate_dual_ring_policy(delta1, delta2, empty_ring2=True, empty_ring1=False)
+    assert rec.ring2_recommendation.verdict == Verdict.REJECT
+    assert rec.recommended_slot is None
+    assert "Neither placement recommended" in rec.summary_verdict

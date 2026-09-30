@@ -27,25 +27,25 @@ class SlotType(str, Enum):
     def from_str(cls, val: str) -> SlotType:
         """Parse slot from various user and system formats."""
         normalized = val.strip().lower().replace("-", "_").replace(" ", "_")
-        if normalized in ("ring_1", "ring1"):
+        if normalized in ("ring_1", "ring1", "ring"):
             return cls.RING_1
         if normalized in ("ring_2", "ring2"):
             return cls.RING_2
         if normalized in ("helm", "helmet"):
             return cls.HELMET
-        if normalized in ("body", "body_armour", "chest", "bodyarmour"):
+        if normalized in ("body", "body_armour", "chest", "bodyarmour", "body_armor"):
             return cls.BODY_ARMOUR
         if normalized in ("glove", "gloves"):
             return cls.GLOVES
         if normalized in ("boot", "boots"):
             return cls.BOOTS
-        if normalized in ("amulet", "neck"):
+        if normalized in ("amulet", "neck", "necklace"):
             return cls.AMULET
         if normalized in ("belt",):
             return cls.BELT
-        if normalized in ("main_hand", "mainhand", "mh", "weapon1"):
+        if normalized in ("main_hand", "mainhand", "mh", "weapon1", "weapon_1", "weapon"):
             return cls.MAIN_HAND
-        if normalized in ("off_hand", "offhand", "oh", "shield", "quiver", "weapon2"):
+        if normalized in ("off_hand", "offhand", "oh", "shield", "quiver", "offhand2", "weapon2", "weapon_2"):
             return cls.OFF_HAND
         for member in cls:
             if member.value == normalized:

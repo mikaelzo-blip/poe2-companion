@@ -16,6 +16,24 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from companion.equipment.precedence import Verdict
 from companion.equipment.rules import BuildProgressionStage
+
+
+def infer_stage_from_level(level: int) -> BuildProgressionStage:
+    """Infer the canonical Fubgun progression stage from character level."""
+    if level < 15:
+        return BuildProgressionStage.LEVELING_1_14
+    elif level < 33:
+        return BuildProgressionStage.LEVELING_15_32
+    elif level < 52:
+        return BuildProgressionStage.LEVELING_33_51
+    elif level == 52:
+        return BuildProgressionStage.SWAP_52
+    elif level <= 68:
+        return BuildProgressionStage.LEVELING_53_68
+    elif level <= 85:
+        return BuildProgressionStage.LEVEL_85
+    else:
+        return BuildProgressionStage.ENDGAME
 from companion.equipment.schema import SlotType
 
 if TYPE_CHECKING:
@@ -32,7 +50,8 @@ RE_CAMPAIGN_NON_MATERIAL = re.compile(
     r"light\s+radius|"
     r"accuracy\s+rating|accuracy\b|"
     r"stun\s+threshold|ailment\s+threshold|"
-    r"stun\s+and\s+ailment\s+threshold"
+    r"stun\s+and\s+ailment\s+threshold|"
+    r"stun\s+(and\s+)?block\s+recovery|block\s+recovery|stun\s+recovery"
     r")\b",
     re.IGNORECASE,
 )
@@ -63,8 +82,14 @@ def is_fubgun_non_material_modifier(
 
     # If it contains genuinely material combat/keystone/defense mechanics, it is material!
     if RE_GENUINELY_MATERIAL.search(clean):
-        # Unless it is simply stun/ailment threshold
-        if not ("stun threshold" in clean or "ailment threshold" in clean or "accuracy" in clean):
+        # Unless it is simply stun/ailment threshold or stun/block recovery
+        if not (
+            "stun threshold" in clean
+            or "ailment threshold" in clean
+            or "accuracy" in clean
+            or "block recovery" in clean
+            or "stun recovery" in clean
+        ):
             return False
 
     # Check non-material patterns
@@ -214,16 +239,75 @@ def evaluate_fubgun_helmet_policy(
         )
 
     # Core Decision Logic
-    elem_res_gain = max(0, delta.fire_res_delta) + max(0, delta.cold_res_delta) + max(0, delta.lightning_res_delta)
-    elem_res_loss = min(0, delta.fire_res_delta) + min(0, delta.cold_res_delta) + min(0, delta.lightning_res_delta)
+    elem_res_gain = (
+        max(0, delta.fire_res_delta)
+        + max(0, delta.cold_res_delta)
+        + max(0, delta.lightning_res_delta)
+        + max(0, delta.chaos_res_delta)
+    )
+    elem_res_loss = (
+        min(0, delta.fire_res_delta)
+        + min(0, delta.cold_res_delta)
+        + min(0, delta.lightning_res_delta)
+        + min(0, delta.chaos_res_delta)
+    )
 
     has_primary_gain = delta.life_delta > 0 or elem_res_gain > 0
     has_primary_loss = delta.life_delta < 0 or elem_res_loss < 0
 
-    if has_primary_gain and not has_primary_loss and (delta.ehp_delta >= -1.0):
-        verdict = Verdict.EQUIP_NOW
+    # Check for net downgrade: dropping EHP, Life, and defenses/DPS for minor resistance (< 15%)
+    # or losing primary defense/EHP with no primary gain
+    is_net_downgrade = (
+        delta.ehp_delta < -1.0
+        and (
+            (
+                delta.life_delta < 0
+                and delta.dps_delta <= 0
+                and (delta.armour_delta <= 0 and delta.evasion_delta <= 0 and delta.es_delta <= 0)
+                and elem_res_gain < 15
+            )
+            or (
+                not has_primary_gain
+                and has_primary_loss
+                and delta.ehp_delta < -1.0
+            )
+            or (
+                elem_res_loss <= -10
+                and delta.life_delta <= 0
+                and delta.ehp_delta < -5.0
+            )
+        )
+    )
+
+    if has_primary_gain and not has_primary_loss:
+        if delta.ehp_delta >= -10.0:
+            verdict = Verdict.EQUIP_NOW
+            reason = (
+                f"Fubgun {stage_name} — Resistance > Life (defensive upgrade takes precedence over minor accuracy DPS change)."
+            )
+        else:
+            verdict = Verdict.CONDITIONAL_UPGRADE
+            reason = (
+                f"Fubgun {stage_name} — Trade-off between primary stats and significant local defense loss ({delta.ehp_delta:.2f} Total EHP). "
+                f"Equip if elemental resistance is urgently needed."
+            )
+    elif is_net_downgrade:
+        verdict = Verdict.REJECT
         reason = (
-            f"Fubgun {stage_name} — Resistance > Life (defensive upgrade takes precedence over minor accuracy DPS change)."
+            f"Fubgun {stage_name} — Helmet: Net downgrade ({delta.ehp_delta:+.2f} Total EHP, "
+            f"{delta.life_delta:+d} Life, {delta.dps_delta:+.2f} DPS) for a minor resistance gain (+{elem_res_gain}%). "
+            f"Keep current item."
+        )
+    elif (
+        elem_res_loss <= -6
+        and (delta.armour_delta <= -30 or delta.evasion_delta <= -30)
+        and delta.life_delta <= 30
+    ):
+        verdict = Verdict.REJECT
+        reason = (
+            f"Fubgun {stage_name} — Helmet: Severe defensive compromise ({elem_res_loss:+d}% Resistance, "
+            f"{delta.armour_delta:+d} Armour, {delta.evasion_delta:+d} Evasion) for a minor Life gain (+{delta.life_delta}). "
+            f"Keep current item."
         )
     elif has_primary_gain and has_primary_loss:
         verdict = Verdict.CONDITIONAL_UPGRADE
@@ -343,10 +427,16 @@ def evaluate_fubgun_equipment_policy(
         trade_offs.append(f"{delta.dps_delta:.2f} DPS")
 
     res_gain = sum(max(0, value) for value in (
-        delta.fire_res_delta, delta.cold_res_delta, delta.lightning_res_delta
+        delta.fire_res_delta,
+        delta.cold_res_delta,
+        delta.lightning_res_delta,
+        delta.chaos_res_delta,
     ))
     res_loss = sum(min(0, value) for value in (
-        delta.fire_res_delta, delta.cold_res_delta, delta.lightning_res_delta
+        delta.fire_res_delta,
+        delta.cold_res_delta,
+        delta.lightning_res_delta,
+        delta.chaos_res_delta,
     ))
     boots_movement_gain = slot == "Boots" and delta.movement_speed_delta > 0.05
     boots_movement_loss = slot == "Boots" and delta.movement_speed_delta < -0.05
@@ -354,13 +444,106 @@ def evaluate_fubgun_equipment_policy(
     primary_loss = delta.life_delta < 0 or res_loss < 0 or boots_movement_loss
     secondary_gain = delta.ehp_delta > 5.0 or delta.armour_delta > 20 or delta.evasion_delta > 20 or delta.es_delta > 20
 
-    if primary_gain and not primary_loss and not boots_movement_loss and delta.ehp_delta >= -1.0:
-        verdict = Verdict.EQUIP_NOW
-        reason = f"Fubgun {stage_name} — {slot}: Life and Resistance upgrade; PoB2 confirms the defensive improvement."
+    current = delta.current_item_name or f"Current {slot}"
+    is_offensive_slot = slot in ("Gloves", "Ring", "Ring 1", "Ring 2", "Amulet")
+
+    if primary_gain and not primary_loss and not boots_movement_loss:
+        material_dps_loss = (delta.dps_delta <= -5.0) or (
+            is_offensive_slot and delta.dps_delta <= -2.0
+        )
+        if material_dps_loss:
+            verdict = Verdict.CONDITIONAL_UPGRADE
+            reason = f"Fubgun {stage_name} — {slot}: Trade-off between Life/Resistance upgrade and offensive damage loss ({delta.dps_delta:.2f} DPS). Equip if defensive need matches."
+        elif delta.ehp_delta >= -10.0:
+            verdict = Verdict.EQUIP_NOW
+            reason = f"Fubgun {stage_name} — {slot}: Life and Resistance upgrade; PoB2 confirms the defensive improvement."
+        else:
+            verdict = Verdict.CONDITIONAL_UPGRADE
+            reason = f"Fubgun {stage_name} — {slot}: Trade-off between primary stats and significant local defense loss ({delta.ehp_delta:.2f} Total EHP). Equip if defensive need matches."
+    elif (
+        delta.ehp_delta < -1.0
+        and (
+            (
+                delta.life_delta < 0
+                and delta.dps_delta <= 0
+                and (delta.armour_delta <= 0 and delta.evasion_delta <= 0 and delta.es_delta <= 0)
+                and res_gain < 15
+            )
+            or (
+                not primary_gain
+                and primary_loss
+                and delta.ehp_delta < -1.0
+            )
+            or (
+                res_loss <= -10
+                and delta.life_delta <= 0
+                and delta.ehp_delta < -5.0
+            )
+        )
+    ):
+        verdict = Verdict.REJECT
+        reason = (
+            f"Fubgun {stage_name} — {slot}: Net downgrade ({delta.ehp_delta:+.2f} Total EHP, "
+            f"{delta.life_delta:+d} Life, {res_loss:+d}% Resistance). "
+            f"Local defense gain does not compensate for lost Life and Resistances. Keep current item."
+        )
+    elif (
+        res_loss <= -6
+        and (delta.armour_delta <= -30 or delta.evasion_delta <= -30 or delta.es_delta <= -30)
+        and delta.life_delta <= 30
+    ):
+        verdict = Verdict.REJECT
+        reason = (
+            f"Fubgun {stage_name} — {slot}: Severe defensive compromise ({res_loss:+d}% Resistance, "
+            f"local defense loss) for an inadequate Life gain (+{delta.life_delta}). "
+            f"Keep current item."
+        )
+    elif is_offensive_slot and delta.dps_delta < -0.5 and delta.life_delta < 0:
+        verdict = Verdict.REJECT
+        reason = (
+            f"Fubgun {stage_name} — {slot}: {current} LEBIH BAGUS! Net downgrade "
+            f"({delta.dps_delta:+.2f} DPS, {delta.life_delta:+d} Life). Di build Fubgun, "
+            f"slot {slot} adalah sumber flat attack damage dan sustain utama selama leveling. "
+            f"Keep current item."
+        )
+    elif is_offensive_slot and delta.dps_delta <= -2.0 and delta.life_delta <= 0 and res_gain < 35:
+        verdict = Verdict.REJECT
+        reason = (
+            f"Fubgun {stage_name} — {slot}: {current} LEBIH BAGUS! Menolak {delta.candidate_name} "
+            f"karena kehilangan flat attack damage ({delta.dps_delta:+.2f} DPS). Keep current item."
+        )
+    elif (
+        delta.dps_delta < -0.05
+        and delta.life_delta <= 0
+        and res_gain <= 0
+    ):
+        verdict = Verdict.REJECT
+        reason = (
+            f"Fubgun {stage_name} — {slot}: Net downgrade ({delta.dps_delta:+.2f} DPS, "
+            f"{delta.life_delta:+d} Life) with no resistance gain. "
+            f"Minor local defense cannot compensate. Keep current item."
+        )
+    elif not primary_gain and primary_loss:
+        verdict = Verdict.REJECT
+        loss_details: list[str] = []
+        if delta.life_delta < 0:
+            loss_details.append(f"{delta.life_delta:+d} Life")
+        if res_loss < 0:
+            loss_details.append(f"{res_loss:+d}% Resistance")
+        if boots_movement_loss:
+            loss_details.append(f"{delta.movement_speed_delta:g}% Movement Speed")
+        if not loss_details:
+            loss_details.append(f"{delta.life_delta:+d} Life, {res_loss:+d}% Resistance")
+        reason = (
+            f"Fubgun {stage_name} — {slot}: Net loss of primary stats ({', '.join(loss_details)}). Keep current item."
+        )
     elif primary_gain and primary_loss:
         verdict = Verdict.CONDITIONAL_UPGRADE
-        reason = f"Fubgun {stage_name} — {slot}: Life/Resistance trade-off; equip when it satisfies the current defensive need."
-    elif secondary_gain:
+        if boots_movement_loss and delta.life_delta >= 0 and res_loss == 0:
+            reason = f"Fubgun {stage_name} — {slot}: Trade-off between Life/Resistance upgrade and Movement Speed loss ({delta.movement_speed_delta:g}% Movement Speed); equip when it satisfies the current defensive need."
+        else:
+            reason = f"Fubgun {stage_name} — {slot}: Life/Resistance trade-off; equip when it satisfies the current defensive need."
+    elif secondary_gain and not primary_loss:
         verdict = Verdict.CONDITIONAL_UPGRADE
         reason = f"Fubgun {stage_name} — {slot}: secondary local-defense improvement without a primary Life/Resistance gain."
     else:
@@ -414,6 +597,8 @@ def evaluate_dual_ring_policy(
     empty_ring1: bool = False,
     empty_ring2: bool = False,
     use_color: bool | None = None,
+    empty_slot1: bool | None = None,
+    empty_slot2: bool | None = None,
 ) -> DualRingRecommendation:
     """Evaluate dual ring placements against canonical Fubgun policy and formatting.
 
@@ -425,8 +610,16 @@ def evaluate_dual_ring_policy(
        'Both placements viable / No safe automatic slot preference' with trade-off details.
     5. Compact stacked UI format.
     """
+    if empty_slot1 is not None:
+        empty_ring1 = empty_ring1 or empty_slot1
+    if empty_slot2 is not None:
+        empty_ring2 = empty_ring2 or empty_slot2
+
     if use_color is None:
         use_color = _supports_color()
+
+    if delta1 is None or delta2 is None:
+        raise ValueError("Both ring deltas are required for dual ring policy evaluation")
 
     rec1 = evaluate_fubgun_equipment_policy(delta1, stage=stage, use_color=use_color)
     rec2 = evaluate_fubgun_equipment_policy(delta2, stage=stage, use_color=use_color)
@@ -435,18 +628,28 @@ def evaluate_dual_ring_policy(
     summary_verdict: str = ""
     trade_off_notes: list[str] = []
 
-    # Case 1: Empty slot presence
+    # Case 1: Empty slot presence. Never replace an equipped ring when the empty
+    # placement is at least conditionally viable.
     if empty_ring2 and not empty_ring1:
-        if rec2.verdict == Verdict.EQUIP_NOW:
+        if rec2.verdict in (Verdict.EQUIP_NOW, Verdict.CONDITIONAL_UPGRADE):
             recommended_slot = "Ring 2"
             summary_verdict = "Recommended placement: Ring 2 (slot is empty)"
+        else:
+            recommended_slot = None
+            summary_verdict = "Neither placement recommended (keep current rings)"
     elif empty_ring1 and not empty_ring2:
-        if rec1.verdict == Verdict.EQUIP_NOW:
+        if rec1.verdict in (Verdict.EQUIP_NOW, Verdict.CONDITIONAL_UPGRADE):
             recommended_slot = "Ring 1"
             summary_verdict = "Recommended placement: Ring 1 (slot is empty)"
+        else:
+            recommended_slot = None
+            summary_verdict = "Neither placement recommended (keep current rings)"
 
-    # Case 2: One placement is EQUIP_NOW and other is REJECT or CONDITIONAL
-    if recommended_slot is None:
+    # Case 2: One placement is EQUIP_NOW and other is REJECT or CONDITIONAL.
+    # If the only empty placement was rejected, do not fall through to replacing
+    # the equipped ring.
+    has_single_empty_ring = empty_ring1 != empty_ring2
+    if recommended_slot is None and not has_single_empty_ring:
         if rec1.verdict == Verdict.EQUIP_NOW and rec2.verdict == Verdict.REJECT:
             recommended_slot = "Ring 1"
             summary_verdict = "Recommended placement: Ring 1 (direct upgrade; replacing Ring 2 is a regression)"
@@ -459,6 +662,12 @@ def evaluate_dual_ring_policy(
         elif rec2.verdict == Verdict.EQUIP_NOW and rec1.verdict == Verdict.CONDITIONAL_UPGRADE:
             recommended_slot = "Ring 2"
             summary_verdict = "Recommended placement: Ring 2 (unconditional upgrade; Ring 1 incurs trade-offs)"
+        elif rec1.verdict == Verdict.CONDITIONAL_UPGRADE and rec2.verdict == Verdict.REJECT:
+            recommended_slot = "Ring 1"
+            summary_verdict = "Recommended placement: Ring 1 (conditional upgrade; replacing Ring 2 is a regression)"
+        elif rec2.verdict == Verdict.CONDITIONAL_UPGRADE and rec1.verdict == Verdict.REJECT:
+            recommended_slot = "Ring 2"
+            summary_verdict = "Recommended placement: Ring 2 (conditional upgrade; replacing Ring 1 is a regression)"
 
     # Case 3: Both are REJECT
     if recommended_slot is None and rec1.verdict == Verdict.REJECT and rec2.verdict == Verdict.REJECT:
@@ -466,7 +675,12 @@ def evaluate_dual_ring_policy(
         summary_verdict = "Neither placement recommended (keep current rings)"
 
     # Case 4: Both are EQUIP_NOW or both are CONDITIONAL_UPGRADE -> Test Pareto Dominance
-    if recommended_slot is None:
+    if (
+        recommended_slot is None
+        and not has_single_empty_ring
+        and rec1.verdict in (Verdict.EQUIP_NOW, Verdict.CONDITIONAL_UPGRADE)
+        and rec2.verdict in (Verdict.EQUIP_NOW, Verdict.CONDITIONAL_UPGRADE)
+    ):
         d1_gains_over_d2 = (
             delta1.life_delta >= delta2.life_delta
             and delta1.fire_res_delta >= delta2.fire_res_delta
@@ -634,15 +848,52 @@ def evaluate_fubgun_weapon_policy(
         trade_offs.append(f"{delta.ehp_delta:.2f} Total EHP")
 
     res_loss = sum(min(0, value) for value in (
-        delta.fire_res_delta, delta.cold_res_delta, delta.lightning_res_delta
+        delta.fire_res_delta,
+        delta.cold_res_delta,
+        delta.lightning_res_delta,
+        delta.chaos_res_delta,
     ))
-    defensive_loss = delta.life_delta < 0 or res_loss < 0
+    local_defense_loss = (
+        delta.ehp_delta < -5.0
+        or delta.armour_delta < -20
+        or delta.evasion_delta < -20
+        or delta.es_delta < -20
+    )
+    defensive_loss = delta.life_delta < 0 or res_loss < 0 or local_defense_loss
     dps_gain = delta.dps_delta > 0.05
     dps_loss = delta.dps_delta < -0.05
 
-    if dps_gain and not defensive_loss:
+    # Campaign / Leveling weapon rule:
+    # In Fubgun campaign leveling, weapons are the primary damage engine.
+    # An outstanding DPS boost (dps_delta >= 5.0) with zero resistance loss (res_loss == 0)
+    # and only minor incidental attribute-driven life loss (life_delta >= -25) without
+    # shield/defense collapse is an undeniable EQUIP_NOW.
+    is_pre_swap = stage.is_pre_swap if stage else True
+    is_shield_collapse = (
+        delta.ehp_delta < -50.0
+        or delta.armour_delta < -100
+        or delta.evasion_delta < -100
+        or delta.es_delta < -100
+    )
+    is_decisive_weapon_upgrade = (
+        is_pre_swap
+        and delta.dps_delta >= 5.0
+        and res_loss == 0
+        and delta.life_delta >= -25
+        and not is_shield_collapse
+    )
+
+    if is_decisive_weapon_upgrade:
         verdict = Verdict.EQUIP_NOW
-        reason = f"Fubgun {stage_name} — {slot}{skill_str}: DPS upgrade without defensive trade-offs; PoB2 confirms the improvement."
+        reason = (
+            f"Fubgun {stage_name} — {slot}{skill_str}: {delta.candidate_name} LEBIH BAGUS! "
+            f"DPS upgrade lonjakan damage besar ({delta.dps_delta:+.2f} DPS). Di build Fubgun, senjata adalah motor utama "
+            f"damage ledakan granat dan kehilangan minor darah ({delta.life_delta:+d} Life) dari atribut lama "
+            f"tidak sebanding dengan lonjakan ofensif ini. Pasang sekarang!"
+        )
+    elif dps_gain and not defensive_loss:
+        verdict = Verdict.EQUIP_NOW
+        reason = f"Fubgun {stage_name} — {slot}{skill_str}: {delta.candidate_name} LEBIH BAGUS! DPS upgrade without defensive trade-offs; PoB2 confirms the improvement."
     elif dps_gain and defensive_loss:
         verdict = Verdict.CONDITIONAL_UPGRADE
         reason = f"Fubgun {stage_name} — {slot}{skill_str}: DPS upgrade with defensive loss ({trade_offs[0] if trade_offs else 'defenses'}); equip if offense outweighs defense."
@@ -710,6 +961,9 @@ def evaluate_dual_weapon_policy(
     empty_slot2: bool = False,
 ) -> DualWeaponRecommendation:
     """Evaluate dual weapon placements against canonical Fubgun policy and formatting."""
+    if delta1 is None or delta2 is None:
+        raise ValueError("Both weapon deltas are required for dual weapon policy evaluation")
+
     rec1 = evaluate_fubgun_weapon_policy(delta1, stage=stage, use_color=use_color)
     rec2 = evaluate_fubgun_weapon_policy(delta2, stage=stage, use_color=use_color)
 
@@ -718,11 +972,19 @@ def evaluate_dual_weapon_policy(
 
     trade_off_notes: list[str] = []
     if empty_slot2 and not empty_slot1:
-        recommended_slot = slot2_name
-        summary_verdict = f"Recommended placement: {slot2_name} (slot is empty)"
+        if rec2.verdict in (Verdict.EQUIP_NOW, Verdict.CONDITIONAL_UPGRADE):
+            recommended_slot = slot2_name
+            summary_verdict = f"Recommended placement: {slot2_name} (slot is empty)"
+        else:
+            recommended_slot = None
+            summary_verdict = "Neither placement recommended (keep current weapons)"
     elif empty_slot1 and not empty_slot2:
-        recommended_slot = slot1_name
-        summary_verdict = f"Recommended placement: {slot1_name} (slot is empty)"
+        if rec1.verdict in (Verdict.EQUIP_NOW, Verdict.CONDITIONAL_UPGRADE):
+            recommended_slot = slot1_name
+            summary_verdict = f"Recommended placement: {slot1_name} (slot is empty)"
+        else:
+            recommended_slot = None
+            summary_verdict = "Neither placement recommended (keep current weapons)"
     elif rec1.verdict == Verdict.EQUIP_NOW and rec2.verdict != Verdict.EQUIP_NOW:
         recommended_slot = slot1_name
         summary_verdict = f"Recommended placement: {slot1_name} (direct upgrade; replacing {slot2_name} is a regression)"
@@ -741,7 +1003,7 @@ def evaluate_dual_weapon_policy(
             summary_verdict = f"Both placements are valid upgrades ({slot1_name} or {slot2_name})"
     else:
         recommended_slot = None
-        summary_verdict = f"Neither placement recommended (keep current weapons)"
+        summary_verdict = "Neither placement recommended (keep current weapons)"
 
     header_1 = {
         Verdict.EQUIP_NOW: "🟢 EQUIP NOW",

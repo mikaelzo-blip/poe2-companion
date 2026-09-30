@@ -184,12 +184,10 @@ def test_partial_safe_when_known_slot_and_safe_but_some_facts_unobserved():
         slot=SlotType.BOOTS,
         safety_eval=safe,
     )
-    # Partial safe allows partial swap analysis without confident equip_now
-    assert res.sufficiency in (
-        RecommendationDataSufficiency.PARTIAL_SAFE,
-        RecommendationDataSufficiency.INSUFFICIENT_FOR_CONFIDENT_EQUIP,
-    )
-    assert res.is_sufficient_for_equip_now is False
+    # Missing resistances that this unchanged candidate does not touch are not
+    # decision-relevant dependencies for this comparison.
+    assert res.sufficiency == RecommendationDataSufficiency.SUFFICIENT
+    assert res.is_sufficient_for_equip_now is True
 
 
 def test_fully_sufficient_all_facts_known():

@@ -192,6 +192,27 @@ def test_case_d_campaign_reference_only_unchanged_permits_equip_now():
     assert "UNCHANGED_CRITICAL_DEFICIT" not in flags
 
 
+def test_partial_safe_data_does_not_yield_equip_now():
+    safe = BuildBreakerEvaluation(certainty=BuildBreakerCertainty.VERIFIED_SAFE)
+    reqs = RequirementCascadeResult(is_satisfied=True)
+    partial = DataSufficiencyResult(
+        sufficiency=RecommendationDataSufficiency.PARTIAL_SAFE,
+        reasons=["Cold and Lightning Resistance are unobserved"],
+        is_sufficient_for_equip_now=False,
+    )
+
+    verdict, reason, flags = evaluate_contextual_verdict(
+        safety_eval=safe,
+        cascade_result=reqs,
+        data_sufficiency=partial,
+        comparison=MultidimensionalComparison.DOMINANT_IMPROVEMENT,
+    )
+
+    assert verdict != Verdict.EQUIP_NOW
+    assert verdict == Verdict.INSUFFICIENT_DATA
+    assert "INSUFFICIENT_DATA" in flags
+
+
 def test_data_insufficiency_yields_insufficient_data():
     safe = BuildBreakerEvaluation(certainty=BuildBreakerCertainty.VERIFIED_SAFE)
     reqs = RequirementCascadeResult(is_satisfied=True)

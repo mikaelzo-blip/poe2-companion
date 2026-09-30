@@ -284,6 +284,48 @@ def test_fubgun_helmet_policy_favors_kraken_dome_over_brimstone_veil():
     assert "+7% Lightning Res" in rendered
 
 
+def test_fubgun_helmet_policy_favors_skull_ward_with_resistances_despite_minor_es_loss():
+    """Live regression: Skull Ward (+16% total res, +69 armour) vs Brimstone Veil (-32 ES, -3.49 EHP).
+
+    Resistance > Life priority means gaining elemental resistance takes precedence over
+    minor local ES loss / negative EHP delta during campaign leveling.
+    """
+    delta = PobHelmetDelta(
+        candidate_id=2,
+        candidate_name="Skull Ward",
+        current_helmet_name="Brimstone Veil",
+        life_delta=0,
+        fire_res_delta=7,
+        cold_res_delta=0,
+        lightning_res_delta=9,
+        chaos_res_delta=0,
+        armour_delta=69,
+        evasion_delta=-6,
+        es_delta=-32,
+        ehp_delta=-3.49,
+        dps_delta=-0.05,
+        life_before=361,
+        life_after=361,
+        ehp_before=289.46,
+        ehp_after=285.97,
+        dps_before=29.07,
+        dps_after=29.02,
+    )
+
+    rec = evaluate_fubgun_helmet_policy(delta, stage=BuildProgressionStage.LEVELING_1_14)
+    assert isinstance(rec, FubgunHelmetRecommendation)
+    assert rec.verdict == Verdict.EQUIP_NOW
+    assert "Resistance > Life" in rec.reason
+    assert "No gain in primary" not in rec.reason
+    rendered = rec.formatted_output
+    assert "🟢 EQUIP NOW" in rendered
+    assert "Skull Ward" in rendered
+    assert "+7% Fire Res" in rendered
+    assert "+9% Lightning Res" in rendered
+    assert "+69 Armour" in rendered
+    assert "-32 Energy Shield" in rendered
+
+
 def test_async_correctness_serialized_single_flight():
     """PoB engine simulations must be serialized / single-flight under concurrency."""
     fake_engine = FakePobEngine(simulate_delay=0.05)

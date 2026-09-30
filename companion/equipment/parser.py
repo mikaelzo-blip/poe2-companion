@@ -196,8 +196,15 @@ def parse_slot_topology_for_base(
             is_known=True,
         )
 
-    # Shields (Off Hand)
-    if "shield" in cls_lower or "shield" in base_lower or "buckler" in base_lower:
+    # Shields and Foci (Off Hand)
+    if (
+        "shield" in cls_lower
+        or "shield" in base_lower
+        or "buckler" in base_lower
+        or "focus" in cls_lower
+        or "foci" in cls_lower
+        or "focus" in base_lower
+    ):
         slot = SlotType.OFF_HAND
         return slot, SlotOccupancy.OFF_HAND, SlotConflictTopology(
             occupied_slots=[SlotType.OFF_HAND],
@@ -206,8 +213,18 @@ def parse_slot_topology_for_base(
             is_known=True,
         )
 
-    # One Hand Weapons (Wands, Sceptres, Daggers, Swords, Maces, Flails)
-    if any(k in cls_lower or k in base_lower for k in ("wand", "sceptre", "dagger", "sword", "mace", "flail")):
+    # Two Hand Melee Weapons (Two Hand Swords, Two Hand Maces, Two Hand Axes)
+    if "two hand" in cls_lower or "two-hand" in cls_lower:
+        slot = SlotType.MAIN_HAND
+        return slot, SlotOccupancy.TWO_HAND, SlotConflictTopology(
+            occupied_slots=[SlotType.MAIN_HAND, SlotType.OFF_HAND],
+            conflicting_slots=[SlotType.MAIN_HAND, SlotType.OFF_HAND],
+            allowed_companion_slots=[],
+            is_known=True,
+        )
+
+    # One Hand Weapons (Wands, Sceptres, Daggers, Swords, Maces, Flails, Axes)
+    if any(k in cls_lower or k in base_lower for k in ("wand", "sceptre", "dagger", "sword", "mace", "flail", "axe")):
         slot = target_slot if target_slot in (SlotType.MAIN_HAND, SlotType.OFF_HAND) else SlotType.MAIN_HAND
         return slot, SlotOccupancy.MAIN_HAND, SlotConflictTopology(
             occupied_slots=[slot],
@@ -229,7 +246,7 @@ def parse_slot_topology_for_base(
 def parse_item_text(
     raw_text: str,
     target_slot: SlotType | None = None,
-    target_weapon_set: WeaponSetContext | None = None,
+    target_weapon_set: WeaponSetContext | str | None = None,
 ) -> ItemCandidate:
     """Parse standard PoE2 item clipboard text into ItemCandidate."""
     validate_poe2_item_envelope(raw_text)
@@ -374,6 +391,12 @@ def parse_item_text(
     # Deterministic hash id
     item_id = f"item_{hashlib.sha256(raw_text.strip().encode('utf-8')).hexdigest()[:12]}"
 
+    wset_enum = (
+        WeaponSetContext.from_val(target_weapon_set)
+        if target_weapon_set is not None
+        else None
+    )
+
     return ItemCandidate(
         item_id=item_id,
         name=name,
@@ -394,5 +417,5 @@ def parse_item_text(
         annotations=annotations,
         flavor_text=flavor_text,
         raw_text=raw_text.strip(),
-        weapon_set=target_weapon_set,
+        weapon_set=wset_enum,
     )

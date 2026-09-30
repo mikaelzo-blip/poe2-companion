@@ -487,6 +487,11 @@ def build_parser() -> argparse.ArgumentParser:
     mark_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
     mark_p.add_argument("--session-id", default=None, help="Target observation session ID (optional)")
 
+    # Subcommand: dashboard
+    dash_p = subparsers.add_parser("dashboard", help="Launch zero-backend browser dashboard for live companion suite")
+    dash_p.add_argument("--port", type=int, default=8080, help="Local port for dashboard server (default: 8080)")
+    dash_p.add_argument("--no-browser", action="store_true", help="Do not automatically open default web browser")
+
     return parser
 
 
@@ -940,6 +945,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return handle_observe_cleanup(args)
     elif args.subcommand == "mark":
         return handle_observe_mark(args)
+    elif args.subcommand == "dashboard":
+        from companion.dashboard_server import serve_dashboard
+        serve_dashboard(port=args.port, open_browser=not args.no_browser)
+        return 0
 
     return 0
 

@@ -94,7 +94,23 @@ class ContinuousRuntimeOrchestrator:
 
     @property
     def client_log_path(self) -> Path:
-        return self.config.client_log_path or Path("Client.txt")
+        if self.config.client_log_path:
+            return self.config.client_log_path
+        local_p = Path("Client.txt")
+        if local_p.is_file():
+            return local_p
+        import os
+        prog_x86 = os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")
+        candidates = [
+            Path(prog_x86) / "Steam" / "steamapps" / "common" / "Path of Exile 2" / "logs" / "Client.txt",
+            Path(prog_x86) / "Grinding Gear Games" / "Path of Exile 2" / "logs" / "Client.txt",
+            Path("C:/Program Files/Steam/steamapps/common/Path of Exile 2/logs/Client.txt"),
+            Path("C:/Program Files/Grinding Gear Games/Path of Exile 2/logs/Client.txt"),
+        ]
+        for c in candidates:
+            if c.is_file():
+                return c
+        return local_p
 
     def initialize_startup(self) -> None:
         """Resolve startup boundary, acquire lifetime writer lock, and persist dirty checkpoint."""

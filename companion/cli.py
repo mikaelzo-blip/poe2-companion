@@ -117,6 +117,9 @@ def build_parser() -> argparse.ArgumentParser:
     unpack_p.add_argument(
         "--target", "-t", default="data/source/builds", help="Destination directory (default: data/source/builds)"
     )
+    unpack_p.add_argument(
+        "--stages", "-s", nargs="*", help="Optional custom progression stages (default: standard 9 Fubgun stages)"
+    )
 
     # sources validate
     val_p = sources_sub.add_parser("validate", help="Validate snapshots and generate manifest/reports")
@@ -497,7 +500,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def handle_sources_unpack(args: argparse.Namespace) -> int:
     try:
-        snapshots = unpack_source_archive(args.archive, args.target)
+        stages = args.stages if getattr(args, "stages", None) else None
+        snapshots = unpack_source_archive(args.archive, args.target, expected_stages=stages)
         print(f"Successfully unpacked {len(snapshots)} snapshots into '{args.target}':")
         for s in snapshots:
             print(f"  - [{s.logical_stage}] {s.filename} ({s.byte_size} bytes, sha256={s.sha256[:12]}...)")
@@ -1691,6 +1695,7 @@ def handle_observe_live_status(args: argparse.Namespace) -> int:
         session_id=session_id,
     )
     journal_mgr = ReviewJournalManager(session_dir=sdir, session_id=session_id)
+    from companion.observe.bridge import ReviewClaimManager
 
     obs_latest = manifest.sequence_high_watermark
     reader_frontier = reader.contiguous_frontier
@@ -1698,6 +1703,35 @@ def handle_observe_live_status(args: argparse.Namespace) -> int:
 
     reader_lag = compute_reader_lag(obs_latest, reader_frontier)
     review_lag = compute_review_lag(reader_frontier, review_frontier)
+
+    # Queue and claim metrics
+    req_dir = sdir / "live_analysis" / "review_requests"
+    claims_dir = sdir / "live_analysis" / "review_claims"
+    batches_dir = sdir / "live_analysis" / "review_batches"
+    err_log = sdir / "live_analysis" / "bridge_errors.jsonl"
+
+    all_req_ids = {p.stem for p in req_dir.glob("*.json")} if req_dir.exists() else set()
+    completed_req_ids = {p.stem for p in batches_dir.glob("*.json")} if batches_dir.exists() else set()
+
+    claim_mgr = ReviewClaimManager(session_dir=sdir)
+    claimed_req_ids = set()
+    for req_id in (all_req_ids - completed_req_ids):
+        if claim_mgr.get_active_claims(req_id):
+            claimed_req_ids.add(req_id)
+
+    pending_requests_count = len(all_req_ids - completed_req_ids - claimed_req_ids)
+    claimed_requests_count = len(claimed_req_ids)
+    completed_responses_count = len(completed_req_ids)
+
+    bridge_validation_errors_count = 0
+    if err_log.exists():
+        try:
+            with open(err_log, "r", encoding="utf-8") as f:
+                bridge_validation_errors_count = sum(1 for line in f if line.strip())
+        except Exception:
+            pass
+
+    reviewed_ahead_ranges = review_cursor_mgr.reviewed_ahead_ranges
 
     # Check Hermes review heartbeat
     status_file = sdir / "live_analysis" / "hermes_review_status.json"
@@ -1758,9 +1792,15 @@ def handle_observe_live_status(args: argparse.Namespace) -> int:
                 "status": hermes_status_label,
                 "heartbeat": heartbeat_str,
                 "reviewed_contiguous_sequence": review_frontier,
+                "review_contiguous_frontier": review_frontier,
+                "reviewed_ahead_ranges": reviewed_ahead_ranges,
                 "review_lag": review_lag,
                 "review_batches_completed": completed_batches_count,
                 "review_batches_pending": pending_batches_count,
+                "pending_requests": pending_requests_count,
+                "claimed_requests": claimed_requests_count,
+                "completed_responses": completed_responses_count,
+                "bridge_validation_errors": bridge_validation_errors_count,
                 "findings_count": len(findings),
                 "pending_markers_count": pending_markers_count,
             },
@@ -1783,7 +1823,10 @@ def handle_observe_live_status(args: argparse.Namespace) -> int:
     print("[HERMES REVIEW]")
     print(f"  Status: {hermes_status_label} (Heartbeat: {heartbeat_str})")
     print(f"  Reviewed Contiguous Sequence: {review_frontier} (Review Lag: {review_lag} events)")
+    print(f"  Reviewed Ahead Ranges: {reviewed_ahead_ranges}")
     print(f"  Review Batches: {completed_batches_count} completed, {pending_batches_count} pending")
+    print(f"  Review Queue: Pending Requests: {pending_requests_count}, Claimed Requests: {claimed_requests_count}, Completed Responses: {completed_responses_count}")
+    print(f"  Bridge Validation Errors: {bridge_validation_errors_count}")
     print(f"  Active Findings: {len(findings)} candidate(s)")
     for f in findings[:5]:
         print(f"    - [{f.status.value}] {f.title}")

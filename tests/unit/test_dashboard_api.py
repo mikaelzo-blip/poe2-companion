@@ -546,6 +546,37 @@ def test_dashboard_server_http_evaluate_endpoint() -> None:
                 assert sel_body.get("success") is True
                 assert sel_body.get("active_character_id") == "BOMSHAK"
 
+            # 4d. Test POST /api/update-stats
+            stats_data = json.dumps({
+                "character_id": "BOMSHAK",
+                "level": 37,
+                "strength": 48,
+                "dexterity": 85,
+                "intelligence": 53,
+                "life": 723,
+                "mana": 284,
+                "spirit": 30,
+                "energy_shield": 47,
+                "armour": 112,
+                "evasion": 465,
+                "fire_res": 23,
+                "cold_res": -3,
+                "lightning_res": -4,
+                "chaos_res": 0,
+            }).encode("utf-8")
+            req_stats = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/update-stats",
+                data=stats_data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req_stats, timeout=5) as resp:
+                assert resp.status == 200
+                stats_res = json.loads(resp.read().decode("utf-8"))
+                assert stats_res.get("success") is True
+                assert stats_res.get("character_id") == "BOMSHAK"
+
+
             # 5. Test GET static assets (HTML, CSS, JS)
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=5) as resp:
                 assert resp.status == 200
@@ -849,7 +880,7 @@ def test_get_account_characters(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with patch("companion.dashboard_api.resolve_pob2_backend_path", return_value=mock_pob_dir):
+    with patch("companion.equipment.pob2_equipment_advisor.resolve_pob2_backend_path", return_value=mock_pob_dir):
         res = get_account_characters(account_name="mikaelzo#5674", runtime_dir=tmp_path)
         assert res.get("account") == "mikaelzo#5674"
         assert "characters" in res
@@ -995,6 +1026,368 @@ def test_get_dashboard_status_reads_active_character_json_when_none(tmp_path: Pa
     res = get_dashboard_status(tmp_path, char_id=None)
     assert res["active_character_id"] == "Mikaelzo"
     assert res["character"].get("character_class") == "Sorceress"
+
+
+def test_evaluate_item_payload_stamps_evaluated_at(tmp_path: Path) -> None:
+    payload = {
+        "raw_text": SAMPLE_BOOTS_TEXT,
+        "character_id": "BOMSHAK",
+        "stage": "lvl 1-14",
+    }
+    result = evaluate_item_payload(payload, runtime_dir=tmp_path)
+    assert result.get("success") is True
+    assert "evaluated_at" in result
+    assert isinstance(result["evaluated_at"], str)
+    assert len(result["evaluated_at"]) > 10
+
+
+def test_check_auto_clipboard_passes_zone(monkeypatch: Any, tmp_path: Path) -> None:
+    from companion.dashboard_api import check_auto_clipboard
+    import companion.dashboard_api as d_api
+
+    # Reset seen clipboard
+    d_api._LAST_SEEN_CLIPBOARD = ""
+    monkeypatch.setattr(d_api, "get_clipboard_text", lambda: SAMPLE_BOOTS_TEXT)
+
+    captured_zone = []
+    orig_eval = d_api.evaluate_item_payload
+
+    def mock_eval(payload: dict[str, Any], runtime_dir: Path, pob_session: Any | None = None) -> dict[str, Any]:
+        captured_zone.append(payload.get("zone"))
+        return orig_eval(payload, runtime_dir=runtime_dir, pob_session=pob_session)
+
+    monkeypatch.setattr(d_api, "evaluate_item_payload", mock_eval)
+
+    res = check_auto_clipboard(
+        runtime_dir=tmp_path,
+        char_id="BOMSHAK",
+        stage_str="lvl 1-14",
+        zone="vastiri_outskirts",
+    )
+    assert res.get("has_new_item") is True
+    assert captured_zone == ["vastiri_outskirts"]
+
+
+def test_get_available_guides_includes_navira_varashta() -> None:
+    from companion.dashboard_api import get_available_guides
+
+    res = get_available_guides()
+    assert "guides" in res
+    guide_map = {g["id"]: g for g in res["guides"]}
+    assert "navira_varashta" in guide_map
+
+    navira = guide_map["navira_varashta"]
+    assert "Navira" in navira["name"]
+    assert navira["class"] == "Sorceress"
+    assert "Act 1 & 2" in navira["stages"]
+    assert "Uber Endgame" in navira["stages"]
+
+
+def test_evaluate_item_payload_navira_varashta_allows_sorc_weapon(tmp_path: Path) -> None:
+    from companion.dashboard_api import evaluate_item_payload
+    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
+
+    char_dir = tmp_path / "characters"
+    char_dir.mkdir(parents=True, exist_ok=True)
+    (char_dir / "StormWeaver.json").write_text(
+        json.dumps({
+            "character_id": "StormWeaver",
+            "character_name": "StormWeaver",
+            "character_class": "Sorceress",
+            "level": {"value": 45},
+        }),
+        encoding="utf-8",
+    )
+
+    class MockSorcPobSession:
+        is_available = True
+        character_name = "StormWeaver"
+        level = 45
+
+        def submit_candidate(self, raw_text: str, candidate_name: str, slot: str) -> int:
+            return 1
+
+        def simulate_item(self, slot: str, raw_candidate: str, candidate_id: int, candidate_name: str):
+            return PobEquipmentDelta(
+                slot="Weapon 1",
+                candidate_id=candidate_id,
+                candidate_name=candidate_name,
+                current_item_name="Basic Staff",
+                dps_delta=18.5,
+                life_delta=0.0,
+                ehp_delta=40.0,
+            )
+
+        def get_current_item_name(self, slot: str) -> str:
+            return "Basic Staff"
+
+    sorc_staff = """Item Class: Staves
+Rarity: Rare
+Storm Pillar
+Chiming Staff
+--------
+Requirements:
+Level: 45
+Int: 110
+--------
+Adds 15 to 35 Lightning Damage to Spells
++42% to Global Critical Strike Multiplier
++1 to Level of all Lightning Spell Skill Gems
+"""
+    payload = {
+        "raw_text": sorc_staff,
+        "character_id": "StormWeaver",
+        "guide": "navira_varashta",
+        "stage": "Act 4 to Endgame",
+    }
+    res = evaluate_item_payload(payload, runtime_dir=tmp_path, pob_session=MockSorcPobSession())
+    assert res.get("success") is True
+    assert res.get("verdict") in ("EQUIP_NOW", "CONDITIONAL_UPGRADE")
+    assert "Crossbow" not in res.get("reason", "")
+
+
+def test_evaluate_item_payload_navira_varashta_rejects_crossbow(tmp_path: Path) -> None:
+    from companion.dashboard_api import evaluate_item_payload
+
+    char_dir = tmp_path / "characters"
+    char_dir.mkdir(parents=True, exist_ok=True)
+    (char_dir / "StormWeaver.json").write_text(
+        json.dumps({
+            "character_id": "StormWeaver",
+            "character_name": "StormWeaver",
+            "character_class": "Sorceress",
+            "level": {"value": 45},
+        }),
+        encoding="utf-8",
+    )
+
+    xbow_text = """Item Class: Crossbows
+Rarity: Rare
+Doom Fletch
+Gemini Crossbow
+--------
+Physical Damage: 35-70
+--------
+Requirements:
+Level: 40
+Dex: 95
+"""
+    payload = {
+        "raw_text": xbow_text,
+        "character_id": "StormWeaver",
+        "guide": "navira_varashta",
+        "stage": "Act 4 to Endgame",
+    }
+    res = evaluate_item_payload(payload, runtime_dir=tmp_path)
+    assert res.get("success") is True
+    assert res.get("verdict") == "REJECT"
+    assert "Sorceress" in (res.get("reason") or res.get("actionable_recommendation") or "")
+
+
+def test_evaluate_item_payload_resolves_real_current_item_name() -> None:
+    """Verify that evaluate_item_payload resolves real current_item_name and current_item_base_type."""
+    runtime_dir = PROJECT_ROOT / "runtime"
+    gloves_sample = """Item Class: Gloves
+Rarity: Rare
+Horror Grip
+Stocky Mitts
+--------
+Armour: 43
+--------
+Requirements:
+Level: 15
+Str: 14
+Dex: 8
+--------
++43 to Armour
++18% to Fire Resistance
++8 to Dexterity"""
+
+    payload = {
+        "raw_text": gloves_sample,
+        "character_id": "BOMSHAK",
+        "stage": "lvl 15-32",
+        "zone": "G2_1",
+    }
+    result = evaluate_item_payload(payload, runtime_dir=runtime_dir)
+    assert result.get("success") is True
+    assert result.get("item_name") == "Horror Grip"
+    # BOMSHAK's equipped gloves in loadouts/BOMSHAK.json are Plague Claw (Spined Bracers)
+    assert result.get("current_item_name") == "Plague Claw"
+    assert result.get("current_item_base_type") == "Spined Bracers"
+    # Tactical advice should also mention Plague Claw, not generic "Current Item"
+    tac = result.get("tactical_advice")
+    assert tac is not None
+    assert "Plague Claw" in tac.get("tactical_headline", "")
+    assert "Current Item" not in tac.get("tactical_headline", "")
+
+
+def test_fetch_public_profile_prioritizes_tagged_account_and_does_not_abort_on_403(tmp_path: Path) -> None:
+    """Verify that fetch_public_profile prioritizes exact account_name and continues if first candidate fails."""
+    import io
+    import urllib.error
+    import urllib.request
+    from companion.dashboard_api import fetch_public_profile
+
+    urls_requested = []
+
+    def mock_urlopen(req, timeout=8):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        urls_requested.append(url)
+        # If candidate is mikaelzo#5674, simulate 403
+        if "mikaelzo%235674" in url:
+            raise urllib.error.HTTPError(url, 403, "Forbidden", {}, io.BytesIO(b'{"error":{"code":6}}'))
+        # If candidate is clean mikaelzo, return valid items payload
+        sample_item = {
+            "name": "Maelström Keep",
+            "typeLine": "Shrouded Vest",
+            "inventoryId": "BodyArmour",
+            "frameType": 2,
+            "properties": [{"name": "Evasion Rating", "values": [["209", 1]]}],
+            "explicitMods": ["+26 to Maximum Life"],
+        }
+        payload_data = json.dumps({"character": {"name": "BOMSHAK", "level": 19}, "items": [sample_item]}).encode("utf-8")
+        resp = io.BytesIO(payload_data)
+        resp.status = 200
+        return resp
+
+    import unittest.mock
+    with unittest.mock.patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        with unittest.mock.patch("companion.equipment.pob2_equipment_advisor.resolve_pob2_backend_path", return_value=None):
+            result = fetch_public_profile("mikaelzo#5674", "BOMSHAK", runtime_dir=tmp_path)
+            # First requested URL must prioritize exact tagged name mikaelzo#5674
+            assert len(urls_requested) >= 2
+            assert "mikaelzo%235674" in urls_requested[0]
+            # Should have continued to second candidate and succeeded
+            assert result.get("success") is True
+
+
+def test_fetch_public_profile_all_candidates_403_returns_privacy_error(tmp_path: Path) -> None:
+    """Verify that when all candidates return 403, a clear privacy instruction is returned."""
+    import io
+    import urllib.error
+    import unittest.mock
+    from companion.dashboard_api import fetch_public_profile
+
+    def mock_urlopen(req, timeout=8):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        raise urllib.error.HTTPError(url, 403, "Forbidden", {}, io.BytesIO(b'{"error":{"code":6}}'))
+
+    with unittest.mock.patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        with unittest.mock.patch("companion.equipment.pob2_equipment_advisor.resolve_pob2_backend_path", return_value=None):
+            result = fetch_public_profile("private_account#1234", "BOMSHAK", runtime_dir=tmp_path)
+            assert result.get("code") == 403
+            assert result.get("error") == "PROFILE_PRIVATE_OR_BLOCKED"
+            assert "private_account" in result.get("message", "")
+            assert "diblokir oleh GGG" in result.get("message", "")
+
+
+def test_fetch_public_profile_404_explains_poe2_context(tmp_path: Path) -> None:
+    """Verify that 404 response gives clear explanation about PoE 2 web limitation and clipboard/JSON alternatives."""
+    import io
+    import urllib.error
+    import unittest.mock
+    from companion.dashboard_api import fetch_public_profile
+
+    def mock_urlopen(req, timeout=8):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        raise urllib.error.HTTPError(url, 404, "Not Found", {}, io.BytesIO(b'{"error":{"code":1}}'))
+
+    with unittest.mock.patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        with unittest.mock.patch("companion.equipment.pob2_equipment_advisor.resolve_pob2_backend_path", return_value=None):
+            result = fetch_public_profile("mikaelzo#5674", "BOMSHAK", runtime_dir=tmp_path)
+            assert result.get("code") == 404
+            assert "Path of Exile" in result.get("message", "")
+            assert "Ctrl+C" in result.get("message", "")
+
+
+def test_update_character_stats_payload_updates_state_and_baseline(tmp_path: Path) -> None:
+    """Verify that update_character_stats_payload updates CharacterState and Baseline with given stats."""
+    from companion.dashboard_api import update_character_stats_payload, get_dashboard_status
+    payload = {
+        "character_id": "BOMSHAK",
+        "level": 37,
+        "ascendancy": "Gemling Legionnaire",
+        "character_class": "Mercenary",
+        "strength": 48,
+        "dexterity": 85,
+        "intelligence": 53,
+        "life": 723,
+        "mana": 284,
+        "spirit": 30,
+        "energy_shield": 47,
+        "armour": 112,
+        "evasion": 465,
+        "fire_res": 23,
+        "cold_res": -3,
+        "lightning_res": -4,
+        "chaos_res": 0,
+    }
+    result = update_character_stats_payload(payload, runtime_dir=tmp_path)
+    assert result.get("success") is True
+    assert result.get("character_id") == "BOMSHAK"
+
+    status = get_dashboard_status(runtime_dir=tmp_path, char_id="BOMSHAK")
+    char = status.get("character", {})
+    assert char.get("level", {}).get("value") == 37
+    assert char.get("attributes", {}).get("strength", {}).get("value") == 48
+    assert char.get("attributes", {}).get("dexterity", {}).get("value") == 85
+    assert char.get("attributes", {}).get("intelligence", {}).get("value") == 53
+    # Check stage automatically advanced to lvl 33-51 for level 37
+    assert char.get("build_progression", {}).get("active_stage") == "lvl 33-51"
+
+    base = status.get("baseline", {})
+    assert base.get("life", {}).get("value") == 723
+    assert base.get("armour", {}).get("value") == 112
+    assert base.get("evasion", {}).get("value") == 465
+    assert base.get("energy_shield", {}).get("value") == 47
+    assert base.get("effective_cold_res", {}).get("value") == -3
+
+
+def test_check_auto_clipboard_reevaluates_on_context_change(tmp_path: Path, monkeypatch: Any) -> None:
+    from companion.dashboard_api import check_auto_clipboard
+    import companion.dashboard_api as d_api
+    from companion.equipment.schema import SlotType
+    from companion.equipment.parser import parse_slot_topology_for_base
+
+    d_api._LAST_SEEN_CLIPBOARD = ""
+    item_raw = (
+        "Item Class: Sceptres\n"
+        "Rarity: Rare\n"
+        "Doom Chant\n"
+        "Bone Sceptre\n"
+        "--------\n"
+        "+15 to maximum Life\n"
+    )
+    monkeypatch.setattr("companion.dashboard_api.get_clipboard_text", lambda: item_raw)
+
+    # 1. First evaluation for BOMSHAK
+    res1 = check_auto_clipboard(tmp_path, char_id="BOMSHAK", stage_str="lvl 1-14")
+    assert res1["has_new_item"] is True
+
+    # 2. Polling again without change -> no new item
+    res2 = check_auto_clipboard(tmp_path, char_id="BOMSHAK", stage_str="lvl 1-14")
+    assert res2["has_new_item"] is False
+
+    # 3. Switching character -> re-evaluates even if clipboard text is identical
+    res3 = check_auto_clipboard(tmp_path, char_id="Varashta", stage_str="lvl 1-14")
+    assert res3["has_new_item"] is True
+
+    # Verify parser identifies sceptre, spear, and claw as weapons
+    slot_sceptre, _, _ = parse_slot_topology_for_base("Sceptres", "Bone Sceptre")
+    assert slot_sceptre == SlotType.MAIN_HAND
+
+    slot_spear, _, _ = parse_slot_topology_for_base("Spears", "War Spear")
+    assert slot_spear == SlotType.MAIN_HAND
+
+    slot_claw, _, _ = parse_slot_topology_for_base("Claws", "Feral Claw")
+    assert slot_claw == SlotType.MAIN_HAND
+
+
+
+
+
+
 
 
 

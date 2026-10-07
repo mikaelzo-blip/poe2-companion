@@ -12,6 +12,7 @@ RESPONSIBILITY BOUNDARY:
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 import sys
@@ -20,6 +21,15 @@ from typing import Any, Callable
 from pydantic import BaseModel, ConfigDict, Field
 
 from companion.equipment.schema import SlotType
+
+try:
+    from pob_mcp.engine import EngineError, EngineTimeoutError
+except ImportError:
+    class EngineError(RuntimeError):
+        """Raised when the PoB2 engine process fails to start or a command errors."""
+
+    class EngineTimeoutError(EngineError):
+        """Raised when an engine IPC call exceeds call_timeout."""
 
 
 CANONICAL_EQUIPMENT_SLOTS: set[str] = {
@@ -220,6 +230,9 @@ class PobEquipmentDelta(BaseModel):
     movement_speed_delta: float = 0.0
     ehp_delta: float = 0.0
     dps_delta: float = 0.0
+    strength_delta: int = 0
+    dexterity_delta: int = 0
+    intelligence_delta: int = 0
     life_before: int = 0
     life_after: int = 0
     ehp_before: float = 0.0
@@ -250,6 +263,16 @@ class DualWeaponSimulationResult(BaseModel):
     slot2_delta: PobEquipmentDelta | None = None
 
 
+def is_docker_daemon_running() -> bool:
+    """Check if Docker daemon is responsive in <10ms without blocking."""
+    import sys
+    if sys.platform == "win32":
+        return os.path.exists(r"\\.\pipe\docker_engine") or os.path.exists(r"\\.\pipe\dockerDesktopLinuxEngine")
+    sock_path = Path("/var/run/docker.sock")
+    user_sock = Path.home() / ".docker/run/docker.sock"
+    return sock_path.exists() or user_sock.exists()
+
+
 class Pob2EquipmentSession:
     """Generic session and adapter for headless PoB2 equipment calculations.
 
@@ -277,8 +300,11 @@ class Pob2EquipmentSession:
 
         self.is_available: bool = False
         self.unavailable_reason: str | None = None
+        self.is_healthy: bool = True
+        self.unhealthy_reason: str | None = None
 
         self.engine: Any = None
+        self.sandbox_engine: Any = None
         self.xml: str | None = None
         self.class_name: str | None = None
         self.level: int | None = None
@@ -315,6 +341,7 @@ class Pob2EquipmentSession:
         if self.engine_factory is not None and self.poe_api_client is not None:
             try:
                 self.engine = self.engine_factory()
+                self.sandbox_engine = self.engine_factory()
                 raw_json = self.poe_api_client.fetch_character_raw(self.character_name)
                 imp_res = self.engine.call("import_character", json=raw_json)
                 self.xml = imp_res.get("xml")
@@ -330,10 +357,14 @@ class Pob2EquipmentSession:
                 self.defenses_before = self.engine.call("get_defenses")
                 self.stats_before = self.engine.call("calc_stats")
                 self.is_available = True
+                self.is_healthy = True
+                self.unhealthy_reason = None
                 return True
             except Exception as exc:
                 self.is_available = False
                 self.unavailable_reason = f"Initialization error: {exc}"
+                self.is_healthy = False
+                self.unhealthy_reason = f"Initialization error: {exc}"
                 return False
 
         # Live environment initialization
@@ -343,6 +374,11 @@ class Pob2EquipmentSession:
                 "PoB2 backend directory not found. Please set POB2_MCP_PATH or ensure "
                 "path-of-building-2-mcp is a sibling directory."
             )
+            return False
+
+        if not is_docker_daemon_running():
+            self.is_available = False
+            self.unavailable_reason = "Docker daemon is not running (zero-backend fallback active)"
             return False
 
         server_dir = self.backend_path / "server"
@@ -379,9 +415,16 @@ class Pob2EquipmentSession:
             return False
 
         # Boot PobEngine
+        if not is_docker_daemon_running():
+            self.is_available = False
+            self.unavailable_reason = "Docker daemon is not running (zero-backend fallback active)"
+            return False
+
         try:
             self.engine = PobEngine()
             self.engine.start()
+            self.sandbox_engine = PobEngine()
+            self.sandbox_engine.start()
         except Exception as exc:
             self.is_available = False
             self.unavailable_reason = f"Failed to start PoB2 Docker engine: {exc}"
@@ -402,10 +445,50 @@ class Pob2EquipmentSession:
             self.defenses_before = self.engine.call("get_defenses")
             self.stats_before = self.engine.call("calc_stats")
             self.is_available = True
+            self.is_healthy = True
+            self.unhealthy_reason = None
             return True
         except Exception as exc:
             self.is_available = False
             self.unavailable_reason = f"Failed to import character into PoB2: {exc}"
+            self.is_healthy = False
+            self.unhealthy_reason = f"Failed to import character into PoB2: {exc}"
+            return False
+
+    def _recover_session(self) -> bool:
+        """Attempt a single recovery of the sandbox engine process.
+
+        Must be called while holding self._engine_lock.
+        """
+        if self.sandbox_engine is None or not self.xml:
+            return False
+        try:
+            logger = logging.getLogger(__name__)
+            logger.info("Attempting auto-recovery for unhealthy PoB2 session (%s)...", self.character_name)
+            if hasattr(self.sandbox_engine, "restart"):
+                self.sandbox_engine.restart()
+            elif hasattr(self.sandbox_engine, "ensure_alive"):
+                self.sandbox_engine.ensure_alive()
+            elif hasattr(self.sandbox_engine, "start"):
+                self.sandbox_engine.start()
+
+            self.sandbox_engine.call("import_build", xml=self.xml)
+            primary_group = self.get_primary_socket_group()
+            if primary_group:
+                try:
+                    self.sandbox_engine.call("set_main_skill", group=primary_group)
+                except Exception:
+                    pass
+            self.defenses_before = self.sandbox_engine.call("get_defenses")
+            self.stats_before = self.sandbox_engine.call("calc_stats")
+            self.is_healthy = True
+            self.unhealthy_reason = None
+            logger.info("PoB2 session (%s) successfully recovered.", self.character_name)
+            return True
+        except Exception as exc:
+            self.is_healthy = False
+            self.unhealthy_reason = f"Recovery failed: {exc}"
+            logging.getLogger(__name__).warning("PoB2 session (%s) recovery failed: %s", self.character_name, exc)
             return False
 
     def submit_candidate(self, candidate_raw: str, candidate_name: str = "", slot: str = "Helmet") -> int:
@@ -705,44 +788,46 @@ class Pob2EquipmentSession:
         if candidate_id is None:
             candidate_id = self.submit_candidate(raw_candidate, candidate_name=candidate_name, slot=canonical_slot)
 
-        if not self.is_available or self.engine is None or not self.xml:
+        if not self.is_available or self.sandbox_engine is None or not self.xml:
             return None
 
-        # 1. Pre-check staleness before waiting for expensive engine lock (skip if already superseded)
+        # 1. Pre-check staleness before waiting for expensive engine lock
         if self.is_stale(candidate_id):
             return None
 
         # 2. Acquire engine lock for serialized single-flight simulation
         with self._engine_lock:
-            # Re-check staleness immediately upon acquiring lock:
-            # If a newer candidate arrived while waiting for the lock, SKIP THIS SIMULATION!
             if self.is_stale(candidate_id):
                 return None
 
+            if not self.is_healthy:
+                if not self._recover_session():
+                    return None
+
             candidate_applied = False
             try:
-                # 2a. Restore baseline XML in case previous item mutated it
-                self.engine.call("import_build", xml=self.xml)
+                # 2a. Load baseline XML into sandbox engine (main engine untouched)
+                self.sandbox_engine.call("import_build", xml=self.xml)
                 primary_group = self.get_primary_socket_group()
                 if primary_group:
-                    self.engine.call("set_main_skill", group=primary_group)
-                def_before = self.engine.call("get_defenses")
-                stats_before = self.engine.call("calc_stats")
+                    self.sandbox_engine.call("set_main_skill", group=primary_group)
+                def_before = self.sandbox_engine.call("get_defenses")
+                stats_before = self.sandbox_engine.call("calc_stats")
 
                 # 2b. Equip candidate item in canonical slot
                 candidate_applied = True
-                self.engine.call("equip_item", slot=canonical_slot, raw=raw_candidate)
+                self.sandbox_engine.call("equip_item", slot=canonical_slot, raw=raw_candidate)
                 if primary_group:
-                    self.engine.call("set_main_skill", group=primary_group)
+                    self.sandbox_engine.call("set_main_skill", group=primary_group)
 
                 # 2c. Read post-equip defenses and stats
-                def_after = self.engine.call("get_defenses")
-                stats_after = self.engine.call("calc_stats")
+                def_after = self.sandbox_engine.call("get_defenses")
+                stats_after = self.sandbox_engine.call("calc_stats")
 
-                # 2d. Restore baseline XML immediately so engine is pristine
-                self.engine.call("import_build", xml=self.xml)
+                # 2d. Reset sandbox for next simulation
+                self.sandbox_engine.call("import_build", xml=self.xml)
                 if primary_group:
-                    self.engine.call("set_main_skill", group=primary_group)
+                    self.sandbox_engine.call("set_main_skill", group=primary_group)
                 candidate_applied = False
 
                 # 2e. Post-check staleness before building delta
@@ -758,15 +843,24 @@ class Pob2EquipmentSession:
                     def_before=def_before,
                     stats_before=stats_before,
                 )
+            except EngineError as exc:
+                logging.getLogger(__name__).warning("PoB2 engine error for slot %s: %s", canonical_slot, exc)
+                self.is_healthy = False
+                self.unhealthy_reason = f"Engine error: {exc}"
+                return None
             except Exception as exc:
-                import logging
                 logging.getLogger(__name__).warning("PoB2 simulation failed for slot %s: %s", canonical_slot, exc)
+                if isinstance(exc, EngineError) or "EngineError" in type(exc).__name__:
+                    self.is_healthy = False
+                    self.unhealthy_reason = f"Engine error: {exc}"
                 return None
             finally:
                 try:
-                    self.engine.call("import_build", xml=self.xml)
-                except Exception:
-                    pass
+                    self.sandbox_engine.call("import_build", xml=self.xml)
+                except Exception as exc:
+                    logging.getLogger(__name__).warning("Failed to restore baseline in PoB2 sandbox: %s", exc)
+                    self.is_healthy = False
+                    self.unhealthy_reason = f"Baseline restore failed: {exc}"
 
     def simulate_ring_candidate(
         self,
@@ -786,7 +880,7 @@ class Pob2EquipmentSession:
         if candidate_id is None:
             candidate_id = self.submit_candidate(raw_candidate, candidate_name=candidate_name, slot="Ring 1")
 
-        if not self.is_available or self.engine is None or not self.xml:
+        if not self.is_available or self.sandbox_engine is None or not self.xml:
             return None
 
         # 1. Pre-check staleness before waiting for engine lock
@@ -798,24 +892,39 @@ class Pob2EquipmentSession:
             if self.is_stale(candidate_id):
                 return None
 
+            if not self.is_healthy:
+                if not self._recover_session():
+                    return None
+
             delta1: PobEquipmentDelta | None = None
             delta2: PobEquipmentDelta | None = None
 
             # Step 1: Simulate candidate in Ring 1
             try:
-                self.engine.call("import_build", xml=self.xml)
-                self.engine.call("equip_item", slot="Ring 1", raw=raw_candidate)
-                def_after_1 = self.engine.call("get_defenses")
-                stats_after_1 = self.engine.call("calc_stats")
+                self.sandbox_engine.call("import_build", xml=self.xml)
+                self.sandbox_engine.call("equip_item", slot="Ring 1", raw=raw_candidate)
+                def_after_1 = self.sandbox_engine.call("get_defenses")
+                stats_after_1 = self.sandbox_engine.call("calc_stats")
                 delta1 = self._build_delta("Ring 1", candidate_id, candidate_name, def_after_1, stats_after_1)
-            except Exception:
+            except EngineError as exc:
+                logging.getLogger(__name__).warning("PoB2 engine error during Ring 1 simulation: %s", exc)
+                self.is_healthy = False
+                self.unhealthy_reason = f"Engine error: {exc}"
+                delta1 = None
+            except Exception as exc:
+                logging.getLogger(__name__).warning("PoB2 Ring 1 simulation failed: %s", exc)
+                if isinstance(exc, EngineError) or "EngineError" in type(exc).__name__:
+                    self.is_healthy = False
+                    self.unhealthy_reason = f"Engine error: {exc}"
                 delta1 = None
             finally:
-                # Guaranteed baseline restoration
+                # Guaranteed sandbox restoration
                 try:
-                    self.engine.call("import_build", xml=self.xml)
-                except Exception:
-                    pass
+                    self.sandbox_engine.call("import_build", xml=self.xml)
+                except Exception as exc:
+                    logging.getLogger(__name__).warning("Failed to restore sandbox in Ring 1 simulation: %s", exc)
+                    self.is_healthy = False
+                    self.unhealthy_reason = f"Baseline restore failed: {exc}"
 
             # Step 2: Staleness check between Ring 1 and Ring 2 (Requirement 4)
             if self.is_stale(candidate_id):
@@ -823,19 +932,30 @@ class Pob2EquipmentSession:
 
             # Step 3: Simulate candidate in Ring 2
             try:
-                self.engine.call("import_build", xml=self.xml)
-                self.engine.call("equip_item", slot="Ring 2", raw=raw_candidate)
-                def_after_2 = self.engine.call("get_defenses")
-                stats_after_2 = self.engine.call("calc_stats")
+                self.sandbox_engine.call("import_build", xml=self.xml)
+                self.sandbox_engine.call("equip_item", slot="Ring 2", raw=raw_candidate)
+                def_after_2 = self.sandbox_engine.call("get_defenses")
+                stats_after_2 = self.sandbox_engine.call("calc_stats")
                 delta2 = self._build_delta("Ring 2", candidate_id, candidate_name, def_after_2, stats_after_2)
-            except Exception:
+            except EngineError as exc:
+                logging.getLogger(__name__).warning("PoB2 engine error during Ring 2 simulation: %s", exc)
+                self.is_healthy = False
+                self.unhealthy_reason = f"Engine error: {exc}"
+                delta2 = None
+            except Exception as exc:
+                logging.getLogger(__name__).warning("PoB2 Ring 2 simulation failed: %s", exc)
+                if isinstance(exc, EngineError) or "EngineError" in type(exc).__name__:
+                    self.is_healthy = False
+                    self.unhealthy_reason = f"Engine error: {exc}"
                 delta2 = None
             finally:
-                # Guaranteed baseline restoration
+                # Guaranteed sandbox restoration
                 try:
-                    self.engine.call("import_build", xml=self.xml)
-                except Exception:
-                    pass
+                    self.sandbox_engine.call("import_build", xml=self.xml)
+                except Exception as exc:
+                    logging.getLogger(__name__).warning("Failed to restore sandbox in Ring 2 simulation: %s", exc)
+                    self.is_healthy = False
+                    self.unhealthy_reason = f"Baseline restore failed: {exc}"
 
             # Step 4: Staleness check after Ring 2
             if self.is_stale(candidate_id):
@@ -873,12 +993,16 @@ class Pob2EquipmentSession:
         if self.is_stale(candidate_id):
             return None
 
-        if not self.is_available or self.engine is None or not self.xml:
+        if not self.is_available or self.sandbox_engine is None or not self.xml:
             return None
 
         with self._engine_lock:
             if self.is_stale(candidate_id):
                 return None
+
+            if not self.is_healthy:
+                if not self._recover_session():
+                    return None
 
             candidate_applied = False
             try:
@@ -888,50 +1012,50 @@ class Pob2EquipmentSession:
                 target_slot_str = str(getattr(context, "target_slot", "")).lower()
                 set_num = 2 if (target_set == WeaponSetContext.WEAPON_SET_2 or "swap" in target_slot_str) else 1
 
-                # 2. Activate target weapon set in XML
+                # 2. Activate target weapon set in XML on sandbox
                 context_xml = _set_weapon_set_in_xml(self.xml, set_num)
-                self.engine.call("import_build", xml=context_xml)
+                self.sandbox_engine.call("import_build", xml=context_xml)
 
                 # 3. Select active skill context if specified
                 skill_context = getattr(context, "skill_context", None)
                 group_idx = self.find_socket_group_for_skill(skill_context)
                 if group_idx is not None:
                     try:
-                        self.engine.call("set_main_skill", group=group_idx)
+                        self.sandbox_engine.call("set_main_skill", group=group_idx)
                     except Exception:
                         pass
 
                 # 4. Measure baseline defenses and stats in this exact context
-                def_before = self.engine.call("get_defenses")
-                stats_before = self.engine.call("calc_stats")
+                def_before = self.sandbox_engine.call("get_defenses")
+                stats_before = self.sandbox_engine.call("calc_stats")
 
                 # 5. If topology requires clearing slots (e.g. offhand unequipped for 2H):
                 clear_slots = getattr(getattr(context, "topology_plan", None), "clear_slots", ())
                 if clear_slots:
                     cleared_xml = _clear_slots_in_xml(context_xml, clear_slots)
                     if cleared_xml != context_xml:
-                        self.engine.call("import_build", xml=cleared_xml)
+                        self.sandbox_engine.call("import_build", xml=cleared_xml)
                         if group_idx is not None:
                             try:
-                                self.engine.call("set_main_skill", group=group_idx)
+                                self.sandbox_engine.call("set_main_skill", group=group_idx)
                             except Exception:
                                 pass
 
                 # 6. Equip candidate item in target slot
                 candidate_applied = True
-                self.engine.call("equip_item", slot=context.target_slot, raw=context.raw_candidate)
+                self.sandbox_engine.call("equip_item", slot=context.target_slot, raw=context.raw_candidate)
                 if group_idx is not None:
                     try:
-                        self.engine.call("set_main_skill", group=group_idx)
+                        self.sandbox_engine.call("set_main_skill", group=group_idx)
                     except Exception:
                         pass
 
                 # 7. Read post-equip defenses and stats
-                def_after = self.engine.call("get_defenses")
-                stats_after = self.engine.call("calc_stats")
+                def_after = self.sandbox_engine.call("get_defenses")
+                stats_after = self.sandbox_engine.call("calc_stats")
 
-                # 8. Restore baseline XML immediately
-                self.engine.call("import_build", xml=self.xml)
+                # 8. Reset sandbox for next simulation
+                self.sandbox_engine.call("import_build", xml=self.xml)
                 candidate_applied = False
 
                 # 9. Staleness check
@@ -947,13 +1071,24 @@ class Pob2EquipmentSession:
                     def_before=def_before,
                     stats_before=stats_before,
                 )
-            except Exception:
+            except EngineError as exc:
+                logging.getLogger(__name__).warning("PoB2 engine error during weapon plan simulation: %s", exc)
+                self.is_healthy = False
+                self.unhealthy_reason = f"Engine error: {exc}"
+                return None
+            except Exception as exc:
+                logging.getLogger(__name__).warning("PoB2 weapon plan simulation failed: %s", exc)
+                if isinstance(exc, EngineError) or "EngineError" in type(exc).__name__:
+                    self.is_healthy = False
+                    self.unhealthy_reason = f"Engine error: {exc}"
                 return None
             finally:
                 try:
-                    self.engine.call("import_build", xml=self.xml)
-                except Exception:
-                    pass
+                    self.sandbox_engine.call("import_build", xml=self.xml)
+                except Exception as exc:
+                    logging.getLogger(__name__).warning("Failed to restore sandbox in weapon plan simulation: %s", exc)
+                    self.is_healthy = False
+                    self.unhealthy_reason = f"Baseline restore failed: {exc}"
 
     def simulate_ambiguous_1h_weapon(
         self,
@@ -980,7 +1115,7 @@ class Pob2EquipmentSession:
         if candidate_id is None:
             candidate_id = self.submit_candidate(raw_candidate, candidate_name=candidate_name, slot=slot1)
 
-        if not self.is_available or self.engine is None or not self.xml:
+        if not self.is_available or self.sandbox_engine is None or not self.xml:
             return None
 
         if self.is_stale(candidate_id):
@@ -990,54 +1125,80 @@ class Pob2EquipmentSession:
             if self.is_stale(candidate_id):
                 return None
 
+            if not self.is_healthy:
+                if not self._recover_session():
+                    return None
+
             delta1: PobEquipmentDelta | None = None
             delta2: PobEquipmentDelta | None = None
             context_xml = _set_weapon_set_in_xml(self.xml, set_num)
 
             # Slot 1 simulation
             try:
-                self.engine.call("import_build", xml=context_xml)
-                def_before_1 = self.engine.call("get_defenses")
-                stats_before_1 = self.engine.call("calc_stats")
+                self.sandbox_engine.call("import_build", xml=context_xml)
+                def_before_1 = self.sandbox_engine.call("get_defenses")
+                stats_before_1 = self.sandbox_engine.call("calc_stats")
 
-                self.engine.call("equip_item", slot=slot1, raw=raw_candidate)
-                def1 = self.engine.call("get_defenses")
-                st1 = self.engine.call("calc_stats")
+                self.sandbox_engine.call("equip_item", slot=slot1, raw=raw_candidate)
+                def1 = self.sandbox_engine.call("get_defenses")
+                st1 = self.sandbox_engine.call("calc_stats")
                 delta1 = self._build_delta(
                     slot1, candidate_id, candidate_name, def1, st1,
                     def_before=def_before_1, stats_before=stats_before_1,
                 )
-            except Exception:
+            except EngineError as exc:
+                logging.getLogger(__name__).warning("PoB2 engine error during ambiguous 1H slot1 simulation: %s", exc)
+                self.is_healthy = False
+                self.unhealthy_reason = f"Engine error: {exc}"
+                delta1 = None
+            except Exception as exc:
+                logging.getLogger(__name__).warning("PoB2 ambiguous 1H slot1 simulation failed: %s", exc)
+                if isinstance(exc, EngineError) or "EngineError" in type(exc).__name__:
+                    self.is_healthy = False
+                    self.unhealthy_reason = f"Engine error: {exc}"
                 delta1 = None
             finally:
                 try:
-                    self.engine.call("import_build", xml=self.xml)
-                except Exception:
-                    pass
+                    self.sandbox_engine.call("import_build", xml=self.xml)
+                except Exception as exc:
+                    logging.getLogger(__name__).warning("Failed to restore sandbox in ambiguous 1H slot1 simulation: %s", exc)
+                    self.is_healthy = False
+                    self.unhealthy_reason = f"Baseline restore failed: {exc}"
 
             if self.is_stale(candidate_id):
                 return None
 
             # Slot 2 simulation
             try:
-                self.engine.call("import_build", xml=context_xml)
-                def_before_2 = self.engine.call("get_defenses")
-                stats_before_2 = self.engine.call("calc_stats")
+                self.sandbox_engine.call("import_build", xml=context_xml)
+                def_before_2 = self.sandbox_engine.call("get_defenses")
+                stats_before_2 = self.sandbox_engine.call("calc_stats")
 
-                self.engine.call("equip_item", slot=slot2, raw=raw_candidate)
-                def2 = self.engine.call("get_defenses")
-                st2 = self.engine.call("calc_stats")
+                self.sandbox_engine.call("equip_item", slot=slot2, raw=raw_candidate)
+                def2 = self.sandbox_engine.call("get_defenses")
+                st2 = self.sandbox_engine.call("calc_stats")
                 delta2 = self._build_delta(
                     slot2, candidate_id, candidate_name, def2, st2,
                     def_before=def_before_2, stats_before=stats_before_2,
                 )
-            except Exception:
+            except EngineError as exc:
+                logging.getLogger(__name__).warning("PoB2 engine error during ambiguous 1H slot2 simulation: %s", exc)
+                self.is_healthy = False
+                self.unhealthy_reason = f"Engine error: {exc}"
+                delta2 = None
+            except Exception as exc:
+                logging.getLogger(__name__).warning("PoB2 ambiguous 1H slot2 simulation failed: %s", exc)
+                if isinstance(exc, EngineError) or "EngineError" in type(exc).__name__:
+                    self.is_healthy = False
+                    self.unhealthy_reason = f"Engine error: {exc}"
                 delta2 = None
             finally:
                 try:
-                    self.engine.call("import_build", xml=self.xml)
-                except Exception:
-                    pass
+                    self.sandbox_engine.call("import_build", xml=self.xml)
+                except Exception as exc:
+                    logging.getLogger(__name__).warning("Failed to restore sandbox in ambiguous 1H slot2 simulation: %s", exc)
+                    self.is_healthy = False
+                    self.unhealthy_reason = f"Baseline restore failed: {exc}"
 
             if self.is_stale(candidate_id):
                 return None
@@ -1077,8 +1238,14 @@ class Pob2EquipmentSession:
         return str(rec)
 
     def close(self) -> None:
-        """Clean up PoB engine."""
+        """Clean up both PoB engines (baseline + sandbox)."""
         with self._engine_lock:
+            if self.sandbox_engine is not None and hasattr(self.sandbox_engine, "close"):
+                try:
+                    self.sandbox_engine.close()
+                except Exception:
+                    pass
+                self.sandbox_engine = None
             if self.engine is not None and hasattr(self.engine, "close"):
                 try:
                     self.engine.close()

@@ -79,6 +79,10 @@ def _default_os_process_detector() -> list[tuple[int, str]]:
 
 
 DEFAULT_POE2_EXECUTABLES = [
+    "PathOfExile2Steam.exe",
+    "PathOfExile2.exe",
+    "PathOfExile2_x64.exe",
+    "PathOfExile2_x64Steam.exe",
     "PathOfExileSteam.exe",
     "PathOfExile.exe",
     "PathOfExile_x64.exe",

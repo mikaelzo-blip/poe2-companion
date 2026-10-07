@@ -124,6 +124,7 @@
             <span class="guide-label">BUILD GUIDE:</span>
             <select id="guide-select" class="sidebar-dropdown">
               <option value="fubgun_flameblast">Fubgun Flameblast (Mercenary)</option>
+              <option value="navira_varashta">Navira's Fracturing Varashta (Sorceress)</option>
               <option value="generic_pob2">Generic PoB2 Optimizer (Any Class)</option>
             </select>
             <span class="guide-label" style="margin-top: 8px;">PROGRESSION STAGE:</span>
@@ -227,31 +228,34 @@
           <div class="overview-subgrid">
             <!-- Core Attributes & Resists -->
             <div class="card">
-              <div class="card-header">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                 <span class="card-title">Attributes & Progression Stats</span>
+                <button class="btn btn-xs" id="btn-open-stats-modal" style="font-size: 11px; padding: 3px 8px; background: rgba(216, 169, 56, 0.15); border: 1px solid var(--accent-gold); color: var(--accent-gold); border-radius: 4px; cursor: pointer;" title="Perbarui / sinkronkan stat dan resistensi karakter Anda dari in-game">
+                  ✏️ Edit / Sync Stat
+                </button>
               </div>
               <div class="card-body">
                 <div class="attr-bars">
                   <div class="attr-row">
                     <span class="attr-name">Strength</span>
                     <div class="attr-bar-wrap">
-                      <div class="attr-bar str-bar" id="bar-str" style="width: 25%;"></div>
+                      <div class="attr-bar str-bar" id="bar-str" style="width: 48%;"></div>
                     </div>
-                    <span class="attr-num" id="val-str">10</span>
+                    <span class="attr-num" id="val-str">48</span>
                   </div>
                   <div class="attr-row">
                     <span class="attr-name">Dexterity</span>
                     <div class="attr-bar-wrap">
-                      <div class="attr-bar dex-bar" id="bar-dex" style="width: 30%;"></div>
+                      <div class="attr-bar dex-bar" id="bar-dex" style="width: 85%;"></div>
                     </div>
-                    <span class="attr-num" id="val-dex">14</span>
+                    <span class="attr-num" id="val-dex">85</span>
                   </div>
                   <div class="attr-row">
                     <span class="attr-name">Intelligence</span>
                     <div class="attr-bar-wrap">
-                      <div class="attr-bar int-bar" id="bar-int" style="width: 20%;"></div>
+                      <div class="attr-bar int-bar" id="bar-int" style="width: 53%;"></div>
                     </div>
-                    <span class="attr-num" id="val-int">10</span>
+                    <span class="attr-num" id="val-int">53</span>
                   </div>
                 </div>
 
@@ -259,22 +263,53 @@
 
                 <div class="defenses-summary">
                   <div class="def-item">
+                    <span class="def-label">Max Life</span>
+                    <strong class="def-val highlight-life" id="def-life">723</strong>
+                  </div>
+                  <div class="def-item">
+                    <span class="def-label">Mana / Spirit</span>
+                    <strong class="def-val" id="def-mana" style="color: #60a5fa;">284 / 30</strong>
+                  </div>
+                  <div class="def-item">
                     <span class="def-label">Armour</span>
-                    <strong class="def-val" id="def-armour">32</strong>
+                    <strong class="def-val" id="def-armour">112</strong>
                   </div>
                   <div class="def-item">
                     <span class="def-label">Evasion</span>
-                    <strong class="def-val" id="def-evasion">0</strong>
+                    <strong class="def-val" id="def-evasion">465</strong>
                   </div>
                   <div class="def-item">
                     <span class="def-label">Energy Shield</span>
-                    <strong class="def-val" id="def-es">0</strong>
-                  </div>
-                  <div class="def-item">
-                    <span class="def-label">Bonus Life</span>
-                    <strong class="def-val highlight-life" id="def-life">+10</strong>
+                    <strong class="def-val" id="def-es">47</strong>
                   </div>
                 </div>
+
+                <!-- RESISTANCES GRID (TARGET 75%) -->
+                <div class="resistances-summary" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-dim); letter-spacing: 0.5px;">Resistances (Target 75%)</span>
+                    <span style="font-size: 9px; color: var(--text-muted);" id="res-status-caption">Cold & Light Negatif!</span>
+                  </div>
+                  <div class="res-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
+                    <div class="res-badge-box" id="res-box-fire" style="padding: 6px 4px; border-radius: 4px; text-align: center; background: rgba(255, 100, 50, 0.1); border: 1px solid rgba(255, 100, 50, 0.3);">
+                      <span style="display: block; font-size: 9px; color: #ff8866; font-weight: 700;">FIRE</span>
+                      <strong id="val-fire-res" style="font-size: 13px; color: #ffaa88;">23%</strong>
+                    </div>
+                    <div class="res-badge-box" id="res-box-cold" style="padding: 6px 4px; border-radius: 4px; text-align: center; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.5);">
+                      <span style="display: block; font-size: 9px; color: #f87171; font-weight: 700;">COLD</span>
+                      <strong id="val-cold-res" style="font-size: 13px; color: #ef4444; font-weight: 800;">-3%</strong>
+                    </div>
+                    <div class="res-badge-box" id="res-box-light" style="padding: 6px 4px; border-radius: 4px; text-align: center; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.5);">
+                      <span style="display: block; font-size: 9px; color: #f87171; font-weight: 700;">LIGHT</span>
+                      <strong id="val-light-res" style="font-size: 13px; color: #ef4444; font-weight: 800;">-4%</strong>
+                    </div>
+                    <div class="res-badge-box" id="res-box-chaos" style="padding: 6px 4px; border-radius: 4px; text-align: center; background: rgba(200, 80, 255, 0.1); border: 1px solid rgba(200, 80, 255, 0.3);">
+                      <span style="display: block; font-size: 9px; color: #cc88ff; font-weight: 700;">CHAOS</span>
+                      <strong id="val-chaos-res" style="font-size: 13px; color: #eee;">0%</strong>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
 
@@ -586,6 +621,107 @@ Requirements: Level 12
           📥 Terapkan Seluruh Equipment ke Loadout
         </button>
         <div id="sync-json-msg" style="margin-top: 10px; font-size: 11px; line-height: 1.4; display: none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Edit / Sync Stat Karakter -->
+  <div class="modal-overlay" id="modal-sync-stats" style="display: none;">
+    <div class="sync-modal-box" style="max-width: 520px;">
+      <div class="modal-header">
+        <h3 style="color: var(--accent-gold); margin: 0; font-size: 15px;">📊 Edit & Sinkronkan Stat Karakter</h3>
+        <button class="modal-close-btn" id="btn-close-stats-modal">✕</button>
+      </div>
+      <div style="padding: 16px 20px;">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.4;">
+          Perbarui data atribut, pertahanan, dan resistansi in-game agar Tactical Advisor dapat menganalisis persyaratan gear dan build secara presisi.
+        </p>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+          <div>
+            <label style="display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 3px;">Karakter:</label>
+            <input type="text" id="stat-edit-char-name" class="modal-input" value="BOMSHAK" readonly style="opacity: 0.8;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 3px;">Level Karakter:</label>
+            <input type="number" id="stat-edit-level" class="modal-input" value="53" min="1" max="100">
+          </div>
+        </div>
+
+        <div style="font-size: 11px; font-weight: 700; color: var(--accent-gold); text-transform: uppercase; margin: 10px 0 6px 0; border-bottom: 1px solid var(--border-subtle); padding-bottom: 4px;">
+          Atribut Dasar
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px;">
+          <div>
+            <label style="display: block; font-size: 10px; color: #ef4444; margin-bottom: 2px;">Strength (Str):</label>
+            <input type="number" id="stat-edit-str" class="modal-input" value="75">
+          </div>
+          <div>
+            <label style="display: block; font-size: 10px; color: #22c55e; margin-bottom: 2px;">Dexterity (Dex):</label>
+            <input type="number" id="stat-edit-dex" class="modal-input" value="91">
+          </div>
+          <div>
+            <label style="display: block; font-size: 10px; color: #3b82f6; margin-bottom: 2px;">Intelligence (Int):</label>
+            <input type="number" id="stat-edit-int" class="modal-input" value="22">
+          </div>
+        </div>
+
+        <div style="font-size: 11px; font-weight: 700; color: var(--accent-gold); text-transform: uppercase; margin: 10px 0 6px 0; border-bottom: 1px solid var(--border-subtle); padding-bottom: 4px;">
+          Pertahanan & Pool
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px;">
+          <div>
+            <label style="display: block; font-size: 10px; color: #ef4444; margin-bottom: 2px;">Max Life:</label>
+            <input type="number" id="stat-edit-life" class="modal-input" value="1157">
+          </div>
+          <div>
+            <label style="display: block; font-size: 10px; color: #3b82f6; margin-bottom: 2px;">Mana:</label>
+            <input type="number" id="stat-edit-mana" class="modal-input" value="300">
+          </div>
+          <div>
+            <label style="display: block; font-size: 10px; color: #a855f7; margin-bottom: 2px;">Energy Shield:</label>
+            <input type="number" id="stat-edit-es" class="modal-input" value="73">
+          </div>
+          <div>
+            <label style="display: block; font-size: 10px; color: #eab308; margin-bottom: 2px;">Armour:</label>
+            <input type="number" id="stat-edit-armour" class="modal-input" value="207">
+          </div>
+          <div>
+            <label style="display: block; font-size: 10px; color: #10b981; margin-bottom: 2px;">Evasion:</label>
+            <input type="number" id="stat-edit-evasion" class="modal-input" value="526">
+          </div>
+          <div>
+            <label style="display: block; font-size: 10px; color: #60a5fa; margin-bottom: 2px;">Spirit:</label>
+            <input type="number" id="stat-edit-spirit" class="modal-input" value="30">
+          </div>
+        </div>
+
+        <div style="font-size: 11px; font-weight: 700; color: var(--accent-gold); text-transform: uppercase; margin: 10px 0 6px 0; border-bottom: 1px solid var(--border-subtle); padding-bottom: 4px;">
+          Resistances (%)
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px;">
+          <div>
+            <label style="display: block; font-size: 10px; color: #ff8866; margin-bottom: 2px;">Fire Res (%):</label>
+            <input type="number" id="stat-edit-fire" class="modal-input" value="17">
+          </div>
+          <div>
+            <label style="display: block; font-size: 10px; color: #66b2ff; margin-bottom: 2px;">Cold Res (%):</label>
+            <input type="number" id="stat-edit-cold" class="modal-input" value="-8">
+          </div>
+          <div>
+            <label style="display: block; font-size: 10px; color: #ffd166; margin-bottom: 2px;">Light Res (%):</label>
+            <input type="number" id="stat-edit-light" class="modal-input" value="7">
+          </div>
+          <div>
+            <label style="display: block; font-size: 10px; color: #cc88ff; margin-bottom: 2px;">Chaos Res (%):</label>
+            <input type="number" id="stat-edit-chaos" class="modal-input" value="0">
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-block" id="btn-save-character-stats" style="background: var(--accent-gold); color: #000; font-weight: 700; padding: 10px; border-radius: 4px;">
+          💾 Simpan & Perbarui Evaluasi Build
+        </button>
+        <div id="stat-save-msg" style="margin-top: 10px; font-size: 11px; line-height: 1.4; display: none;"></div>
       </div>
     </div>
   </div>

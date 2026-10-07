@@ -17,6 +17,7 @@ def _read_win32_clipboard() -> str:
     try:
         import ctypes
         from ctypes import wintypes
+        import time
 
         user32 = ctypes.windll.user32
         kernel32 = ctypes.windll.kernel32
@@ -32,7 +33,15 @@ def _read_win32_clipboard() -> str:
         kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
         kernel32.GlobalUnlock.restype = wintypes.BOOL
 
-        if not user32.OpenClipboard(None):
+        # Retry OpenClipboard up to 5 times in case another process (e.g. PoE2) has it momentarily open.
+        opened = False
+        for _ in range(5):
+            if user32.OpenClipboard(None):
+                opened = True
+                break
+            time.sleep(0.015)
+
+        if not opened:
             return ""
         try:
             h_data = user32.GetClipboardData(13)  # CF_UNICODETEXT
@@ -55,35 +64,25 @@ def _read_os_clipboard() -> str:
     """Read text from platform clipboard passively without simulating inputs."""
     # Fast native Windows clipboard reader
     if sys.platform == "win32":
-        text = _read_win32_clipboard()
-        if text:
-            return text
+        return _read_win32_clipboard()
 
-    # Try tkinter if available
-    try:
-        import tkinter
-        r = tkinter.Tk()
-        r.withdraw()
-        text = r.clipboard_get()
-        r.destroy()
-        if text:
-            return str(text)
-    except Exception:
-        pass
-
-    # Windows fallback via powershell Get-Clipboard
-    if sys.platform == "win32":
+    # Linux / macOS fallback using cli tools (avoid GUI toolkit loops like Tkinter in background servers)
+    if sys.platform == "darwin":
         try:
-            res = subprocess.run(
-                ["powershell", "-NoProfile", "-Command", "Get-Clipboard"],
-                capture_output=True,
-                text=True,
-                timeout=3,
-            )
-            if res.returncode == 0 and res.stdout:
+            res = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=2)
+            if res.returncode == 0:
                 return res.stdout
         except Exception:
             pass
+    else:
+        # Linux xclip / wl-paste
+        for cmd in (["wl-paste"], ["xclip", "-selection", "clipboard", "-o"]):
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
+                if res.returncode == 0:
+                    return res.stdout
+            except Exception:
+                continue
 
     return ""
 

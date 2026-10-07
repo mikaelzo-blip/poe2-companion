@@ -129,3 +129,25 @@ def test_valid_unpacking_preserves_bytes(tmp_path: Path) -> None:
         assert snap.target_path.is_file()
         assert snap.target_path.read_bytes() == content
         assert snap.byte_size == len(content)
+
+
+def test_unpacking_custom_stages_accepts_non_fubgun_archive(tmp_path: Path) -> None:
+    content = b'{"name": "Navira", "author": "MisoxShiru"}'
+    files = {
+        "Act 1 & 2 - Navira.build": content,
+        "Act 2 - Navira.build": content,
+        "Act 3 - Navira.build": content,
+    }
+    zip_path = tmp_path / "navira.zip"
+    zip_path.write_bytes(_create_mock_zip(files).getvalue())
+
+    target_dir = tmp_path / "extracted"
+    custom_stages = ["Act 1 & 2", "Act 2", "Act 3"]
+    snapshots = unpack_source_archive(zip_path, target_dir, expected_stages=custom_stages)
+
+    assert len(snapshots) == 3
+    stages_unpacked = [s.logical_stage for s in snapshots]
+    assert stages_unpacked == custom_stages
+    for snap in snapshots:
+        assert snap.target_path.is_file()
+

@@ -45,10 +45,12 @@ class UnpackedSnapshot:
     byte_size: int
 
 
-def match_logical_stage(filename: str) -> str | None:
-    """Identify which of the nine progression stages matches the given filename."""
+def match_logical_stage(
+    filename: str, stages: tuple[str, ...] | list[str] = EXPECTED_STAGES
+) -> str | None:
+    """Identify which progression stage matches the given filename."""
     clean_name = Path(filename).name.strip()
-    for stage in EXPECTED_STAGES:
+    for stage in stages:
         if clean_name.startswith(stage):
             return stage
     return None
@@ -87,6 +89,7 @@ def validate_archive_member_path(member_name: str, target_dir: Path) -> Path:
 def unpack_source_archive(
     archive_path: str | Path,
     target_dir: str | Path,
+    expected_stages: tuple[str, ...] | list[str] | None = None,
 ) -> list[UnpackedSnapshot]:
     """Unpack all expected .build snapshots from archive into target_dir with ZIP slip protection.
     
@@ -105,6 +108,8 @@ def unpack_source_archive(
     found_stages: dict[str, str] = {}
     extraneous_files: list[str] = []
 
+    stages_to_use = list(expected_stages) if expected_stages is not None else list(EXPECTED_STAGES)
+
     with zipfile.ZipFile(archive_file, "r") as zf:
         # Phase 1: Pre-validate all members before extracting anything
         for info in zf.infolist():
@@ -119,14 +124,14 @@ def unpack_source_archive(
                 extraneous_files.append(info.filename)
                 continue
 
-            stage = match_logical_stage(filename)
+            stage = match_logical_stage(filename, stages=stages_to_use)
             if not stage:
                 extraneous_files.append(info.filename)
             else:
                 found_stages[stage] = filename
 
-        # Validate completeness of expected 9 stages
-        missing_stages = [s for s in EXPECTED_STAGES if s not in found_stages]
+        # Validate completeness of expected stages
+        missing_stages = [s for s in stages_to_use if s not in found_stages]
         if missing_stages:
             raise ArchiveValidationError(
                 f"Archive is missing required progression stages: {missing_stages}"
@@ -137,7 +142,7 @@ def unpack_source_archive(
             )
 
         # Phase 2: Extract verified entries in stage order
-        for stage in EXPECTED_STAGES:
+        for stage in stages_to_use:
             member_filename = found_stages[stage]
             raw_bytes = zf.read(member_filename)
             digest = hashlib.sha256(raw_bytes).hexdigest()

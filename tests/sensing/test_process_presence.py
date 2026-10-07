@@ -83,3 +83,13 @@ def test_process_monitor_detects_termination() -> None:
     assert t3.previous_state == ProcessState.TERMINATED
     assert t3.current_state == ProcessState.IDLE
     assert monitor.current_state == ProcessState.IDLE
+
+
+def test_default_poe2_executables_include_poe2_binaries() -> None:
+    from companion.sensing.process_presence import DEFAULT_POE2_EXECUTABLES
+
+    lower_execs = [e.lower() for e in DEFAULT_POE2_EXECUTABLES]
+    assert "pathofexile2steam.exe" in lower_execs
+    assert "pathofexile2.exe" in lower_execs
+    assert "pathofexile2_x64.exe" in lower_execs
+

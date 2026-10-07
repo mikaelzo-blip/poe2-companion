@@ -136,3 +136,99 @@
   18. Hermes advances from review cursor
   19. Live status accurately reflects `ACTIVE` vs `OFFLINE`, saturation state, batch counts, and both lag values
   Confirming that the 30-minute rule remains solely the dataset acceptance duration threshold and not an analysis delay.
+
+## 14. Filesystem Hermes AI Review Bridge & Request/Response Protocols
+
+- [x] 14.1 Implement `ReviewRequestEnvelope`, `ExistingFindingContext`, `ReviewClaimEnvelope` (`schema_version`, `review_batch_id`, `claim_id`, `review_run_id`, `claimed_at`, `lease_expires_at`), `ReviewClaimStatusEnvelope` (`schema_version`, `review_batch_id`, `claim_id`, `last_heartbeat`, `lease_expires_at`), `RequestPriorityState` (`review_batch_id`, `priority`, `priority_reason`, `updated_at`), and `ReviewResponseEnvelope` in `companion/observe/models.py` with full field-level typing, immutable request definition (no mutable state/claim fields in request), claim-specific response envelope (`accounted_evidence_ids`, `claim_id`, `review_run_id`), finding operations (`CREATE_FINDING` with `semantic_issue_key`, `UPDATE_FINDING` with required `target_finding_id`, `NO_FINDING`), and serialization methods, verified with unit tests in `tests/test_observe_bridge_models.py`.
+- [x] 14.2 Implement atomic immutable review request generator and canonical request coverage manager in `companion/observe/bridge.py`:
+  - Enforce strict coverage invariant: a global observation sequence belongs to at most one canonical review request; immutable request ranges never overlap across batches.
+  - Implement non-overlapping priority scheduling: if a marker arrives and its sequence already belongs to an existing pending request, elevate that request's scheduling priority in coordinator metadata instead of creating an overlapping batch; if outside coverage, form the next canonical non-overlapping partition and mark it high priority.
+  - Implement restart reconstruction: load canonical request coverage from disk on companion startup before generating new requests; do not regenerate requests for sequences already owned by PENDING, CLAIMED, RESPONSE_AVAILABLE, COMPLETED, or reviewed-ahead batches.
+  - Write `review_requests/<review_batch_id>.json` via `.tmp` -> `fsync` -> rename with immutable structured metadata, bounded `existing_findings` catalogue, signal summaries, and privacy instructions, verifying request immutability across claims, priority changes, and completions.
+  - Verified with atomic write and coverage tests in `tests/test_observe_bridge.py`.
+- [x] 14.3 Implement claim-specific artifact management and safe lease renewal in `companion/observe/bridge.py`:
+  - Manage immutable claim-specific artifacts `review_claims/<review_batch_id>.<claim_id>.json` (never shared multi-writer files), ensuring multiple claimants publish separate files without overwriting.
+  - Manage self-owned lease renewal via `review_claim_status/<review_batch_id>.<claim_id>.json` without modifying other claimants' artifacts.
+  - Conservative lease (180s) accommodating slow reviewers (> 60s) without false expiration.
+  - Stale claim recovery: allows second reviewer to claim without erasing old claim provenance.
+  - Distinguish claim lease eligibility from response provenance: do not reject an otherwise valid completed response solely because its lease expired shortly before publication.
+  - Verified with claim recovery tests in `tests/test_observe_bridge.py`.
+- [x] 14.4 Implement 8-point companion ingress validation gate in `companion/observe/bridge.py`:
+  - Claimant and request provenance verification: matching immutable review request exists, matching claim artifact exists at `review_claims/<review_batch_id>.<claim_id>.json`, `claim.review_batch_id` matches request, `response.claim_id` matches claim, and `response.review_run_id` matches claim.
+  - Full evidence accounting asserting `set(accounted_evidence_ids) == set(request.evidence_ids)`, rejecting partial accounting (e.g. 10 requested, 2 accounted), accepting subset `evidence_refs` in finding operations, accepting `NO_FINDING` with all accounted, and rejecting duplicate or unknown evidence IDs.
+  - Finding identity validation verifying `target_finding_id` exists in active session findings for `UPDATE_FINDING` and rejecting arbitrary/path-like IDs.
+  - Targeted privacy & security validation rejecting PoE chat prefixes (`@From`, `@To`, `^[@#\$%&]`), credentials (`sk-`, `ghp_`, `Bearer `, `ey...`), tokens, secrets, unbounded raw log dumps, and enforcing length bounds (`safe_summary <= 300`, `corroboration_note <= 500`), while accepting percent signs (`"40% quality"`) and normal punctuation without broad character blacklists.
+  - Verified with positive and negative validation tests in `tests/test_observe_bridge_validation.py`.
+
+## 15. Review Bridge Coordinator & Offline Test Adapter
+
+- [x] 15.1 Refactor `LiveReviewEngine` into `ReviewBridgeCoordinator` in `companion/observe/bridge.py`:
+  - Eliminates the synthetic heuristic (`if USER_MARKER: CREATE else NO_FINDING`).
+  - Coordinates non-overlapping immutable request emission with `existing_findings` context.
+  - Polls for claim-specific candidate responses (`review_responses/<review_batch_id>.<claim_id>.json`).
+  - Executes deterministic concurrency arbitration: first valid candidate promoted to canonical `ReviewBatchResult` in `review_batches/<review_batch_id>.json`; late/competing candidates safely quarantined/ignored without modifying canonical result.
+  - Coordinates contiguous review cursor advancement with `reviewed_ahead_ranges` in `hermes_review_cursor.json` (priority marker batches reviewed ahead do not jump frontier; frontier advances contiguously when older missing batch completes).
+  - Idempotently applies findings to `hermes_findings.jsonl`.
+  - Verified with integration tests in `tests/test_observe_bridge.py`.
+- [x] 15.2 Implement deterministic offline test adapter (`TestReviewResponder`) in `companion/observe/bridge.py` publishing claim-specific claim artifacts and response candidates programmatically for CI and unit test execution without LLM calls, verified in `tests/test_observe_bridge.py`.
+- [x] 15.3 Enforce subordinate review cursor ownership and canonical batch result promotion in `ReviewBridgeCoordinator` and `companion/observe/cursor.py`, verifying that `hermes_review_cursor.json` advances strictly after canonical `ReviewBatchResult` persistence, and that external cursor modifications cannot bypass validation, verified in `tests/test_observe_bridge.py`.
+
+## 16. Project-Local Live Observation Hermes Skill & Interruption Recovery
+
+- [x] 16.1 Author project-local Hermes skill `.hermes/skills/poe2-live-observation/SKILL.md` defining the "Start live development observation" workflow:
+  - Enforces the strict Hermes Write Allowlist (ONLY `review_claims/<review_batch_id>.<claim_id>.json`, optional `review_claim_status/<review_batch_id>.<claim_id>.json`, `review_responses/<review_batch_id>.<claim_id>.json`, and `hermes_review_status.json`; strictly forbids modifying companion source, tests, OpenSpec artifacts, objective rules, CharacterState, observer evidence, reader state, or review cursor).
+  - Active session discovery, request polling, marker/error prioritization, inspecting `existing_findings` to select `UPDATE_FINDING` by `target_finding_id`, local evidence and bounded `Client.txt` reading, active LLM reasoning, full evidence accounting, claim-specific response authoring, and heartbeat maintenance.
+  - Verified with skill schema verification.
+- [x] 16.2 Implement provider interruption resilience, stale claim recovery, request coverage reconstruction, and resume ergonomics in `ReviewBridgeCoordinator`, verifying that AI provider failures or task exits leave continuous runtime and local reader unaffected with immutable requests safely queued, and that resumption discovers pending requests, skips completed batches (including `reviewed_ahead_ranges`), and prioritizes markers, verified in `tests/test_observe_bridge_recovery.py`.
+
+## 17. Request Queue Observability & Live Status Telemetry
+
+- [x] 17.1 Update `companion observe live-status` (and `status --live`) in `companion/cli.py` to display review request queue metrics (pending requests, claimed requests, completed responses, bridge validation errors, review contiguous frontier, reviewed-ahead ranges, review lag, and Hermes heartbeat freshness), verified with CLI output tests in `tests/test_cli_observe_live.py`.
+
+## 18. Comprehensive Deterministic Verification Suite & Real Acceptance Protocol
+
+- [x] 18.1 Implement comprehensive deterministic bridge test suite in `tests/test_observe_bridge_suite.py` asserting:
+  - **ACCOUNTING**: partial `accounted_evidence_ids` rejected (10 requested, 2 accounted); complete accounting accepted (all 10 accounted, finding references 2); `NO_FINDING` with all accounted accepted; duplicate accounted ID rejected; unknown evidence ID rejected.
+  - **FINDING IDENTITY**: `CREATE_FINDING` creates F1; later batch `UPDATE_FINDING` with `target_finding_id = F1`; reworded AI output updates F1 without spawning duplicate F2; invalid/nonexistent `target_finding_id` rejected; unrelated issue creates distinct finding F2.
+  - **CLAIMS & LEASES**:
+    - Two Hermes tasks create different claim IDs without overwriting (`review_claims/<batch_id>.<claim_id>.json`).
+    - Both claim artifacts remain durably inspectable simultaneously on disk.
+    - Response A validates against claim A and response B validates against claim B.
+    - First valid response promoted to canonical `ReviewBatchResult`.
+    - Later valid response cannot replace canonical `ReviewBatchResult`.
+    - Stale claim recovery does not erase old claim provenance.
+    - Each Hermes task updates only its own lease/heartbeat state (`review_claim_status/<batch_id>.<claim_id>.json`).
+    - Slow reviewer (> 60s) safe under conservative 180s lease.
+    - Stale claim (> 180s) allows second claimant to safely take over with a fresh claim ID.
+    - Stalled claimant A late response cannot overwrite or corrupt accepted canonical result from claimant B.
+    - Claim-specific candidate response files (`<batch_id>.<claim_id>.json`) cannot overwrite one another.
+    - Immutable request file never rewritten across claim and completion.
+  - **REQUEST COVERAGE**:
+    - Canonical request ranges never overlap across batches (e.g. 101–150, 151–200, 201–250).
+    - Same sequence cannot belong to two review requests.
+    - Marker inside existing pending batch elevates that batch's scheduling priority instead of creating an overlapping batch.
+    - Marker outside existing coverage creates next canonical non-overlapping batch.
+    - Restart reconstructs request coverage correctly from disk before generating new requests.
+    - Completed-ahead request is not regenerated just because review frontier is behind it.
+    - High-priority later request may complete before earlier request.
+    - Contiguous review frontier remains correct and catches up when earlier request completes.
+  - **PRIORITY METADATA**:
+    - Scheduling priority may change independently of immutable request (stored in coordinator metadata).
+    - Priority change does not change `review_batch_id`.
+    - Priority change does not modify evidence ownership or sequence range.
+  - **FRONTIER & OUT-OF-ORDER REVIEW**: later marker batch completed first does NOT jump review frontier (`review_contiguous_frontier` stays at 100, range `[151, 175]` recorded in `reviewed_ahead_ranges`); frontier catches up contiguously after older batch completes; process restart preserves `reviewed_ahead_ranges`; completed out-of-order batch is NOT re-generated as review request.
+  - **SAFETY & ALLOWLIST**: Hermes live skill write allowlist enforced; attempted source/test/OpenSpec/state modification is forbidden by workflow contract.
+  - **PRIVACY**: technical phrase `"40% quality"` accepted; real PoE whisper/chat sample rejected; token/credential pattern rejected; bounded safe summary accepted.
+- [x] 18.2 Implement end-to-end bridge simulation tests in `tests/test_observe_bridge_e2e.py` validating the complete loop: local reader frontier advances -> immutable non-overlapping request emitted -> test responder claims and authors candidate response -> bridge validates 8-point gate -> canonical `ReviewBatchResult` persisted -> findings journaled -> review cursor advances contiguously.
+- [x] 18.3 Update live gameplay observation acceptance protocol in `docs/audits/live_observation_guide.md` specifying the real Hermes verification during live PoE2 gameplay:
+  - Real Hermes claim artifact is claim-specific (`review_claims/<review_batch_id>.<claim_id>.json`).
+  - Another review run cannot overwrite that claim.
+  - Request ranges remain non-overlapping during live gameplay.
+  - Real marker promotes the correct owning request rather than generating duplicate evidence coverage.
+  - Marker priority does not generate duplicate evidence coverage.
+  - Later priority batch can complete first without jumping contiguous frontier.
+  - Older batch completion causes frontier catch-up.
+  - No evidence is reviewed twice because of overlapping requests.
+  - Continuous runtime and observer proceed unaffected during AI interruption.
+  - Resumed review skips completed batches and catches up from preserved cursor.
+  - Real Hermes writes zero files outside the approved write allowlist.

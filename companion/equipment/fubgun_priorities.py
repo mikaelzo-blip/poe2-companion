@@ -51,7 +51,8 @@ RE_CAMPAIGN_NON_MATERIAL = re.compile(
     r"accuracy\s+rating|accuracy\b|"
     r"stun\s+threshold|ailment\s+threshold|"
     r"stun\s+and\s+ailment\s+threshold|"
-    r"stun\s+(and\s+)?block\s+recovery|block\s+recovery|stun\s+recovery"
+    r"stun\s+(and\s+)?block\s+recovery|block\s+recovery|stun\s+recovery|"
+    r"thorns\s+damage|thorns\b|reflects?\s+.*damage"
     r")\b",
     re.IGNORECASE,
 )
@@ -82,13 +83,15 @@ def is_fubgun_non_material_modifier(
 
     # If it contains genuinely material combat/keystone/defense mechanics, it is material!
     if RE_GENUINELY_MATERIAL.search(clean):
-        # Unless it is simply stun/ailment threshold or stun/block recovery
+        # Unless it is simply stun/ailment threshold, stun/block recovery, or throwaway thorns/reflect
         if not (
             "stun threshold" in clean
             or "ailment threshold" in clean
             or "accuracy" in clean
             or "block recovery" in clean
             or "stun recovery" in clean
+            or "thorns" in clean
+            or "reflect" in clean
         ):
             return False
 
@@ -452,8 +455,12 @@ def evaluate_fubgun_equipment_policy(
             is_offensive_slot and delta.dps_delta <= -2.0
         )
         if material_dps_loss:
-            verdict = Verdict.CONDITIONAL_UPGRADE
-            reason = f"Fubgun {stage_name} — {slot}: Trade-off between Life/Resistance upgrade and offensive damage loss ({delta.dps_delta:.2f} DPS). Equip if defensive need matches."
+            if delta.life_delta >= 40 and delta.ehp_delta >= 40:
+                verdict = Verdict.EQUIP_NOW
+                reason = f"Fubgun {stage_name} — {slot}: Peningkatan Life/EHP masif (+{delta.life_delta} Life, {delta.ehp_delta:+.1f} EHP); jauh lebih unggul dibandingkan trade-off ofensif ({delta.dps_delta:.2f} DPS)."
+            else:
+                verdict = Verdict.CONDITIONAL_UPGRADE
+                reason = f"Fubgun {stage_name} — {slot}: Trade-off between Life/Resistance upgrade and offensive damage loss ({delta.dps_delta:.2f} DPS). Equip if defensive need matches."
         elif delta.ehp_delta >= -10.0:
             verdict = Verdict.EQUIP_NOW
             reason = f"Fubgun {stage_name} — {slot}: Life and Resistance upgrade; PoB2 confirms the defensive improvement."
@@ -536,6 +543,21 @@ def evaluate_fubgun_equipment_policy(
             loss_details.append(f"{delta.life_delta:+d} Life, {res_loss:+d}% Resistance")
         reason = (
             f"Fubgun {stage_name} — {slot}: Net loss of primary stats ({', '.join(loss_details)}). Keep current item."
+        )
+    elif (
+        primary_gain
+        and primary_loss
+        and delta.life_delta >= 0
+        and (res_gain + res_loss) >= 0
+        and res_loss >= -10
+        and (delta.armour_delta + delta.evasion_delta + delta.es_delta) >= 20
+        and not boots_movement_loss
+    ):
+        verdict = Verdict.EQUIP_NOW
+        reason = (
+            f"Fubgun {stage_name} — {slot}: Clear defensive upgrade (+{delta.life_delta} Life, "
+            f"+{delta.armour_delta + delta.evasion_delta + delta.es_delta} local defense, "
+            f"net resistance {res_gain + res_loss:+d}%). Minor resistance shift is well compensated."
         )
     elif primary_gain and primary_loss:
         verdict = Verdict.CONDITIONAL_UPGRADE

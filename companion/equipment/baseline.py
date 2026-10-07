@@ -106,6 +106,9 @@ class CharacterStatBaseline(BaseModel):
     armour: CharacterFact[int] = Field(default_factory=CharacterFact[int].unknown)
     evasion: CharacterFact[int] = Field(default_factory=CharacterFact[int].unknown)
     energy_shield: CharacterFact[int] = Field(default_factory=CharacterFact[int].unknown)
+    mana: CharacterFact[int] = Field(default_factory=CharacterFact[int].unknown)
+    spirit: CharacterFact[int] = Field(default_factory=CharacterFact[int].unknown)
+    deflection: CharacterFact[int] = Field(default_factory=CharacterFact[int].unknown)
 
     raw_fire_res: CharacterFact[int] = Field(default_factory=CharacterFact[int].unknown)
     effective_fire_res: CharacterFact[int] = Field(default_factory=CharacterFact[int].unknown)

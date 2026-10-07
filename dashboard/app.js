@@ -239,6 +239,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupDemoButton();
   setupCompareSubtabs();
   setupSyncModal();
+  setupStatsModal();
   await setupCharacterAndGuideControls();
 
   // Try auto-fetching via HTTP if hosted via server
@@ -575,8 +576,12 @@ function detectSlotFromItemText(rawText, fallbackSlot = null) {
   if (
     itemClass.includes('crossbow') || itemClass.includes('bow') || itemClass.includes('staff') ||
     itemClass.includes('wand') || itemClass.includes('sword') || itemClass.includes('axe') ||
-    itemClass.includes('mace') || itemClass.includes('weapon') || baseType.includes('crossbow') ||
-    baseType.includes('staff') || baseType.includes('quarterstaff')
+    itemClass.includes('mace') || itemClass.includes('weapon') || itemClass.includes('sceptre') ||
+    itemClass.includes('scepter') || itemClass.includes('flail') || itemClass.includes('spear') ||
+    itemClass.includes('dagger') || itemClass.includes('claw') ||
+    baseType.includes('crossbow') || baseType.includes('staff') || baseType.includes('quarterstaff') ||
+    baseType.includes('spear') || baseType.includes('sceptre') || baseType.includes('flail') ||
+    baseType.includes('dagger') || baseType.includes('claw')
   ) {
     if (fallbackSlot === 'set2_main_hand') return 'set2_main_hand';
     return 'main_hand';
@@ -629,13 +634,38 @@ function recordSlotComparison(slotKey, rawText, data) {
   saveSlotCompareData();
 }
 
+function getEquippedItemForSlot(slotKey) {
+  if (!appState.loadout) return null;
+  const shared = appState.loadout.shared_slots || {};
+  const set1 = appState.loadout.weapon_set_1 || {};
+  const set2 = appState.loadout.weapon_set_2 || {};
+
+  const normKey = (slotKey || '').toLowerCase().trim();
+  const directKey = normKey.replace(' ', '_');
+  const compactKey = normKey.replace(' ', '').replace('_', '');
+
+  let entry = shared[directKey] || shared[compactKey];
+  if (!entry) {
+    if (normKey.includes('set2') || normKey.includes('swap')) {
+      entry = set2[directKey] || (normKey.includes('off') ? set2.off_hand : set2.main_hand);
+    } else if (normKey.includes('weapon') || normKey.includes('main_hand') || normKey.includes('off_hand')) {
+      entry = set1[directKey] || (normKey.includes('off') ? set1.off_hand : set1.main_hand);
+    }
+  }
+  return entry && entry.item ? entry.item : null;
+}
+
 function renderCompareForSlot(slotKey) {
   if (!slotKey) slotKey = appState.selectedSlot || 'helmet';
   const label = SLOT_LABELS[slotKey] || slotKey.toUpperCase();
 
-  // 1. Target slot banner
+  // 1. Target slot banner with equipped item name
   const titleEl = document.getElementById('compare-target-slot-title');
-  if (titleEl) titleEl.textContent = label.toUpperCase();
+  const equippedItem = getEquippedItemForSlot(slotKey);
+  const equippedDesc = equippedItem ? `${equippedItem.name || equippedItem.base_type}` : 'Slot Kosong';
+  if (titleEl) {
+    titleEl.innerHTML = `${label.toUpperCase()} <span style="font-size: 11px; font-weight: 500; color: var(--accent-gold); margin-left: 8px;">[Terpasang: <strong>${equippedDesc}</strong>]</span>`;
+  }
 
   const slotData = appState.slotCompareData[slotKey];
   const latestVerdict = slotData?.latestVerdict;
@@ -949,6 +979,16 @@ function getEffectiveStage() {
   const lvl = (typeof lvlObj === 'object' ? lvlObj?.value : lvlObj)
     || appState.baseline?.character_level
     || 22;
+  if (appState.selectedGuide === 'navira_varashta') {
+    if (lvl >= 85) return "Uber Endgame";
+    if (lvl >= 75) return "Late Endgame";
+    if (lvl >= 68) return "Mid-Endgame";
+    if (lvl >= 55) return "Early Endgame";
+    if (lvl >= 40) return "Act 4 to Endgame";
+    if (lvl >= 28) return "Act 3";
+    if (lvl >= 16) return "Act 2";
+    return "Act 1 & 2";
+  }
   if (lvl >= 53) return "lvl 53-68";
   if (lvl >= 52) return "lvl 52 swap";
   if (lvl >= 33) return "lvl 33-51";
@@ -1099,7 +1139,8 @@ function startAutoClipboardWatcher() {
       const charId = appState.activeCharId || "BOMSHAK";
       const stage = getEffectiveStage();
       const guide = appState.selectedGuide || "fubgun_flameblast";
-      const query = `?char_id=${encodeURIComponent(charId)}&stage=${encodeURIComponent(stage)}&guide=${encodeURIComponent(guide)}`;
+      const zoneParam = appState.currentZone ? `&zone=${encodeURIComponent(appState.currentZone)}` : '';
+      const query = `?char_id=${encodeURIComponent(charId)}&stage=${encodeURIComponent(stage)}&guide=${encodeURIComponent(guide)}${zoneParam}`;
 
       const res = await fetch(`/api/clipboard-poll${query}`);
       if (res.ok) {
@@ -1144,8 +1185,19 @@ function startAutoClipboardWatcher() {
             } catch (_) {}
           }
 
+          if (!data.timestamp) {
+            data.timestamp = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          }
           recordSlotComparison(targetSlot, data.raw_text, data);
-          logToTerminal('SCAN', `${data.item_name || 'Item'} (${targetSlot}) -> ${data.verdict || 'OK'}`);
+          const vsText = data.current_item_name ? ` vs ${data.current_item_name}` : '';
+          showTransientNotification(`📋 Item Baru: ${data.item_name || targetSlot.toUpperCase()}${vsText} (${data.verdict || 'EVALUATED'})`);
+          logToTerminal('SCAN', `${data.item_name || 'Item'}${vsText} (${targetSlot}) -> ${data.verdict || 'OK'}`);
+
+          // Switch main navigation to Gear tab if not currently active
+          const gearNav = document.querySelector('.nav-item[data-tab="tab-gear"]');
+          if (gearNav && !gearNav.classList.contains('active')) {
+            gearNav.click();
+          }
 
           // Auto switch to Versus subtab if not already
           const btnCompare = document.getElementById('subtab-view-compare');
@@ -1223,6 +1275,14 @@ function renderEvaluationVerdict(data, container, targetSlot = null) {
             <div class="tactical-text">${tac.attribute_warning}</div>
           </div>
         ` : ''}
+        ${tac.stat_analysis_notes && tac.stat_analysis_notes.length > 0 ? `
+          <div class="tactical-row" style="background: rgba(30, 41, 59, 0.4); border-left: 3px solid #60a5fa; padding: 6px 10px; margin-top: 6px; border-radius: 4px;">
+            <div class="tactical-label" style="color: #93c5fd; font-weight: 700; font-size: 11px;">📊 Analisis Stat Karakter Terhadap Item:</div>
+            <ul style="margin: 4px 0 0 16px; padding: 0; font-size: 11px; color: #cbd5e1; line-height: 1.4;">
+              ${tac.stat_analysis_notes.map(note => `<li>${note}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
         ${tac.actionable_recommendation ? `
           <div class="tactical-row action-box">
             <div class="tactical-label">🎯 Rekomendasi Taktis & Tindakan:</div>
@@ -1234,26 +1294,74 @@ function renderEvaluationVerdict(data, container, targetSlot = null) {
   }
 
   let equipBtnHtml = '';
-  const currentName = data.current_item_name || 'Gear Lama';
+  let currentName = data.current_item_name || '';
+  let currentBaseType = data.current_item_base_type || '';
+
+  if (!currentName || currentName === 'Gear Lama' || currentName === 'Current Item') {
+    const eq = getEquippedItemForSlot(currentSlot);
+    if (eq) {
+      currentName = eq.name || eq.base_type || 'Gear Terpasang';
+      currentBaseType = currentBaseType || eq.base_type || '';
+    } else {
+      currentName = 'Slot Kosong';
+    }
+  }
+
+  const candidateName = data.item_name || 'Item Baru';
+  const candidateBaseType = data.base_type || '';
+
+  const isWinnerCurrent = (data.verdict === 'REJECT');
+  const isWinnerCandidate = isEquip;
+
+  const currentOutcomeBadge = isWinnerCurrent
+    ? '<span class="matchup-outcome-badge outcome-keep">👑 TAHAN (LEBIH BAGUS)</span>'
+    : (isWinnerCandidate ? '<span class="matchup-outcome-badge outcome-reject">🔄 DIGANTIKAN</span>' : '');
+
+  const candidateOutcomeBadge = isWinnerCandidate
+    ? '<span class="matchup-outcome-badge outcome-equip">👑 PASANG (UPGRADE)</span>'
+    : (isWinnerCurrent ? '<span class="matchup-outcome-badge outcome-reject">🛑 DITOLAK</span>' : '<span class="matchup-outcome-badge outcome-keep">⚠️ KONDISIONAL</span>');
+
+  const matchupCardHtml = `
+    <div class="compare-matchup-container">
+      <div class="matchup-card current-gear ${isWinnerCurrent ? 'is-winner' : (isWinnerCandidate ? 'is-loser' : '')}">
+        <div class="matchup-role-tag">🛡️ Terpasang (Current)</div>
+        <div class="matchup-item-name">${currentName}</div>
+        ${currentBaseType ? `<div class="matchup-base-type">(${currentBaseType})</div>` : ''}
+        ${currentOutcomeBadge}
+      </div>
+
+      <div class="matchup-vs-divider">
+        <div class="matchup-vs-circle">VS</div>
+      </div>
+
+      <div class="matchup-card candidate-gear ${isWinnerCandidate ? 'is-winner' : (isWinnerCurrent ? 'is-loser' : '')}">
+        <div class="matchup-role-tag">📋 Kandidat (Candidate)</div>
+        <div class="matchup-item-name">${candidateName}</div>
+        ${candidateBaseType ? `<div class="matchup-base-type">(${candidateBaseType})</div>` : ''}
+        ${candidateOutcomeBadge}
+      </div>
+    </div>
+  `;
+
   if (currentSlot && data.raw_text) {
     if (isEquip) {
       equipBtnHtml = `
         <button class="btn btn-primary btn-block" id="btn-equip-candidate" style="margin-top: 12px; background: var(--accent-green); color: #000; font-weight: 700; cursor: pointer;">
-          🛡️ Pasang ${data.item_name} Sekarang (${data.item_name} LEBIH BAGUS)
+          🛡️ Pasang ${candidateName} (Gantikan ${currentName})
         </button>
         <div id="equip-status-msg" style="margin-top: 6px; font-size: 11px; text-align: center; display: none;"></div>
       `;
     } else if (isConditional) {
       equipBtnHtml = `
         <button class="btn btn-primary btn-block" id="btn-equip-candidate" style="margin-top: 12px; background: var(--accent-gold); color: #000; font-weight: 700; cursor: pointer;">
-          ⚠️ Pertahankan ${currentName} (Pasang Hanya Jika Butuh Resistensi)
+          ⚠️ Pertahankan ${currentName} (Pasang ${candidateName} Hanya Jika Butuh Resistensi)
         </button>
         <div id="equip-status-msg" style="margin-top: 6px; font-size: 11px; text-align: center; display: none;"></div>
       `;
     } else if (data.verdict === 'REJECT') {
       equipBtnHtml = `
         <button class="btn btn-block" id="btn-equip-candidate" style="margin-top: 12px; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--accent-red); color: var(--accent-red); font-weight: 600; cursor: pointer; font-size: 11px;">
-          🛑 Tahan Gear Lama (${currentName} LEBIH BAGUS — Jangan Pasang ${data.item_name})
+          🛑 Tahan ${currentName} (${currentName} LEBIH BAGUS — Jangan Pasang ${candidateName})
         </button>
         <div id="equip-status-msg" style="margin-top: 6px; font-size: 11px; text-align: center; display: none;"></div>
       `;
@@ -1261,24 +1369,65 @@ function renderEvaluationVerdict(data, container, targetSlot = null) {
   }
 
   const winnerBadgeHtml = (data.verdict === 'REJECT')
-    ? `<div style="display: block; background: rgba(239, 68, 68, 0.18); border: 1px solid var(--accent-red); color: #ff9999; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; margin-bottom: 8px;">👑 KEPUTUSAN TEGAS: <u>${currentName}</u> LEBIH BAGUS UNTUK BUILD INI</div>`
-    : (isEquip ? `<div style="display: block; background: rgba(34, 197, 94, 0.18); border: 1px solid var(--accent-green); color: #86efac; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; margin-bottom: 8px;">👑 KEPUTUSAN TEGAS: <u>${data.item_name}</u> LEBIH BAGUS (PASANG SEKARANG)</div>` : '');
+    ? `<div style="display: block; background: rgba(239, 68, 68, 0.18); border: 1px solid var(--accent-red); color: #ff9999; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; margin-bottom: 8px;">👑 KEPUTUSAN TEGAS: <u>${currentName}</u> LEBIH BAGUS DARI <u>${candidateName}</u></div>`
+    : (isEquip ? `<div style="display: block; background: rgba(34, 197, 94, 0.18); border: 1px solid var(--accent-green); color: #86efac; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; margin-bottom: 8px;">👑 KEPUTUSAN TEGAS: <u>${candidateName}</u> LEBIH BAGUS DARI <u>${currentName}</u> (PASANG SEKARANG)</div>` : '');
+
+  // Format freshness / evaluation timestamp
+  let timeStr = data.timestamp || '';
+  if (!timeStr && data.evaluated_at) {
+    try {
+      timeStr = new Date(data.evaluated_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch (_) {
+      timeStr = data.evaluated_at;
+    }
+  }
+  if (!timeStr) {
+    timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  const metaBarHtml = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 4px;">
+      ${slotBadgeHtml}
+      <span style="font-size: 10.5px; font-family: var(--font-mono); color: #94a3b8; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 4px;">
+        🕒 Dievaluasi: <strong style="color: #f1f5f9;">${timeStr}</strong>
+      </span>
+    </div>
+  `;
+
+  const controllerTipHtml = `
+    <div class="controller-tip-banner" style="background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 4px; padding: 6px 10px; margin-bottom: 10px; font-size: 11px; color: #cbd5e1; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+      <div>🎮 <strong>Tips Stik / In-Game:</strong> Tombol stik tidak menyalin ke Windows. Tekan <code style="color: var(--accent-gold); background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 3px; font-weight: bold; border: 1px solid rgba(255,255,255,0.1);">Ctrl+C</code> di game saat kursor di item untuk evaluasi otomatis.</div>
+      <div style="color: var(--accent-green); font-size: 10px; font-weight: 700; white-space: nowrap;">● Auto-Scan Aktif</div>
+    </div>
+  `;
+
+  // Avoid repeating the headline paragraph if tactical advice card is already rendering it
+  const showGenericReason = !data.tactical_advice && data.reason;
+  const reasonHtml = showGenericReason ? `<p style="margin-top: 6px; margin-bottom: 6px;">${data.reason}</p>` : '';
+
+  const rawReportCollapsible = data.formatted_report ? `
+    <details class="report-audit-details" style="margin-top: 10px; border-top: 1px dashed rgba(255,255,255,0.15); padding-top: 8px;">
+      <summary style="cursor: pointer; font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); user-select: none; outline: none;">
+        ▶ 🔍 Detail Log Audit Teknis (PoB2 / CLI Raw Report)
+      </summary>
+      <pre class="report-raw-box" style="margin-top: 8px; font-size: 10.5px; opacity: 0.9; max-height: 220px; overflow-y: auto;">${data.formatted_report}</pre>
+    </details>
+  ` : '';
 
   container.innerHTML = `
     <div class="verdict-box ${boxClass}">
       <span class="verdict-badge ${badgeClass}">VERDICT: ${data.verdict}</span>
       <div class="verdict-details">
-        ${slotBadgeHtml}
+        ${metaBarHtml}
+        ${controllerTipHtml}
         ${winnerBadgeHtml}
-        <div style="font-size: 13px; font-weight: 700; margin-bottom: 4px; color: #FFF;">
-          ${data.item_name} (${data.base_type || ''})
-        </div>
-        <p>${data.reason}</p>
+        ${matchupCardHtml}
+        ${reasonHtml}
         ${gainsHtml}
         ${tradeOffsHtml}
       </div>
       ${tacticalCardHtml}
-      ${data.formatted_report ? `<pre class="report-raw-box">${data.formatted_report}</pre>` : ''}
+      ${rawReportCollapsible}
       ${equipBtnHtml}
     </div>
   `;
@@ -1687,13 +1836,19 @@ function loadDataIntoUI(status, character, objective, loadout, baseline = null) 
       const d = character.attributes.dexterity ? (character.attributes.dexterity.value || character.attributes.dexterity) : 14;
       const i = character.attributes.intelligence ? (character.attributes.intelligence.value || character.attributes.intelligence) : 10;
 
-      document.getElementById('val-str').textContent = s;
-      document.getElementById('val-dex').textContent = d;
-      document.getElementById('val-int').textContent = i;
+      const elStr = document.getElementById('val-str');
+      const elDex = document.getElementById('val-dex');
+      const elInt = document.getElementById('val-int');
+      if (elStr) elStr.textContent = s;
+      if (elDex) elDex.textContent = d;
+      if (elInt) elInt.textContent = i;
 
-      document.getElementById('bar-str').style.width = Math.min(100, (s / 50) * 100) + '%';
-      document.getElementById('bar-dex').style.width = Math.min(100, (d / 50) * 100) + '%';
-      document.getElementById('bar-int').style.width = Math.min(100, (i / 50) * 100) + '%';
+      const bStr = document.getElementById('bar-str');
+      const bDex = document.getElementById('bar-dex');
+      const bInt = document.getElementById('bar-int');
+      if (bStr) bStr.style.width = Math.min(100, (s / 120) * 100) + '%';
+      if (bDex) bDex.style.width = Math.min(100, (d / 120) * 100) + '%';
+      if (bInt) bInt.style.width = Math.min(100, (i / 120) * 100) + '%';
     }
 
     if (character.build_progression) {
@@ -1750,10 +1905,114 @@ function loadDataIntoUI(status, character, objective, loadout, baseline = null) 
   const defEvasionEl = document.getElementById('def-evasion');
   const defEsEl = document.getElementById('def-es');
   const defLifeEl = document.getElementById('def-life');
+  const defManaEl = document.getElementById('def-mana');
   if (defArmourEl) defArmourEl.textContent = totalArmour;
   if (defEvasionEl) defEvasionEl.textContent = totalEvasion;
   if (defEsEl) defEsEl.textContent = totalES;
-  if (defLifeEl) defLifeEl.textContent = (totalBonusLife >= 0 ? `+${totalBonusLife}` : `${totalBonusLife}`);
+  if (defLifeEl) defLifeEl.textContent = totalBonusLife;
+  
+  let manaVal = 300;
+  let spiritVal = 30;
+  if (baseline) {
+    if (baseline.mana && baseline.mana.value != null) manaVal = baseline.mana.value;
+    if (baseline.spirit && baseline.spirit.value != null) spiritVal = baseline.spirit.value;
+  }
+  if (character && character.resources) {
+    if (character.resources.mana && character.resources.mana.value != null) manaVal = character.resources.mana.value;
+    if (character.resources.spirit && character.resources.spirit.value != null) spiritVal = character.resources.spirit.value;
+  }
+  if (defManaEl) defManaEl.textContent = `${manaVal} / ${spiritVal}`;
+
+  // Resistances Rendering
+  let fireRes = 0;
+  let coldRes = 0;
+  let lightRes = 0;
+  let chaosRes = 0;
+
+  if (baseline) {
+    if (baseline.effective_fire_res && baseline.effective_fire_res.value != null) fireRes = baseline.effective_fire_res.value;
+    else if (baseline.raw_fire_res && baseline.raw_fire_res.value != null) fireRes = baseline.raw_fire_res.value;
+    else if (character && character.resistances && character.resistances.fire != null) fireRes = character.resistances.fire.value ?? character.resistances.fire;
+
+    if (baseline.effective_cold_res && baseline.effective_cold_res.value != null) coldRes = baseline.effective_cold_res.value;
+    else if (baseline.raw_cold_res && baseline.raw_cold_res.value != null) coldRes = baseline.raw_cold_res.value;
+    else if (character && character.resistances && character.resistances.cold != null) coldRes = character.resistances.cold.value ?? character.resistances.cold;
+
+    if (baseline.effective_lightning_res && baseline.effective_lightning_res.value != null) lightRes = baseline.effective_lightning_res.value;
+    else if (baseline.raw_lightning_res && baseline.raw_lightning_res.value != null) lightRes = baseline.raw_lightning_res.value;
+    else if (character && character.resistances && character.resistances.lightning != null) lightRes = character.resistances.lightning.value ?? character.resistances.lightning;
+
+    if (baseline.effective_chaos_res && baseline.effective_chaos_res.value != null) chaosRes = baseline.effective_chaos_res.value;
+    else if (baseline.raw_chaos_res && baseline.raw_chaos_res.value != null) chaosRes = baseline.raw_chaos_res.value;
+    else if (character && character.resistances && character.resistances.chaos != null) chaosRes = character.resistances.chaos.value ?? character.resistances.chaos;
+  } else if (character && character.resistances) {
+    const r = character.resistances;
+    if (r.fire) fireRes = r.fire.value != null ? r.fire.value : r.fire;
+    if (r.cold) coldRes = r.cold.value != null ? r.cold.value : r.cold;
+    if (r.lightning) lightRes = r.lightning.value != null ? r.lightning.value : r.lightning;
+    if (r.chaos) chaosRes = r.chaos.value != null ? r.chaos.value : r.chaos;
+  }
+
+  const setResBadge = (valElId, boxElId, val) => {
+    const valEl = document.getElementById(valElId);
+    const boxEl = document.getElementById(boxElId);
+    if (!valEl) return;
+    valEl.textContent = `${val}%`;
+    if (val < 0) {
+      valEl.style.color = '#ef4444';
+      valEl.style.fontWeight = '800';
+      if (boxEl) {
+        boxEl.style.background = 'rgba(239, 68, 68, 0.15)';
+        boxEl.style.border = '1px solid rgba(239, 68, 68, 0.5)';
+      }
+    } else if (val >= 75) {
+      valEl.style.color = '#4ade80';
+      valEl.style.fontWeight = '700';
+      if (boxEl) {
+        boxEl.style.background = 'rgba(74, 222, 128, 0.1)';
+        boxEl.style.border = '1px solid rgba(74, 222, 128, 0.4)';
+      }
+    } else {
+      valEl.style.color = '#ffaa88';
+      valEl.style.fontWeight = '600';
+      if (boxEl) {
+        boxEl.style.background = 'rgba(255, 100, 50, 0.08)';
+        boxEl.style.border = '1px solid rgba(255, 100, 50, 0.25)';
+      }
+    }
+  };
+
+  setResBadge('val-fire-res', 'res-box-fire', fireRes);
+  setResBadge('val-cold-res', 'res-box-cold', coldRes);
+  setResBadge('val-light-res', 'res-box-light', lightRes);
+  setResBadge('val-chaos-res', 'res-box-chaos', chaosRes);
+
+  const resCaptionEl = document.getElementById('res-status-caption');
+  if (resCaptionEl) {
+    const negs = [];
+    if (fireRes < 0) negs.push(`Fire ${fireRes}%`);
+    if (coldRes < 0) negs.push(`Cold ${coldRes}%`);
+    if (lightRes < 0) negs.push(`Light ${lightRes}%`);
+    if (negs.length > 0) {
+      resCaptionEl.textContent = `⚠️ Negatif: ${negs.join(', ')} Rawan One-Shot!`;
+      resCaptionEl.style.color = '#ef4444';
+      resCaptionEl.style.fontWeight = '700';
+    } else {
+      const uncapped = [];
+      if (fireRes < 75) uncapped.push(`Fire ${fireRes}%`);
+      if (coldRes < 75) uncapped.push(`Cold ${coldRes}%`);
+      if (lightRes < 75) uncapped.push(`Light ${lightRes}%`);
+      if (uncapped.length > 0) {
+        resCaptionEl.textContent = `Target 75%: ${uncapped.join(', ')}`;
+        resCaptionEl.style.color = '#facc15';
+        resCaptionEl.style.fontWeight = '600';
+      } else {
+        resCaptionEl.textContent = '✅ Capped 75%!';
+        resCaptionEl.style.color = '#4ade80';
+        resCaptionEl.style.fontWeight = '700';
+      }
+    }
+  }
 
   if (objective) {
     appState.currentObjective = objective;
@@ -2228,6 +2487,179 @@ function setupSyncModal() {
   }
 }
 
+function setupStatsModal() {
+  const modal = document.getElementById('modal-sync-stats');
+  const btnOpen = document.getElementById('btn-open-stats-modal');
+  const btnClose = document.getElementById('btn-close-stats-modal');
+  if (!modal) return;
+
+  if (btnOpen) {
+    btnOpen.addEventListener('click', () => {
+      // Populate fields from current active character / baseline
+      const char = appState.runtimeData?.character;
+      const base = appState.runtimeData?.baseline;
+      const charName = char?.character_name || 'BOMSHAK';
+      const charLevel = char?.level ? (char.level.value || char.level) : 37;
+
+      const nameEl = document.getElementById('stat-edit-char-name');
+      const lvlEl = document.getElementById('stat-edit-level');
+      if (nameEl) nameEl.value = charName;
+      if (lvlEl) lvlEl.value = charLevel;
+
+      // Attributes
+      const strVal = char?.attributes?.strength ? (char.attributes.strength.value || char.attributes.strength) : 48;
+      const dexVal = char?.attributes?.dexterity ? (char.attributes.dexterity.value || char.attributes.dexterity) : 85;
+      const intVal = char?.attributes?.intelligence ? (char.attributes.intelligence.value || char.attributes.intelligence) : 53;
+      const elStr = document.getElementById('stat-edit-str');
+      const elDex = document.getElementById('stat-edit-dex');
+      const elInt = document.getElementById('stat-edit-int');
+      if (elStr) elStr.value = strVal;
+      if (elDex) elDex.value = dexVal;
+      if (elInt) elInt.value = intVal;
+
+      // Defenses & Pools
+      const lifeVal = base?.life?.value != null ? base.life.value : 723;
+      const armVal = base?.armour?.value != null ? base.armour.value : 112;
+      const evaVal = base?.evasion?.value != null ? base.evasion.value : 465;
+      const esVal = base?.energy_shield?.value != null ? base.energy_shield.value : 47;
+      const manaVal = base?.mana?.value != null ? base.mana.value : (char?.resources?.mana?.value ?? 300);
+      const spiritVal = base?.spirit?.value != null ? base.spirit.value : (char?.resources?.spirit?.value ?? 30);
+      if (document.getElementById('stat-edit-life')) document.getElementById('stat-edit-life').value = lifeVal;
+      if (document.getElementById('stat-edit-armour')) document.getElementById('stat-edit-armour').value = armVal;
+      if (document.getElementById('stat-edit-evasion')) document.getElementById('stat-edit-evasion').value = evaVal;
+      if (document.getElementById('stat-edit-es')) document.getElementById('stat-edit-es').value = esVal;
+      if (document.getElementById('stat-edit-mana')) document.getElementById('stat-edit-mana').value = manaVal;
+      if (document.getElementById('stat-edit-spirit')) document.getElementById('stat-edit-spirit').value = spiritVal;
+
+      // Resistances
+      const fRes = base?.effective_fire_res?.value != null ? base.effective_fire_res.value : (char?.resistances?.fire?.value ?? 23);
+      const cRes = base?.effective_cold_res?.value != null ? base.effective_cold_res.value : (char?.resistances?.cold?.value ?? -3);
+      const lRes = base?.effective_lightning_res?.value != null ? base.effective_lightning_res.value : (char?.resistances?.lightning?.value ?? -4);
+      const chRes = base?.effective_chaos_res?.value != null ? base.effective_chaos_res.value : (char?.resistances?.chaos?.value ?? 0);
+      if (document.getElementById('stat-edit-fire')) document.getElementById('stat-edit-fire').value = fRes;
+      if (document.getElementById('stat-edit-cold')) document.getElementById('stat-edit-cold').value = cRes;
+      if (document.getElementById('stat-edit-light')) document.getElementById('stat-edit-light').value = lRes;
+      if (document.getElementById('stat-edit-chaos')) document.getElementById('stat-edit-chaos').value = chRes;
+
+      modal.style.display = 'flex';
+    });
+  }
+
+  if (btnClose) {
+    btnClose.addEventListener('click', () => {
+      modal.style.display = 'none';
+    });
+  }
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.style.display = 'none';
+  });
+
+  const btnSave = document.getElementById('btn-save-character-stats');
+  const msgEl = document.getElementById('stat-save-msg');
+  if (btnSave) {
+    btnSave.addEventListener('click', async () => {
+      btnSave.disabled = true;
+      btnSave.textContent = '⏳ Menyimpan stat...';
+      const charId = document.getElementById('stat-edit-char-name')?.value || 'BOMSHAK';
+      const payload = {
+        character_id: charId,
+        level: parseInt(document.getElementById('stat-edit-level')?.value, 10) || 37,
+        strength: parseInt(document.getElementById('stat-edit-str')?.value, 10) || 10,
+        dexterity: parseInt(document.getElementById('stat-edit-dex')?.value, 10) || 10,
+        intelligence: parseInt(document.getElementById('stat-edit-int')?.value, 10) || 10,
+        life: parseInt(document.getElementById('stat-edit-life')?.value, 10) || 723,
+        mana: parseInt(document.getElementById('stat-edit-mana')?.value, 10) || 284,
+        spirit: parseInt(document.getElementById('stat-edit-spirit')?.value, 10) || 30,
+        energy_shield: parseInt(document.getElementById('stat-edit-es')?.value, 10) || 0,
+        armour: parseInt(document.getElementById('stat-edit-armour')?.value, 10) || 0,
+        evasion: parseInt(document.getElementById('stat-edit-evasion')?.value, 10) || 0,
+        fire_res: parseInt(document.getElementById('stat-edit-fire')?.value, 10) || 0,
+        cold_res: parseInt(document.getElementById('stat-edit-cold')?.value, 10) || 0,
+        lightning_res: parseInt(document.getElementById('stat-edit-light')?.value, 10) || 0,
+        chaos_res: parseInt(document.getElementById('stat-edit-chaos')?.value, 10) || 0,
+      };
+
+      try {
+        const res = await fetch('/api/update-stats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const resData = await res.json();
+        if (resData.success) {
+          if (msgEl) {
+            msgEl.style.display = 'block';
+            msgEl.style.color = 'var(--accent-green)';
+            msgEl.textContent = `✓ ${resData.message}`;
+          }
+          addNotification('Stat Karakter Terupdate', `Level ${payload.level} (${payload.strength} Str, ${payload.dexterity} Dex, ${payload.intelligence} Int)`, 'info');
+          await fetchHttpRuntime();
+          setTimeout(() => { modal.style.display = 'none'; }, 1500);
+        } else {
+          if (msgEl) {
+            msgEl.style.display = 'block';
+            msgEl.style.color = 'var(--accent-red)';
+            msgEl.textContent = `✕ ${resData.error || 'Gagal menyimpan stat'}`;
+          }
+        }
+      } catch (err) {
+        if (msgEl) {
+          msgEl.style.display = 'block';
+          msgEl.style.color = 'var(--accent-red)';
+          msgEl.textContent = `✕ Error: ${err.message}`;
+        }
+      }
+      btnSave.disabled = false;
+      btnSave.textContent = '💾 Simpan & Perbarui Evaluasi Build';
+    });
+  }
+}
+
+
+const GUIDE_STAGES_MAP = {
+  fubgun_flameblast: [
+    { value: 'auto', label: 'Auto (Berdasarkan Level)' },
+    { value: 'lvl 1-14', label: 'lvl 1-14' },
+    { value: 'lvl 15-32', label: 'lvl 15-32' },
+    { value: 'lvl 33-51', label: 'lvl 33-51' },
+    { value: 'lvl 52 swap', label: 'lvl 52 Swap' },
+    { value: 'lvl 53-68', label: 'lvl 53-68' },
+    { value: 'lvl 85', label: 'lvl 85' },
+    { value: 'endgame', label: 'Endgame' },
+    { value: 'mageblood', label: 'Mageblood' },
+    { value: 'dot cap', label: 'DoT Cap' }
+  ],
+  navira_varashta: [
+    { value: 'auto', label: 'Auto (Berdasarkan Act/Level)' },
+    { value: 'Act 1 & 2', label: 'Act 1 & 2 (Pre-Ascend)' },
+    { value: 'Act 2', label: 'Act 2' },
+    { value: 'Act 3', label: 'Act 3' },
+    { value: 'Act 4 to Endgame', label: 'Act 4 to Endgame' },
+    { value: 'Early Endgame', label: 'Early Endgame' },
+    { value: 'Mid-Endgame', label: 'Mid-Endgame' },
+    { value: 'Late Endgame', label: 'Late Endgame' },
+    { value: 'Uber Endgame', label: 'Uber Endgame' }
+  ],
+  generic_pob2: [
+    { value: 'auto', label: 'Auto (PoB2 Default)' }
+  ]
+};
+
+function refreshStageDropdown(guideId) {
+  const stageSelect = document.getElementById('stage-select');
+  if (!stageSelect) return;
+  const stages = GUIDE_STAGES_MAP[guideId] || GUIDE_STAGES_MAP.generic_pob2;
+  stageSelect.innerHTML = '';
+  stages.forEach(st => {
+    const opt = document.createElement('option');
+    opt.value = st.value;
+    opt.textContent = st.label;
+    stageSelect.appendChild(opt);
+  });
+  appState.selectedStage = 'auto';
+}
+
 async function setupCharacterAndGuideControls() {
   const charSelect = document.getElementById('header-char-select');
   const btnSync = document.getElementById('btn-quick-sync-char');
@@ -2275,13 +2707,17 @@ async function setupCharacterAndGuideControls() {
         });
         if (res.ok) {
           const selectedText = charSelect.selectedOptions[0]?.textContent || '';
-          if (guideSelect && !selectedText.toLowerCase().includes('mercenary')) {
-            guideSelect.value = 'generic_pob2';
-            appState.selectedGuide = 'generic_pob2';
+          if (guideSelect && selectedText.toLowerCase().includes('sorceress')) {
+            guideSelect.value = 'navira_varashta';
+            appState.selectedGuide = 'navira_varashta';
           } else if (guideSelect && selectedText.toLowerCase().includes('mercenary')) {
             guideSelect.value = 'fubgun_flameblast';
             appState.selectedGuide = 'fubgun_flameblast';
+          } else if (guideSelect) {
+            guideSelect.value = 'generic_pob2';
+            appState.selectedGuide = 'generic_pob2';
           }
+          refreshStageDropdown(appState.selectedGuide);
           const note = document.getElementById('guide-status-note');
           if (note && guideSelect) {
             note.textContent = `Aktif: ${guideSelect.selectedOptions[0]?.textContent || guideSelect.value}`;
@@ -2299,6 +2735,7 @@ async function setupCharacterAndGuideControls() {
   if (btnSync) {
     btnSync.addEventListener('click', async () => {
       const charId = appState.activeCharId || 'BOMSHAK';
+      const acc = (document.getElementById('sync-account-name')?.value || '').trim() || 'mikaelzo#5674';
       const origText = btnSync.textContent;
       btnSync.textContent = '⏳...';
       btnSync.disabled = true;
@@ -2306,13 +2743,18 @@ async function setupCharacterAndGuideControls() {
         const res = await fetch('/api/fetch-public-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ character_id: charId, account_name: 'mikaelzo#5674', overwrite: true })
+          body: JSON.stringify({ character_id: charId, account_name: acc, overwrite: true })
         });
         if (res.ok) {
           const resData = await res.json();
-          alert(resData.message || `Berhasil menyinkronkan data untuk ${charId}!`);
-          logToTerminal('SYNC', `Sinkronisasi profil selesai untuk ${charId}: ${resData.imported_slots || 0} slot diperbarui`);
-          await fetchHttpRuntime();
+          if (resData.success) {
+            alert(resData.message || `Berhasil menyinkronkan data untuk ${charId}!`);
+            logToTerminal('SYNC', `Sinkronisasi profil selesai untuk ${charId}: ${resData.imported_slots || 0} slot diperbarui`);
+            await fetchHttpRuntime();
+          } else {
+            alert(resData.message || resData.error || 'Gagal menyinkronkan data dari server PoE.');
+            logToTerminal('SYNC', `Info sync: ${resData.error || 'Gagal menarik data'}`);
+          }
         } else {
           alert('Gagal menyinkronkan data dari server PoE.');
         }
@@ -2329,6 +2771,7 @@ async function setupCharacterAndGuideControls() {
   if (guideSelect) {
     guideSelect.addEventListener('change', () => {
       appState.selectedGuide = guideSelect.value;
+      refreshStageDropdown(appState.selectedGuide);
       const note = document.getElementById('guide-status-note');
       if (note) {
         note.textContent = `Aktif: ${guideSelect.selectedOptions[0]?.textContent || guideSelect.value}`;

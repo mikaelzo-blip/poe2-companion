@@ -162,3 +162,82 @@ def test_cli_live_status_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     assert "hermes_review" in data
     assert "reader_lag" in data["local_analysis"]
     assert "review_lag" in data["hermes_review"]
+
+
+def test_cli_live_status_review_queue_metrics(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    session_id = "obs_cli_queue_stat"
+    sdir = _setup_session(tmp_path, session_id)
+    runtime_dir = str(tmp_path / "runtime")
+    live_dir = sdir / "live_analysis"
+
+    # Setup reader at 150
+    reader = IncrementalStreamReader(session_dir=sdir, session_id=session_id)
+    reader.save_state()
+
+    # Cursor at 100 with reviewed_ahead_ranges [[126, 150]]
+    cursor_mgr = ReviewCursorManager(
+        cursor_path=live_dir / "hermes_review_cursor.json",
+        session_id=session_id,
+    )
+    cursor_mgr.record_batch_reviewed("rb_1", 1, 100)
+    cursor_mgr.record_batch_reviewed("rb_3", 126, 150)
+    cursor_mgr.save_atomic()
+
+    # Requests:
+    # batch_1 (1..100) - completed
+    # batch_2 (101..125) - claimed
+    # batch_3 (126..150) - completed ahead
+    # batch_4 (151..175) - pending
+    req_dir = live_dir / "review_requests"
+    claims_dir = live_dir / "review_claims"
+    batches_dir = live_dir / "review_batches"
+    req_dir.mkdir(parents=True, exist_ok=True)
+    claims_dir.mkdir(parents=True, exist_ok=True)
+    batches_dir.mkdir(parents=True, exist_ok=True)
+
+    for b_id, s, e in [("rb_1", 1, 100), ("rb_2", 101, 125), ("rb_3", 126, 150), ("rb_4", 151, 175)]:
+        (req_dir / f"{b_id}.json").write_text(
+            json.dumps({"review_batch_id": b_id, "sequence_start": s, "sequence_end": e, "evidence_ids": []}),
+            encoding="utf-8",
+        )
+
+    # Completed batches
+    (batches_dir / "rb_1.json").write_text(json.dumps({"review_batch_id": "rb_1"}), encoding="utf-8")
+    (batches_dir / "rb_3.json").write_text(json.dumps({"review_batch_id": "rb_3"}), encoding="utf-8")
+
+    # Claim for rb_2
+    now = datetime.now(timezone.utc)
+    future = (now + datetime.resolution * 1000000).isoformat()  # valid future
+    from datetime import timedelta
+    future_str = (now + timedelta(seconds=180)).isoformat()
+    (claims_dir / "rb_2.clm_01.json").write_text(
+        json.dumps({
+            "schema_version": "1.0",
+            "review_batch_id": "rb_2",
+            "claim_id": "clm_01",
+            "review_run_id": "run_01",
+            "claimed_at": now.isoformat(),
+            "lease_expires_at": future_str,
+        }),
+        encoding="utf-8",
+    )
+
+    ret = main(["observe", "live-status", "--json", "--runtime", runtime_dir, "--session-id", session_id])
+    assert ret == 0
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+
+    hr = data["hermes_review"]
+    assert hr["pending_requests"] == 1  # rb_4
+    assert hr["claimed_requests"] == 1  # rb_2
+    assert hr["completed_responses"] == 2  # rb_1, rb_3
+    assert hr["reviewed_ahead_ranges"] == [[126, 150]]
+
+    # Text format
+    ret2 = main(["observe", "live-status", "--runtime", runtime_dir, "--session-id", session_id])
+    assert ret2 == 0
+    captured2 = capsys.readouterr()
+    assert "Pending Requests: 1" in captured2.out
+    assert "Claimed Requests: 1" in captured2.out
+    assert "Completed Responses: 2" in captured2.out
+

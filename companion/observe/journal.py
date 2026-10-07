@@ -68,6 +68,8 @@ class ReviewBatchResult(BaseModel):
     sequence_start: int
     sequence_end: int
     reviewed_evidence_ids: list[str] = Field(default_factory=list)
+    claim_id: str | None = None
+    review_run_id: str | None = None
     operations: list[FindingOperation] = Field(default_factory=list)
     review_status: str = "COMPLETED"  # COMPLETED, FAILED
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())

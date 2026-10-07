@@ -10,6 +10,7 @@ from typing import Any
 from companion.equipment.clipboard import get_clipboard_text
 from companion.equipment.engine import EquipmentIntelligenceEngine
 from companion.equipment.fubgun_priorities import evaluate_fubgun_weapon_policy, evaluate_fubgun_equipment_policy
+from companion.equipment.tactical_advisor import generate_tactical_advice, merge_verdicts
 from companion.equipment.live_watcher import evaluate_live_candidate
 from companion.equipment.parser import parse_item_text
 from companion.equipment.pob2_equipment_advisor import Pob2EquipmentSession, resolve_pob2_backend_path
@@ -89,7 +90,75 @@ def get_current_raw(
     return ""
 
 
-def evaluate_item_payload(
+def get_current_item_info(
+    runtime_dir: Path,
+    char_id: str,
+    slot_name: str,
+    pob_session: Any | None = None,
+) -> tuple[str, str]:
+    """Retrieve (item_name, base_type) of equipped item for given slot."""
+    # 1. PoB session if available
+    if pob_session is not None:
+        try:
+            p_name = pob_session.get_current_item_name(slot_name)
+            if p_name and p_name != "Unobserved":
+                return str(p_name), ""
+        except Exception:
+            pass
+
+    # 2. Local loadout
+    try:
+        from companion.equipment.loadout_cli import load_loadout
+        from companion.equipment.schema import SlotType, WeaponSetContext
+        lo = load_loadout(runtime_dir, char_id)
+        if lo:
+            w_ctx = None
+            norm = slot_name.lower().strip()
+            if "set2" in norm or "swap" in norm:
+                w_ctx = WeaponSetContext.WEAPON_SET_2
+            elif "set1" in norm:
+                w_ctx = WeaponSetContext.WEAPON_SET_1
+
+            try:
+                st = SlotType.from_str(slot_name)
+                entry = lo.get_slot(st, weapon_set=w_ctx)
+                if entry and entry.item and (entry.item.name or entry.item.base_type):
+                    return entry.item.name or entry.item.base_type, entry.item.base_type or ""
+            except Exception:
+                pass
+
+            direct_keys = [
+                slot_name.lower().replace(" ", "_"),
+                slot_name.lower().replace(" ", "").replace("_", ""),
+            ]
+            for dk in direct_keys:
+                entry = lo.shared_slots.get(dk)
+                if entry and entry.item and (entry.item.name or entry.item.base_type):
+                    return entry.item.name or entry.item.base_type, entry.item.base_type or ""
+    except Exception:
+        pass
+
+    # 3. Parse current raw item text
+    try:
+        raw = get_current_raw(runtime_dir, char_id, slot_name, pob_session)
+        if raw:
+            from companion.equipment.parser import parse_item_text
+            parsed = parse_item_text(raw)
+            if parsed.name or parsed.base_type:
+                return parsed.name or parsed.base_type, parsed.base_type or ""
+    except Exception:
+        pass
+
+    return "Slot Kosong", ""
+
+
+def _stamp_evaluated(res: dict[str, Any]) -> dict[str, Any]:
+    if res.get("success"):
+        res.setdefault("evaluated_at", datetime.now(timezone.utc).isoformat())
+    return res
+
+
+def _evaluate_item_payload_impl(
     payload: dict[str, Any],
     runtime_dir: Path,
     pob_session: Any | None = None,
@@ -126,11 +195,13 @@ def evaluate_item_payload(
     char_level = getattr(pob_session, "level", None) if pob_session is not None else None
     zone_id = payload.get("zone")
     char_class = None
+    char_stats_context: dict[str, Any] = {}
     try:
         char_file = runtime_dir / "characters" / f"{char_id}.json"
         if char_file.is_file():
             c_data = json.loads(char_file.read_text(encoding="utf-8"))
             char_class = c_data.get("character_class")
+            char_stats_context.update(c_data)
             if not char_level:
                 lvl = c_data.get("level")
                 if isinstance(lvl, dict):
@@ -146,9 +217,19 @@ def evaluate_item_payload(
     except Exception:
         pass
 
+    try:
+        from companion.equipment.baseline_cli import load_baseline
+        b_data = load_baseline(runtime_dir, char_id)
+        if b_data:
+            char_stats_context.update(b_data.model_dump())
+    except Exception:
+        pass
+
     guide = payload.get("guide")
     if not guide:
-        if char_class and "mercenary" not in char_class.lower():
+        if char_class and "sorceress" in char_class.lower():
+            guide = "navira_varashta"
+        elif char_class and "mercenary" not in char_class.lower():
             guide = "generic_pob2"
         else:
             guide = "fubgun_flameblast"
@@ -166,6 +247,9 @@ def evaluate_item_payload(
     def _get_current_raw(slot_name: str) -> str:
         return get_current_raw(runtime_dir, char_id, slot_name, pob_session)
 
+    def _get_current_info(slot_name: str) -> tuple[str, str]:
+        return get_current_item_info(runtime_dir, char_id, slot_name, pob_session)
+
     try:
         candidate = parse_item_text(raw_text)
     except Exception as exc:
@@ -176,7 +260,40 @@ def evaluate_item_payload(
         or "Crossbow" in candidate.base_type
         or "Staff" in candidate.base_type
         or "Bow" in candidate.base_type
+        or "Wand" in candidate.base_type
+        or "Sceptre" in candidate.base_type
     )
+
+    if is_weapon and guide == "navira_varashta":
+        cand_base = (candidate.base_type or "").lower()
+        if "crossbow" in cand_base or "bow" in cand_base:
+            from companion.equipment.recommendation import Verdict
+            from companion.equipment.tactical_advisor import TacticalAdvice
+            reason = "Crossbow / Bow tidak cocok untuk Sorceress Navira's Fracturing Varashta! Gunakan Staff atau Wand/Focus yang memberikan Spell / Lightning Damage."
+            tactical = TacticalAdvice(
+                verdict=Verdict.REJECT,
+                verdict_badge="🛑 SENJATA INKOMPATIBEL",
+                tactical_headline=f"Senjata ini ({candidate.name or candidate.base_type}) tidak kompatibel dengan build aktif Sorceress!",
+                zone_name=zone_profile.friendly_name,
+                zone_threat_warning=zone_profile.survival_notes,
+                actionable_recommendation=f"Jangan pasang! {reason} Tetap gunakan senjata yang sesuai dengan skill Sorceress.",
+                trade_off_bullets=[reason],
+            )
+            return {
+                "success": True,
+                "item_name": candidate.name or candidate.base_type,
+                "base_type": candidate.base_type,
+                "slot": requested_slot or (candidate.slot.value if candidate.slot else "main_hand"),
+                "verdict": Verdict.REJECT.value,
+                "reason": reason,
+                "gains": [],
+                "trade_offs": [reason],
+                "formatted_report": f"🛑 REJECT / SENJATA INKOMPATIBEL\n\n{candidate.name or candidate.base_type}\n\nReason:\n{reason}",
+                "dps_delta": 0.0,
+                "life_delta": 0,
+                "is_weapon": True,
+                "tactical_advice": tactical.model_dump(),
+            }
 
     # 1. PoB2 live simulation if session provided and available
     if pob_session is not None and getattr(pob_session, "is_available", False):
@@ -200,7 +317,7 @@ def evaluate_item_payload(
                     slot=pob_slot,
                 )
 
-                if guide == "generic_pob2":
+                if guide in ("generic_pob2", "navira_varashta"):
                     delta = pob_session.simulate_item(
                         slot=pob_slot,
                         raw_candidate=raw_text,
@@ -227,9 +344,10 @@ def evaluate_item_payload(
                         elif ehp < 0:
                             trade_offs.append(f"{ehp:.1f} EHP")
 
+                        prefix = "⚡ UPGRADE SORCERESS" if guide == "navira_varashta" else "⚔️ UPGRADE SENJATA"
                         if dps > 0 and ehp >= -5.0:
                             verdict = Verdict.EQUIP_NOW
-                            badge = "⚔️ UPGRADE SENJATA (PoB2)"
+                            badge = f"{prefix} (PoB2)"
                             headline = f"Senjata ini memberikan kenaikan {dps:+.1f}% DPS!"
                             action = "Pasang sekarang ke slot senjata aktif Anda."
                         elif dps > 0:
@@ -259,6 +377,7 @@ def evaluate_item_payload(
                             trade_off_bullets=trade_offs,
                         )
                         formatted = f"{badge}\n\n{candidate.name or candidate.base_type}\n\n{headline}\n{action}"
+                        policy_label = "Navira Varashta Optimizer" if guide == "navira_varashta" else "PoB2 Generic Optimizer"
                         return {
                             "success": True,
                             "item_name": candidate.name or candidate.base_type,
@@ -269,7 +388,7 @@ def evaluate_item_payload(
                             "gains": gains,
                             "trade_offs": trade_offs,
                             "formatted_report": formatted,
-                            "policy_verdict": f"PoB2 Generic Optimizer: {badge}",
+                            "policy_verdict": f"{policy_label}: {badge}",
                             "dps_delta": dps,
                             "life_delta": life,
                             "is_weapon": True,
@@ -394,7 +513,6 @@ def evaluate_item_payload(
                         stage=stage,
                         use_color=False,
                     )
-                    from companion.equipment.tactical_advisor import generate_tactical_advice
                     from companion.equipment.recommendation import Verdict
                     tactical = generate_tactical_advice(
                         delta=delta,
@@ -403,16 +521,20 @@ def evaluate_item_payload(
                         zone_id=zone_id,
                         character_level=char_level,
                         stage=stage,
+                        character_stats=char_stats_context,
                     )
-                    final_verdict = tactical.verdict.value if tactical.verdict == Verdict.REJECT else rec.verdict.value
+                    final_verdict = merge_verdicts(rec.verdict, tactical.verdict)
+                    slot_key = requested_slot or (candidate.slot.value if candidate.slot else "main_hand")
+                    cur_name, cur_base = _get_current_info(slot_key)
                     return {
                         "success": True,
                         "item_name": candidate.name or candidate.base_type,
                         "base_type": candidate.base_type,
-                        "current_item_name": getattr(delta, "current_item_name", None) or "Gear Lama",
-                        "slot": requested_slot or (candidate.slot.value if candidate.slot else "main_hand"),
+                        "current_item_name": getattr(delta, "current_item_name", None) or cur_name,
+                        "current_item_base_type": cur_base,
+                        "slot": slot_key,
                         "verdict": final_verdict,
-                        "reason": tactical.tactical_headline if final_verdict == "REJECT" and rec.verdict.value != "REJECT" else rec.reason,
+                        "reason": tactical.tactical_headline if final_verdict == "REJECT" and getattr(rec.verdict, "value", str(rec.verdict)) != "REJECT" else rec.reason,
                         "gains": rec.gains,
                         "trade_offs": rec.trade_offs,
                         "formatted_report": rec.formatted_output,
@@ -443,7 +565,6 @@ def evaluate_item_payload(
                     )
                     if advice:
                         from companion.equipment.recommendation import Verdict
-                        from companion.equipment.tactical_advisor import generate_tactical_advice
 
                         if advice.recommended_slot == "Ring 1":
                             ring_verdict = advice.ring1_recommendation.verdict.value
@@ -476,20 +597,23 @@ def evaluate_item_payload(
                             zone_id=zone_id,
                             character_level=char_level,
                             stage=stage,
+                            character_stats=char_stats_context,
                         )
-                        final_verdict = tactical.verdict.value if tactical.verdict == Verdict.REJECT else ring_verdict
+                        final_verdict = merge_verdicts(ring_verdict, tactical.verdict)
 
                         target_slot = (
                             advice.recommended_slot.lower().replace(" ", "")
                             if advice.recommended_slot
                             else (requested_slot or "ring1")
                         )
+                        cur_name, cur_base = _get_current_info(target_slot)
 
                         return {
                             "success": True,
                             "item_name": candidate.name or candidate.base_type,
                             "base_type": candidate.base_type,
-                            "current_item_name": getattr(chosen_delta, "current_item_name", None) or "Gear Lama",
+                            "current_item_name": getattr(chosen_delta, "current_item_name", None) or cur_name,
+                            "current_item_base_type": cur_base,
                             "slot": target_slot,
                             "recommended_slot": advice.recommended_slot,
                             "verdict": final_verdict,
@@ -515,7 +639,6 @@ def evaluate_item_payload(
                     candidate_name=candidate.name or candidate.base_type,
                 )
                 if delta is not None:
-                    from companion.equipment.tactical_advisor import generate_tactical_advice
                     rec = evaluate_fubgun_equipment_policy(delta, stage=stage, use_color=False)
                     tactical = generate_tactical_advice(
                         delta=delta,
@@ -524,26 +647,42 @@ def evaluate_item_payload(
                         zone_id=zone_id,
                         character_level=char_level,
                         stage=stage,
+                        character_stats=char_stats_context,
                     )
-                    final_verdict = tactical.verdict.value
+                    final_verdict = merge_verdicts(rec.verdict, tactical.verdict)
                     report = rec.formatted_output
                     if final_verdict == "REJECT" and "REJECT" not in str(getattr(rec, "verdict", "")):
+                        slot_display_map = {
+                            "ring1": "Ring 1",
+                            "ring2": "Ring 2",
+                            "main_hand": "Main Hand",
+                            "off_hand": "Off Hand",
+                            "body_armour": "Body Armour",
+                            "weapon1": "Weapon 1",
+                            "weapon2": "Weapon 2",
+                            "weapon1_swap": "Weapon 1 Swap",
+                            "weapon2_swap": "Weapon 2 Swap",
+                        }
+                        disp_slot = slot_display_map.get(pob_slot.lower().replace(" ", ""), pob_slot)
                         report = (
                             f"=== Zone-Aware Equipment Recommendation ===\n"
                             f"Candidate : {candidate.name or candidate.base_type}\n"
-                            f"Slot      : {pob_slot}\n"
+                            f"Slot      : {disp_slot}\n"
                             f"Verdict   : REJECT (HOLD CURRENT GEAR)\n"
                             f"Reason    : {tactical.tactical_headline}\n"
                             f"Action    : {tactical.actionable_recommendation}\n"
                         )
+                    slot_key = requested_slot or (candidate.slot.value if candidate.slot else pob_slot.lower())
+                    cur_name, cur_base = _get_current_info(slot_key)
                     return {
                         "success": True,
                         "item_name": candidate.name or candidate.base_type,
                         "base_type": candidate.base_type,
-                        "current_item_name": getattr(delta, "current_item_name", None) or "Gear Lama",
-                        "slot": requested_slot or (candidate.slot.value if candidate.slot else pob_slot.lower()),
+                        "current_item_name": getattr(delta, "current_item_name", None) or cur_name,
+                        "current_item_base_type": cur_base,
+                        "slot": slot_key,
                         "verdict": final_verdict,
-                        "reason": tactical.tactical_headline if final_verdict == "REJECT" else rec.reason,
+                        "reason": tactical.tactical_headline if final_verdict == "REJECT" and "REJECT" not in str(getattr(rec, "verdict", "")) else rec.reason,
                         "gains": rec.gains,
                         "trade_offs": rec.trade_offs,
                         "formatted_report": report,
@@ -621,16 +760,16 @@ def evaluate_item_payload(
         reason = getattr(rec, "verdict_reason", None) or getattr(rec, "reason", "Evaluated by Equipment Intelligence Engine")
         verdict = rec.verdict.value if hasattr(rec.verdict, "value") else str(rec.verdict)
         slot_value = requested_slot or (candidate.slot.value if candidate.slot else "equipment")
+        cur_name, cur_base = _get_current_info(slot_value)
 
         tactical_dict = None
         try:
-            from companion.equipment.tactical_advisor import generate_tactical_advice
             from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
             delta_fb = PobEquipmentDelta(
                 slot=candidate.slot.value if candidate.slot else "equipment",
                 candidate_id=0,
                 candidate_name=candidate.name or candidate.base_type,
-                current_item_name="Current Item",
+                current_item_name=cur_name,
                 life_delta=int(proj.life.delta) if getattr(proj.life, "is_delta_known", False) else 0,
                 fire_res_delta=int(proj.fire_res.delta) if getattr(proj.fire_res, "is_delta_known", False) else 0,
                 cold_res_delta=int(proj.cold_res.delta) if getattr(proj.cold_res, "is_delta_known", False) else 0,
@@ -640,6 +779,9 @@ def evaluate_item_payload(
                 evasion_delta=int(proj.evasion.delta) if getattr(proj.evasion, "is_delta_known", False) else 0,
                 es_delta=int(proj.energy_shield.delta) if getattr(proj.energy_shield, "is_delta_known", False) else 0,
                 ehp_delta=float(proj.life.delta) if getattr(proj.life, "is_delta_known", False) else 0.0,
+                strength_delta=int(proj.strength.delta) if getattr(proj.strength, "is_delta_known", False) else 0,
+                dexterity_delta=int(proj.dexterity.delta) if getattr(proj.dexterity, "is_delta_known", False) else 0,
+                intelligence_delta=int(proj.intelligence.delta) if getattr(proj.intelligence, "is_delta_known", False) else 0,
             )
             tactical = generate_tactical_advice(
                 delta=delta_fb,
@@ -648,6 +790,7 @@ def evaluate_item_payload(
                 zone_id=zone_id,
                 character_level=char_level,
                 stage=stage,
+                character_stats=char_stats_context,
             )
             tactical_dict = tactical.model_dump()
         except Exception:
@@ -657,7 +800,8 @@ def evaluate_item_payload(
             "success": True,
             "item_name": candidate.name or candidate.base_type,
             "base_type": candidate.base_type,
-            "current_item_name": getattr(delta_fb, "current_item_name", None) or "Gear Lama",
+            "current_item_name": cur_name,
+            "current_item_base_type": cur_base,
             "slot": slot_value,
             "verdict": verdict,
             "reason": reason,
@@ -668,21 +812,51 @@ def evaluate_item_payload(
         }
         if tactical_dict:
             out["tactical_advice"] = tactical_dict
-            if tactical and getattr(tactical.verdict, "value", str(tactical.verdict)) == "REJECT":
-                out["verdict"] = "REJECT"
-                if "REJECT" not in str(getattr(rec, "verdict", "")):
+            if tactical:
+                tac_v = getattr(tactical.verdict, "value", str(tactical.verdict))
+                if tac_v == "REJECT":
+                    out["verdict"] = "REJECT"
+                    if "REJECT" not in str(getattr(rec, "verdict", "")):
+                        slot_display_map = {
+                            "ring1": "Ring 1",
+                            "ring2": "Ring 2",
+                            "main_hand": "Main Hand",
+                            "off_hand": "Off Hand",
+                            "body_armour": "Body Armour",
+                            "weapon1": "Weapon 1",
+                            "weapon2": "Weapon 2",
+                            "weapon1_swap": "Weapon 1 Swap",
+                            "weapon2_swap": "Weapon 2 Swap",
+                        }
+                        disp_slot = slot_display_map.get(slot_value.lower().replace(" ", ""), slot_value.capitalize())
+                        out["reason"] = tactical.tactical_headline
+                        out["formatted_report"] = (
+                            f"=== Zone-Aware Equipment Recommendation ===\n"
+                            f"Candidate : {candidate.name or candidate.base_type}\n"
+                            f"Slot      : {disp_slot}\n"
+                            f"Verdict   : REJECT (HOLD CURRENT GEAR)\n"
+                            f"Reason    : {tactical.tactical_headline}\n"
+                            f"Action    : {tactical.actionable_recommendation}\n"
+                        )
+                elif tac_v == "EQUIP_NOW":
+                    out["verdict"] = "EQUIP_NOW"
                     out["reason"] = tactical.tactical_headline
-                    out["formatted_report"] = (
-                        f"=== Zone-Aware Equipment Recommendation ===\n"
-                        f"Candidate : {candidate.name or candidate.base_type}\n"
-                        f"Slot      : {slot_value.capitalize()}\n"
-                        f"Verdict   : REJECT (HOLD CURRENT GEAR)\n"
-                        f"Reason    : {tactical.tactical_headline}\n"
-                        f"Action    : {tactical.actionable_recommendation}\n"
-                    )
+                elif tac_v == "CONDITIONAL_UPGRADE" and "INSUFFICIENT_DATA" in str(getattr(rec, "verdict", "")):
+                    out["verdict"] = "CONDITIONAL_UPGRADE"
+                    out["reason"] = tactical.tactical_headline
         return out
     except Exception as exc:
         return {"error": f"Evaluation error: {exc}"}
+
+
+def evaluate_item_payload(
+    payload: dict[str, Any],
+    runtime_dir: Path,
+    pob_session: Any | None = None,
+) -> dict[str, Any]:
+    """Execute real PoB2 and Fubgun equipment policy evaluation on submitted item text."""
+    res = _evaluate_item_payload_impl(payload, runtime_dir=runtime_dir, pob_session=pob_session)
+    return _stamp_evaluated(res)
 
 
 _LAST_SEEN_CLIPBOARD = ""
@@ -693,12 +867,15 @@ def check_auto_clipboard(
     stage_str: str,
     pob_session: Any | None = None,
     guide: str | None = None,
+    zone: str | None = None,
+    pob_session_resolver: Any | None = None,
 ) -> dict[str, Any]:
     """Poll OS clipboard automatically and evaluate if a new PoE2 item is detected."""
     global _LAST_SEEN_CLIPBOARD
     current_text = get_clipboard_text().strip()
 
-    if not current_text or current_text == _LAST_SEEN_CLIPBOARD:
+    current_key = f"{current_text}::{char_id}::{stage_str}::{guide}::{zone}"
+    if not current_text or _LAST_SEEN_CLIPBOARD in (current_text, current_key):
         return {"has_new_item": False}
 
     # Verify if it looks like a PoE item
@@ -712,10 +889,16 @@ def check_auto_clipboard(
                 char_id = f.stem
                 break
 
-    _LAST_SEEN_CLIPBOARD = current_text
+    _LAST_SEEN_CLIPBOARD = current_key
+
+    if pob_session is None and callable(pob_session_resolver):
+        try:
+            pob_session = pob_session_resolver()
+        except Exception:
+            pob_session = None
 
     result = evaluate_item_payload(
-        {"raw_text": current_text, "character_id": char_id, "stage": stage_str, "guide": guide},
+        {"raw_text": current_text, "character_id": char_id, "stage": stage_str, "guide": guide, "zone": zone},
         runtime_dir=runtime_dir,
         pob_session=pob_session,
     )
@@ -797,8 +980,10 @@ def import_character_payload(payload: dict[str, Any], runtime_dir: Path) -> dict
 
     from companion.equipment.api_adapter import GGGCharacterAPIAdapter
     from companion.equipment.loadout_cli import load_loadout, save_loadout
+    from companion.equipment.baseline_cli import load_baseline, save_baseline
 
     current_loadout = load_loadout(runtime_dir, char_id)
+    current_baseline = load_baseline(runtime_dir, char_id)
     loadout, baseline, warnings = GGGCharacterAPIAdapter.parse_character_payload(
         raw_payload=raw_payload,
         character_id=char_id,
@@ -810,7 +995,18 @@ def import_character_payload(payload: dict[str, Any], runtime_dir: Path) -> dict
 
     save_loadout(runtime_dir, loadout)
     if baseline is not None:
-        from companion.equipment.baseline_cli import save_baseline
+        if current_baseline is not None:
+            for attr_name in (
+                "life", "armour", "evasion", "energy_shield", "mana", "spirit", "deflection",
+                "raw_fire_res", "effective_fire_res", "max_fire_res", "fire_overcap_buffer",
+                "raw_cold_res", "effective_cold_res", "max_cold_res", "cold_overcap_buffer",
+                "raw_lightning_res", "effective_lightning_res", "max_lightning_res", "lightning_overcap_buffer",
+                "raw_chaos_res", "effective_chaos_res", "max_chaos_res", "chaos_overcap_buffer",
+                "strength", "dexterity", "intelligence", "movement_speed",
+            ):
+                curr_fact = getattr(current_baseline, attr_name, None)
+                if curr_fact is not None and getattr(curr_fact, "is_known", False):
+                    setattr(baseline, attr_name, curr_fact)
         save_baseline(runtime_dir, baseline)
 
     # Persist or update CharacterState with name, class, level
@@ -857,6 +1053,121 @@ def import_character_payload(payload: dict[str, Any], runtime_dir: Path) -> dict
     }
 
 
+def update_character_stats_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
+    """Update CharacterState and CharacterStatBaseline with live character stats from in-game / UI."""
+    char_id = payload.get("character_id") or "BOMSHAK"
+
+    from companion.state.schema import CharacterState, ProvenancedField
+    from companion.state.store import CharacterStateStore
+    from companion.equipment.fubgun_priorities import infer_stage_from_level
+
+    store = CharacterStateStore(runtime_dir=runtime_dir)
+    try:
+        state = store.load_character(char_id)
+    except Exception:
+        state = CharacterState(
+            character_id=char_id,
+            character_name=payload.get("character_name") or char_id,
+            character_class=payload.get("character_class") or "Mercenary",
+            ascendancy=payload.get("ascendancy") or "Gemling Legionnaire",
+        )
+
+    if payload.get("character_name"):
+        state.character_name = payload["character_name"]
+    if payload.get("character_class"):
+        state.character_class = payload["character_class"]
+    if payload.get("ascendancy"):
+        state.ascendancy = payload["ascendancy"]
+
+    if payload.get("level") is not None:
+        lvl_val = int(payload["level"])
+        state.level = ProvenancedField[int].create(lvl_val, source="USER_IN_GAME_SYNC")
+        stage_enum = infer_stage_from_level(lvl_val)
+        display_map = {
+            "LEVELING_1_14": "lvl 1-14",
+            "LEVELING_15_32": "lvl 15-32",
+            "LEVELING_33_51": "lvl 33-51",
+            "SWAP_52": "lvl 52 Swap",
+            "LEVELING_53_68": "lvl 53-68",
+            "LEVEL_85": "lvl 85",
+            "ENDGAME": "Endgame",
+        }
+        state.build_progression["active_stage"] = display_map.get(getattr(stage_enum, "value", str(stage_enum)), "lvl 33-51")
+
+
+    # Attributes
+    for attr in ("strength", "dexterity", "intelligence"):
+        if payload.get(attr) is not None:
+            val = int(payload[attr])
+            state.attributes[attr] = ProvenancedField[int].create(val, source="USER_IN_GAME_SYNC")
+
+    # Resources (mana, spirit)
+    for res_key in ("mana", "spirit"):
+        if payload.get(res_key) is not None:
+            val = int(payload[res_key])
+            state.resources[res_key] = ProvenancedField[int].create(val, source="USER_IN_GAME_SYNC")
+
+    # Resistances
+    for res in ("fire", "cold", "lightning", "chaos"):
+        val = payload.get(f"{res}_res") if payload.get(f"{res}_res") is not None else payload.get(res)
+        if val is not None:
+            state.resistances[res] = ProvenancedField[int].create(int(val), source="USER_IN_GAME_SYNC")
+
+    store.save_character(state)
+
+    # 2. Update or create CharacterStatBaseline
+    from companion.equipment.baseline import CharacterStatBaseline, CharacterFact, BaselineSource
+    from companion.equipment.baseline_cli import load_baseline, save_baseline
+
+    baseline = load_baseline(runtime_dir, char_id)
+    if baseline is None:
+        baseline = CharacterStatBaseline.create_empty(character_id=char_id, anchored_loadout_revision=1)
+
+    # Update defensive stats
+    if payload.get("life") is not None:
+        baseline.life = CharacterFact[int].create(int(payload["life"]), source=BaselineSource.MANUAL_USER_INPUT)
+    if payload.get("armour") is not None:
+        baseline.armour = CharacterFact[int].create(int(payload["armour"]), source=BaselineSource.MANUAL_USER_INPUT)
+    if payload.get("evasion") is not None:
+        baseline.evasion = CharacterFact[int].create(int(payload["evasion"]), source=BaselineSource.MANUAL_USER_INPUT)
+    if payload.get("energy_shield") is not None:
+        baseline.energy_shield = CharacterFact[int].create(int(payload["energy_shield"]), source=BaselineSource.MANUAL_USER_INPUT)
+    if payload.get("mana") is not None:
+        baseline.mana = CharacterFact[int].create(int(payload["mana"]), source=BaselineSource.MANUAL_USER_INPUT)
+    if payload.get("spirit") is not None:
+        baseline.spirit = CharacterFact[int].create(int(payload["spirit"]), source=BaselineSource.MANUAL_USER_INPUT)
+    if payload.get("deflection") is not None:
+        baseline.deflection = CharacterFact[int].create(int(payload["deflection"]), source=BaselineSource.MANUAL_USER_INPUT)
+    if payload.get("movement_speed") is not None:
+        baseline.movement_speed = CharacterFact[int].create(int(payload["movement_speed"]), source=BaselineSource.MANUAL_USER_INPUT)
+
+    # Attributes on baseline
+    if payload.get("strength") is not None:
+        baseline.strength = CharacterFact[int].create(int(payload["strength"]), source=BaselineSource.MANUAL_USER_INPUT)
+    if payload.get("dexterity") is not None:
+        baseline.dexterity = CharacterFact[int].create(int(payload["dexterity"]), source=BaselineSource.MANUAL_USER_INPUT)
+    if payload.get("intelligence") is not None:
+        baseline.intelligence = CharacterFact[int].create(int(payload["intelligence"]), source=BaselineSource.MANUAL_USER_INPUT)
+
+    # Resistances on baseline
+    for res in ("fire", "cold", "lightning", "chaos"):
+        val = payload.get(f"{res}_res") if payload.get(f"{res}_res") is not None else payload.get(res)
+        if val is not None:
+            int_val = int(val)
+            setattr(baseline, f"raw_{res}_res", CharacterFact[int].create(int_val, source=BaselineSource.MANUAL_USER_INPUT))
+            setattr(baseline, f"effective_{res}_res", CharacterFact[int].create(int_val, source=BaselineSource.MANUAL_USER_INPUT))
+            setattr(baseline, f"max_{res}_res", CharacterFact[int].create(75, source=BaselineSource.MANUAL_USER_INPUT))
+
+    save_baseline(runtime_dir, baseline)
+
+    return {
+        "success": True,
+        "character_id": char_id,
+        "message": f"Stat karakter {char_id} berhasil diperbarui secara live!",
+    }
+
+
+
 def fetch_public_profile(account_name: str, character_id: str, runtime_dir: Path, overwrite: bool = True) -> dict[str, Any]:
     """Attempt to fetch public profile items from pathofexile.com."""
     import sys
@@ -887,14 +1198,15 @@ def fetch_public_profile(account_name: str, character_id: str, runtime_dir: Path
     except Exception:
         pass
 
-    # 2. Fallback to web endpoints: if user entered mikaelzo#5674, try both clean name and raw name
+    # 2. Fallback to web endpoints: if user entered mikaelzo#5674, try exact name first, then clean name
     candidates = [account_name]
     if "#" in account_name:
         clean_name = account_name.split("#")[0].strip()
         if clean_name and clean_name not in candidates:
-            candidates = [clean_name, account_name]
+            candidates = [account_name, clean_name]
 
     last_error = None
+    last_error_candidate = account_name
     last_url = ""
 
     for candidate in candidates:
@@ -916,44 +1228,57 @@ def fetch_public_profile(account_name: str, character_id: str, runtime_dir: Path
                 data = json.loads(resp.read().decode("utf-8"))
                 return import_character_payload({"character_id": character_id, "character_data": data, "overwrite": overwrite}, runtime_dir)
         except urllib.error.HTTPError as e:
-            last_error = e
-            if e.code == 403:
+            if last_error is None:
+                last_error = e
+                last_error_candidate = candidate
+            continue
+        except Exception as e:
+            if last_error is None:
+                last_error = e
+            continue
+
+    if last_error:
+        if isinstance(last_error, urllib.error.HTTPError):
+            if last_error.code == 403:
                 return {
                     "error": "PROFILE_PRIVATE_OR_BLOCKED",
                     "code": 403,
-                    "account_name": candidate,
+                    "account_name": last_error_candidate,
                     "message": (
-                        f"Akun '{candidate}' terdeteksi PRIVATE di situs pathofexile.com (HTTP 403 Forbidden).\n"
-                        "Untuk mengizinkan penarikan data profil publik:\n"
-                        "1. Buka https://www.pathofexile.com/my-account/privacy\n"
-                        "2. Hapus centang pada 'Set profile as private' dan 'Hide Characters tab', lalu simpan.\n\n"
-                        "ATAU (Solusi Instan Tanpa Mengubah Privasi):\n"
-                        "Karena Anda sudah login di browser, klik link JSON di bawah, salin seluruh teksnya (Ctrl+A lalu Ctrl+C), dan paste di tab 'Paste Character JSON'."
+                        f"Akun '{last_error_candidate}' terdeteksi PRIVATE atau diblokir oleh GGG (HTTP 403 Forbidden).\n\n"
+                        "Penyebab Teknis PoE 2:\n"
+                        "GGG telah mengunci endpoint publik lama. Karakter PoE 2 TIDAK BISA ditarik lewat web publik tanpa login OAuth resmi, meskipun akun Anda sudah diset Public.\n\n"
+                        "Solusi Praktis PoE 2:\n"
+                        "1. Shortcut Ctrl+C: Arahkan kursor ke item di dalam game lalu tekan Ctrl+C (clipboard auto-scanner akan langsung mendeteksi & mengevaluasi item).\n"
+                        "2. Opsi B (Paste JSON): Jika Anda memiliki export data karakter / PoB2, tempelkan ke tab 'Paste Character JSON'."
                     ),
-                    "url": f"https://www.pathofexile.com/character-window/get-items?accountName={urllib.parse.quote(candidate)}&character={encoded_char}",
+                    "url": last_url,
                 }
-            elif e.code == 404:
-                continue
-
-    if last_error:
-        if last_error.code == 404:
-            clean_hint = account_name.split("#")[0] if "#" in account_name else account_name
-            return {
-                "error": "ACCOUNT_OR_CHARACTER_NOT_FOUND",
-                "code": 404,
-                "message": (
-                    f"Karakter '{character_id}' atau akun '{account_name}' tidak ditemukan (HTTP 404 Not Found).\n"
-                    f"Catatan: Jangan sertakan tanda '#' (gunakan nama akun '{clean_hint}').\n"
-                    "Pastikan juga penulisan nama karakter sama persis seperti di dalam game."
-                ),
-                "url": last_url,
-            }
-        return {"error": f"HTTP Error {last_error.code}: {last_error.reason}", "url": last_url}
+            elif last_error.code == 404:
+                return {
+                    "error": "ACCOUNT_OR_CHARACTER_NOT_FOUND",
+                    "code": 404,
+                    "account_name": account_name,
+                    "message": (
+                        f"Karakter '{character_id}' untuk akun '{account_name}' tidak ditemukan (HTTP 404 Not Found).\n\n"
+                        "Penyebab Teknis:\n"
+                        "Endpoint web warisan GGG (character-window) hanya melayani karakter Path of Exile 1 dan belum mengekspos karakter PoE 2 ke web publik tanpa OAuth 2.0 resmi.\n\n"
+                        "Solusi Praktis PoE 2:\n"
+                        "1. Shortcut Ctrl+C: Arahkan kursor ke item di dalam game lalu tekan Ctrl+C (clipboard auto-scanner akan langsung mendeteksi & mengevaluasi item).\n"
+                        "2. Opsi B (Paste JSON): Jika Anda memiliki export data karakter / PoB2, tempelkan ke tab 'Paste Character JSON'."
+                    ),
+                    "url": last_url,
+                }
+        return {"error": f"HTTP Error: {last_error}", "url": last_url}
     return {"error": "Gagal menghubungi server PoE.", "url": last_url}
 
 
-def get_dashboard_status(runtime_dir: Path, char_id: str | None = None) -> dict[str, Any]:
-    """Gather live runtime status, active character, current objective, baseline, and loadout."""
+def get_dashboard_status(
+    runtime_dir: Path,
+    char_id: str | None = None,
+    pob_session: Any | None = None,
+) -> dict[str, Any]:
+    """Gather live runtime status, active character, current objective, baseline, loadout, and engine health."""
     if not char_id:
         active_file = runtime_dir / "active_character.json"
         if active_file.is_file():
@@ -983,6 +1308,27 @@ def get_dashboard_status(runtime_dir: Path, char_id: str | None = None) -> dict[
         char_id = "BOMSHAK"
 
     status_data["active_character_id"] = char_id
+
+    # Gather PoB2 engine health status
+    engine_status: dict[str, Any] = {
+        "available": False,
+        "healthy": False,
+        "unhealthy_reason": None,
+    }
+    target_pob = pob_session
+    if target_pob is None and char_id:
+        try:
+            from companion.dashboard_server import _GLOBAL_POB_SESSIONS, _GLOBAL_POB_SESSION
+            target_pob = _GLOBAL_POB_SESSIONS.get(char_id) or _GLOBAL_POB_SESSION
+        except Exception:
+            pass
+
+    if target_pob is not None:
+        engine_status["available"] = bool(getattr(target_pob, "is_available", False))
+        engine_status["healthy"] = bool(getattr(target_pob, "is_healthy", False))
+        engine_status["unhealthy_reason"] = getattr(target_pob, "unhealthy_reason", None)
+
+    status_data["engine_healthy"] = engine_status["healthy"]
 
     char_file = runtime_dir / "characters" / f"{char_id}.json"
     if char_file.is_file():
@@ -1015,6 +1361,7 @@ def get_dashboard_status(runtime_dir: Path, char_id: str | None = None) -> dict[
         "loadout": loadout_data,
         "baseline": baseline_data,
         "active_character_id": char_id,
+        "engine_status": engine_status,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -1197,6 +1544,22 @@ def get_available_guides() -> dict[str, Any]:
                     "endgame",
                     "mageblood",
                     "dot cap",
+                ],
+            },
+            {
+                "id": "navira_varashta",
+                "name": "Navira's Fracturing Varashta (Sorceress)",
+                "class": "Sorceress",
+                "stages": [
+                    "auto",
+                    "Act 1 & 2",
+                    "Act 2",
+                    "Act 3",
+                    "Act 4 to Endgame",
+                    "Early Endgame",
+                    "Mid-Endgame",
+                    "Late Endgame",
+                    "Uber Endgame",
                 ],
             },
             {

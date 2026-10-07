@@ -39,6 +39,11 @@ class ReviewCursor(BaseModel):
     completed_review_batches: list[str] = Field(default_factory=list)
     pending_review_batches: list[str] = Field(default_factory=list)
 
+    @property
+    def reviewed_ahead_ranges(self) -> list[list[int]]:
+        """Alias for accounted_reviewed_ranges matching design specification."""
+        return self.accounted_reviewed_ranges
+
 
 class ReaderCursorManager:
     """Manages durable reader_state.json access and updates."""
@@ -119,6 +124,10 @@ class ReviewCursorManager:
     @property
     def accounted_reviewed_ranges(self) -> list[list[int]]:
         return self._cursor.accounted_reviewed_ranges
+
+    @property
+    def reviewed_ahead_ranges(self) -> list[list[int]]:
+        return self._cursor.reviewed_ahead_ranges
 
     @property
     def completed_review_batches(self) -> list[str]:

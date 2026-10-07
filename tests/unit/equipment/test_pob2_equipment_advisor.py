@@ -867,3 +867,63 @@ def test_dual_ring_policy_rejected_empty_slot_is_not_overwritten_by_pareto_domin
     assert rec.ring2_recommendation.verdict == Verdict.REJECT
     assert rec.recommended_slot is None
     assert "Neither placement recommended" in rec.summary_verdict
+
+
+def test_sandbox_engine_isolation_main_engine_never_mutated_during_simulation():
+    """Verify that simulate_item uses sandbox_engine exclusively; main engine is never called with equip_item."""
+    main_engine = FakePobEngine()
+    sandbox_engine = FakePobEngine()
+    engine_instances = iter([main_engine, sandbox_engine])
+
+    session = Pob2EquipmentSession(
+        character_name="BOMSHAK",
+        engine_factory=lambda: next(engine_instances),
+        poe_api_client=FakePoeApi(),
+    )
+    assert session.initialize() is True
+    assert session.engine is main_engine
+    assert session.sandbox_engine is sandbox_engine
+
+    # Clear call logs after initialization
+    main_engine.call_log.clear()
+    sandbox_engine.call_log.clear()
+
+    delta = session.simulate_item(slot="Helmet", raw_candidate=KRAKEN_DOME_RAW, candidate_name="Kraken Dome")
+    assert delta is not None
+
+    # Main engine must NOT have received any equip_item calls
+    assert "equip_item" not in main_engine.call_log, (
+        f"Main engine was mutated during simulation! Calls: {main_engine.call_log}"
+    )
+
+    # Sandbox engine MUST have received equip_item and import_build calls
+    assert "equip_item" in sandbox_engine.call_log
+    assert "import_build" in sandbox_engine.call_log
+
+
+def test_sandbox_engine_isolation_ring_simulation():
+    """Verify sandbox isolation for dual-ring simulation."""
+    main_engine = FakePobEngine()
+    sandbox_engine = FakePobEngine()
+    engine_instances = iter([main_engine, sandbox_engine])
+
+    session = Pob2EquipmentSession(
+        character_name="BOMSHAK",
+        engine_factory=lambda: next(engine_instances),
+        poe_api_client=FakePoeApi(),
+    )
+    assert session.initialize() is True
+
+    main_engine.call_log.clear()
+    sandbox_engine.call_log.clear()
+
+    result = session.simulate_ring_candidate(
+        raw_candidate=KRAKEN_DOME_RAW,
+        candidate_name="Test Ring",
+    )
+    assert result is not None
+
+    # Main engine must NOT have received any equip_item calls
+    assert "equip_item" not in main_engine.call_log, (
+        f"Main engine was mutated during ring simulation! Calls: {main_engine.call_log}"
+    )

@@ -74,11 +74,11 @@ RE_LIFE_REGEN = re.compile(
     re.IGNORECASE,
 )
 RE_ATTR = re.compile(
-    r"\+?\s*([0-9]+)\s+(?:to\s+)?(Strength|Dexterity|Intelligence|all\s+Attributes)",
+    r"(?:\+?\s*([0-9]+)(?:\([0-9\-]+\))?\s+(?:to\s+)?(Strength|Dexterity|Intelligence|all\s+Attributes)|(?:Strength|Dexterity|Intelligence):\s*\+?\s*([0-9]+))",
     re.IGNORECASE,
 )
 RE_FLAT_ATTACK = re.compile(
-    r"Adds\s+([0-9]+)\s+to\s+([0-9]+)\s+(?:Physical|Fire|Cold|Lightning|Chaos)?\s*Damage\s+to\s+Attacks",
+    r"Adds\s+([0-9]+)\s+to\s+([0-9]+)\s+(?:Physical|Fire|Cold|Lightning|Chaos)?\s*Damage(?:\s+to\s+Attacks)?",
     re.IGNORECASE,
 )
 RE_LIFE_ON_HIT = re.compile(
@@ -124,21 +124,30 @@ def _extract_attributes(text: str) -> dict[str, int]:
     attrs: dict[str, int] = {"Strength": 0, "Dexterity": 0, "Intelligence": 0}
     for line in text.splitlines():
         clean = line.strip().lower()
-        if clean.startswith("requires") or clean.startswith("requirements") or clean.startswith("level"):
+        if clean.startswith("requires") or clean.startswith("requirements") or clean.startswith("level:"):
             continue
         for match in RE_ATTR.finditer(line):
-            val = int(match.group(1))
-            attr_name = match.group(2).lower()
-            if "strength" in attr_name:
-                attrs["Strength"] += val
-            elif "dexterity" in attr_name:
-                attrs["Dexterity"] += val
-            elif "intelligence" in attr_name:
-                attrs["Intelligence"] += val
-            elif "all" in attr_name:
-                attrs["Strength"] += val
-                attrs["Dexterity"] += val
-                attrs["Intelligence"] += val
+            if match.group(1) and match.group(2):
+                val = int(match.group(1))
+                attr_name = match.group(2).lower()
+                if "strength" in attr_name:
+                    attrs["Strength"] += val
+                elif "dexterity" in attr_name:
+                    attrs["Dexterity"] += val
+                elif "intelligence" in attr_name:
+                    attrs["Intelligence"] += val
+                elif "all" in attr_name:
+                    attrs["Strength"] += val
+                    attrs["Dexterity"] += val
+                    attrs["Intelligence"] += val
+            elif match.group(3):
+                val = int(match.group(3))
+                if "strength" in clean:
+                    attrs["Strength"] += val
+                elif "dexterity" in clean:
+                    attrs["Dexterity"] += val
+                elif "intelligence" in clean:
+                    attrs["Intelligence"] += val
     return attrs
 
 
@@ -148,17 +157,20 @@ def _extract_requirements(text: str) -> dict[str, int]:
     in_req_section = False
     for line in text.splitlines():
         clean = line.strip()
-        if clean.lower().startswith("requirements"):
+        if clean.lower().startswith("requirements") or clean.lower().startswith("requires"):
             in_req_section = True
-            continue
-        if in_req_section and (clean.startswith("---") or clean.startswith("===")):
+        elif in_req_section and (clean.startswith("---") or clean.startswith("===")):
             in_req_section = False
             continue
 
-        # Check level
-        m_lvl = re.search(r"\bLevel\s*[:\s]\s*([0-9]+)", clean, re.IGNORECASE)
-        if m_lvl:
-            reqs["level"] = max(reqs["level"], int(m_lvl.group(1)))
+        if not in_req_section and not clean.lower().startswith("requires"):
+            continue
+
+        # Check level (avoid matching "Item Level")
+        if "item level" not in clean.lower():
+            m_lvl = re.search(r"\b(?:Level|Lvl)\s*[:\s]\s*([0-9]+)", clean, re.IGNORECASE)
+            if m_lvl:
+                reqs["level"] = max(reqs["level"], int(m_lvl.group(1)))
 
         # Check Str
         m_str = re.search(r"\b(?:Str|Strength)\s*[:\s]\s*([0-9]+)", clean, re.IGNORECASE)
@@ -379,8 +391,15 @@ def generate_tactical_advice(
     # Dropping >= 10 attributes without massive primary gain is a build hazard.
     # If it also loses DPS or loses Life, it MUST be firmly REJECTED.
     total_res_gain = max(0, fire_delta) + max(0, cold_delta) + max(0, lightning_delta) + max(0, chaos_delta)
-    if total_attr_loss >= 10 and (dps_delta < 0 or life_delta <= 0 or (total_res_gain < 25 and life_delta < 40)):
-        verdict = Verdict.REJECT
+    if total_attr_loss >= 10:
+        if is_weapon_slot:
+            if dps_delta < 0:
+                verdict = Verdict.REJECT
+        else:
+            has_massive_defensive_gain = (life_delta >= 35 or ehp_delta >= 35 or total_res_gain >= 25)
+            if not has_massive_defensive_gain:
+                if dps_delta < 0 or life_delta <= 0:
+                    verdict = Verdict.REJECT
 
     # E. Core DPS and Life downgrade (Triple Negative):
     if dps_delta < -0.05 and life_delta <= 0 and total_res_gain <= 0:
@@ -388,13 +407,16 @@ def generate_tactical_advice(
 
     # F. Offensive leveling slot DPS & Life drop (Gloves, Rings, Amulet):
     is_offensive_slot = any(k in slot_name.lower() for k in ("glove", "ring", "amulet"))
-    if is_offensive_slot and (
-        (dps_delta < -0.5 and life_delta < 0)
-        or (dps_delta <= -2.0 and total_res_gain < 35 and life_delta <= 25)
-        or (flat_damage_lost and dps_delta < 0 and total_res_gain < 35)
-        or (sustain_lost and flat_damage_lost and total_res_gain < 30)
-    ):
-        verdict = Verdict.REJECT
+    cand_raw_lower = candidate_raw.lower()
+    has_spell_synergy = any(k in cand_raw_lower for k in ("spell skills", "spell damage", "to level of all spell"))
+    if is_offensive_slot and not (life_delta >= 35 or ehp_delta >= 35 or has_spell_synergy):
+        if (
+            (dps_delta < -0.5 and life_delta < 0)
+            or (dps_delta <= -2.0 and total_res_gain < 35 and life_delta <= 25)
+            or (flat_damage_lost and dps_delta < 0 and total_res_gain < 35)
+            or (sustain_lost and flat_damage_lost and dps_delta < 0 and total_res_gain < 30)
+        ):
+            verdict = Verdict.REJECT
 
     # G. Decisive Weapon DPS Upgrade (Campaign Leveling):
     # In Fubgun campaign leveling, weapons are the primary damage engine.
@@ -432,6 +454,19 @@ def generate_tactical_advice(
         and not is_lethal_drop
         and total_attr_loss < 10
         and not (is_boots_slot and ms_delta < 0)
+    ):
+        verdict = Verdict.EQUIP_NOW
+
+    # I. Decisive Jewelry/Amulet/Ring Upgrade:
+    # Outstanding Life/EHP boost on jewelry with non-negative net resistances and no lethal drop.
+    is_jewelry_slot = any(k in slot_name.lower() for k in ("amulet", "ring", "talisman"))
+    if (
+        base_verdict != Verdict.INSUFFICIENT_DATA
+        and is_jewelry_slot
+        and (life_delta >= 35 or ehp_delta >= 35)
+        and net_res_delta >= 0
+        and not is_lethal_drop
+        and (has_spell_synergy or cand_regen > 0 or life_delta >= 50 or ehp_delta >= 50)
     ):
         verdict = Verdict.EQUIP_NOW
 
@@ -561,12 +596,16 @@ def generate_tactical_advice(
                 f"Aman dan sangat direkomendasikan dipasang. Di build Fubgun, DPS senjata adalah motor utama "
                 f"damage ledakan granat di {zone_profile.friendly_name}."
             )
-        elif is_defensive_slot and (total_local_defense_gain >= 20 or life_delta >= 20):
+        elif (is_defensive_slot or is_jewelry_slot) and (total_local_defense_gain >= 20 or life_delta >= 20 or ehp_delta >= 20):
             defense_parts = []
             if life_delta > 0:
                 defense_parts.append(f"+{life_delta} Life")
+            if ehp_delta > 0:
+                defense_parts.append(f"+{ehp_delta:.1f} EHP")
             if total_local_defense_gain > 0:
                 defense_parts.append(f"+{total_local_defense_gain} Total Pertahanan")
+            if has_spell_synergy:
+                defense_parts.append("+Level/Damage Spell")
             summary_str = ", ".join(defense_parts) if defense_parts else "+Pertahanan"
             headline = f"{candidate_name} LEBIH BAGUS! Pasang sekarang untuk peningkatan pertahanan drastis ({summary_str})."
             action = (
@@ -606,14 +645,14 @@ def generate_tactical_advice(
                 active_neg.append(f"Fire ({char_fire}%)")
             headline = f"{current_name} LEBIH BAGUS! Tolak {candidate_name} karena resistansi {', '.join(active_neg)} Anda saat ini negatif!"
             action = f"Tolak swap ini! Resistansi karakter Anda saat ini berada di angka negatif ({', '.join(active_neg)}). Kehilangan resistansi ini akan membuat Anda sering mati instan."
-        elif is_offensive_slot and (dps_delta <= -2.0 or (dps_delta < -0.5 and life_delta < 0) or flat_damage_lost):
+        elif is_offensive_slot and not (life_delta >= 35 or ehp_delta >= 35 or has_spell_synergy) and (dps_delta <= -2.0 or (dps_delta < -0.5 and life_delta < 0) or (flat_damage_lost and dps_delta < 0)):
             sustain_desc = " serta menghilangkan sustain Life/Mana" if sustain_lost else ""
             headline = f"{current_name} LEBIH BAGUS! Jangan ganti {slot_label} sekarang! Menukar ke {candidate_name} memotong damage ofensif ({dps_delta:+.2f} DPS){sustain_desc}."
         elif is_weapon_slot and dps_delta < -0.5:
             headline = f"{current_name} LEBIH BAGUS! Jangan ganti senjata sekarang! Menukar ke {candidate_name} menurunkan DPS ({dps_delta:+.2f} DPS)."
         elif is_boots_slot and ms_delta < -0.05:
             headline = f"{current_name} LEBIH BAGUS! Jangan ganti sepatu sekarang! Menukar ke {candidate_name} menurunkan Movement Speed ({ms_delta:g}%)."
-        elif total_attr_loss >= 10 and (dps_delta < 0 or life_delta <= 0):
+        elif total_attr_loss >= 10 and (dps_delta < 0 or (not is_weapon_slot and life_delta <= 0)):
             headline = f"{current_name} LEBIH BAGUS! Jangan ganti {slot_label} sekarang! Menukar ke {candidate_name} menyebabkan defisit atribut besar ({', '.join(attr_penalties)}) serta kehilangan DPS/darah."
         else:
             reasons = []
@@ -660,7 +699,7 @@ def generate_tactical_advice(
                 f"Rekomendasi: Tetap gunakan {current_name}. Movement Speed pada sepatu adalah prioritas "
                 f"mutlak di build Fubgun."
             )
-        elif total_attr_loss >= 10 and (dps_delta < 0 or life_delta <= 0):
+        elif total_attr_loss >= 10 and (dps_delta < 0 or (not is_weapon_slot and life_delta <= 0)):
             action = (
                 f"Rekomendasi: Tetap gunakan {current_name}. {candidate_name} memotong atribut "
                 f"({', '.join(attr_penalties)}) dan menurunkan DPS/Life yang berisiko melumpuhkan gem/gear Anda."
@@ -681,6 +720,13 @@ def generate_tactical_advice(
             action = (
                 f"Pasang {candidate_name} jika Anda ingin membersihkan monster dan boss lebih cepat ({dps_delta:+.2f} DPS), "
                 f"atau pertahankan {current_name} jika merasa survivability saat ini masih rapuh."
+            )
+        elif life_delta >= 35 or ehp_delta >= 35:
+            synergy_text = " serta sinergi Spell Skills" if has_spell_synergy else ""
+            headline = f"Pertukaran Defensif Signifikan: {candidate_name} vs {current_name} memberi lonjakan pertahanan (+{life_delta} Life, {ehp_delta:+.1f} EHP){synergy_text} dengan trade-off ({dps_delta:+.2f} DPS)."
+            action = (
+                f"Sangat disarankan dipasang jika Anda butuh survivability lebih tebal (+{life_delta} Life). "
+                f"Trade-off penurunan ofensif ({dps_delta:+.2f} DPS) terbayar lunas oleh durabilitas dan kenyamanan bermain."
             )
         else:
             headline = f"Pertukaran Bersyarat: {candidate_name} vs {current_name} menukar tipe pertahanan."

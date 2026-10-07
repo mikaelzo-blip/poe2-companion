@@ -7,8 +7,10 @@ import json
 import os
 from pathlib import Path
 import socketserver
+import sys
 import time
 import webbrowser
+from typing import Any
 
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -17,7 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _GLOBAL_POB_SESSION: Any = None
 _GLOBAL_POB_SESSIONS: dict[str, Any] = {}
 _FAILED_CHARACTERS: dict[str, float] = {}
-POB_RETRY_INTERVAL_SECONDS = 15.0
+POB_RETRY_INTERVAL_SECONDS = 300.0
 
 
 def normalize_char_id(char_id: str | None) -> str:
@@ -130,6 +132,32 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, directory: str | None = None, **kwargs) -> None:
         super().__init__(*args, directory=str(PROJECT_ROOT), **kwargs)
 
+    def handle_one_request(self) -> None:
+        try:
+            super().handle_one_request()
+        except ConnectionError:
+            self.close_connection = True
+
+    def send_json(self, data: Any, status: int = 200) -> None:
+        """Send JSON response; drop cleanly if client already disconnected."""
+        try:
+            res_bytes = json.dumps(data).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(res_bytes)))
+            self.end_headers()
+            self.wfile.write(res_bytes)
+        except ConnectionError:
+            self.close_connection = True
+
+    def log_message(self, format: str, *args: Any) -> None:
+        """Suppress routine high-frequency polling requests to prevent terminal spam."""
+        if args and isinstance(args[0], str):
+            req = args[0]
+            if "/api/status" in req or "/api/clipboard-poll" in req:
+                return
+        super().log_message(format, *args)
+
     def end_headers(self) -> None:
         if any(self.path.endswith(ext) for ext in (".js", ".css", ".html")) or self.path in ("/", ""):
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -144,6 +172,10 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.path = "/dashboard/style.css"
         elif self.path.startswith("/app.js"):
             self.path = "/dashboard/app.js"
+        elif self.path == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
+            return
         elif self.path.startswith("/api/status"):
             try:
                 from urllib.parse import urlparse, parse_qs
@@ -151,21 +183,14 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
                 parsed = urlparse(self.path)
                 params = parse_qs(parsed.query)
                 char_id = normalize_char_id(params.get("char_id", [None])[0])
+                pob_sess = get_or_create_pob_session(char_id) if char_id else None
 
-                data = get_dashboard_status(PROJECT_ROOT / "runtime", char_id=char_id)
-                res_bytes = json.dumps(data).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(res_bytes)))
-                self.end_headers()
-                self.wfile.write(res_bytes)
+                data = get_dashboard_status(PROJECT_ROOT / "runtime", char_id=char_id, pob_session=pob_sess)
+                self.send_json(data)
+            except ConnectionError:
+                return
             except Exception as exc:
-                err_bytes = json.dumps({"error": str(exc)}).encode("utf-8")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(err_bytes)))
-                self.end_headers()
-                self.wfile.write(err_bytes)
+                self.send_json({"error": str(exc)}, 500)
             return
         elif self.path.startswith("/api/clipboard-poll"):
             try:
@@ -176,28 +201,22 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
                 char_id = normalize_char_id(params.get("char_id", ["BOMSHAK"])[0])
                 stage = params.get("stage", ["lvl 1-14"])[0]
                 guide = params.get("guide", [None])[0]
+                zone = params.get("zone", [None])[0]
 
-                pob = get_or_create_pob_session(char_id)
                 result = check_auto_clipboard(
                     runtime_dir=PROJECT_ROOT / "runtime",
                     char_id=char_id,
                     stage_str=stage,
-                    pob_session=pob,
+                    pob_session=None,
                     guide=guide,
+                    zone=zone,
+                    pob_session_resolver=lambda: get_or_create_pob_session(char_id),
                 )
-                res_bytes = json.dumps(result).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(res_bytes)))
-                self.end_headers()
-                self.wfile.write(res_bytes)
+                self.send_json(result)
+            except ConnectionError:
+                return
             except Exception as exc:
-                err_bytes = json.dumps({"error": str(exc)}).encode("utf-8")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(err_bytes)))
-                self.end_headers()
-                self.wfile.write(err_bytes)
+                self.send_json({"error": str(exc)}, 500)
             return
         elif self.path.startswith("/api/account-characters"):
             try:
@@ -207,55 +226,31 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
                 params = parse_qs(parsed.query)
                 account_name = params.get("account", ["mikaelzo#5674"])[0]
                 result = get_account_characters(account_name=account_name, runtime_dir=PROJECT_ROOT / "runtime")
-                res_bytes = json.dumps(result).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(res_bytes)))
-                self.end_headers()
-                self.wfile.write(res_bytes)
+                self.send_json(result)
+            except ConnectionError:
+                return
             except Exception as exc:
-                err_bytes = json.dumps({"error": str(exc)}).encode("utf-8")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(err_bytes)))
-                self.end_headers()
-                self.wfile.write(err_bytes)
+                self.send_json({"error": str(exc)}, 500)
             return
         elif self.path.startswith("/api/guides"):
             try:
                 from companion.dashboard_api import get_available_guides
                 result = get_available_guides()
-                res_bytes = json.dumps(result).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(res_bytes)))
-                self.end_headers()
-                self.wfile.write(res_bytes)
+                self.send_json(result)
+            except ConnectionError:
+                return
             except Exception as exc:
-                err_bytes = json.dumps({"error": str(exc)}).encode("utf-8")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(err_bytes)))
-                self.end_headers()
-                self.wfile.write(err_bytes)
+                self.send_json({"error": str(exc)}, 500)
             return
         elif self.path == "/api/get-clipboard":
             try:
                 from companion.equipment.clipboard import get_clipboard_text
                 text = get_clipboard_text().strip()
-                res_bytes = json.dumps({"clipboard_text": text}).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(res_bytes)))
-                self.end_headers()
-                self.wfile.write(res_bytes)
+                self.send_json({"clipboard_text": text})
+            except ConnectionError:
+                return
             except Exception as exc:
-                err_bytes = json.dumps({"error": str(exc)}).encode("utf-8")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(err_bytes)))
-                self.end_headers()
-                self.wfile.write(err_bytes)
+                self.send_json({"error": str(exc)}, 500)
             return
         return super().do_GET()
 
@@ -275,18 +270,11 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
                     pob_session=pob,
                 )
                 res_bytes = json.dumps(result).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(res_bytes)))
-                self.end_headers()
-                self.wfile.write(res_bytes)
+                self.send_json(result)
+            except ConnectionError:
+                return
             except Exception as exc:
-                err_bytes = json.dumps({"error": str(exc)}).encode("utf-8")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(err_bytes)))
-                self.end_headers()
-                self.wfile.write(err_bytes)
+                self.send_json({"error": str(exc)}, 500)
             return
         elif self.path == "/api/equip-item":
             content_length = int(self.headers.get("Content-Length", 0))
@@ -301,19 +289,11 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
                     raw_text = payload.get("raw_text")
                     if target_slot and raw_text:
                         sync_equipped_item_to_pob_session(char_id, target_slot, raw_text)
-                res_bytes = json.dumps(result).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(res_bytes)))
-                self.end_headers()
-                self.wfile.write(res_bytes)
+                self.send_json(result)
+            except ConnectionError:
+                return
             except Exception as exc:
-                err_bytes = json.dumps({"error": str(exc)}).encode("utf-8")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(err_bytes)))
-                self.end_headers()
-                self.wfile.write(err_bytes)
+                self.send_json({"error": str(exc)}, 500)
             return
         elif self.path == "/api/import-character":
             content_length = int(self.headers.get("Content-Length", 0))
@@ -325,19 +305,27 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if result.get("success"):
                     char_id = payload.get("character_id", "BOMSHAK")
                     invalidate_pob_session(char_id)
-                res_bytes = json.dumps(result).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(res_bytes)))
-                self.end_headers()
-                self.wfile.write(res_bytes)
+                self.send_json(result)
+            except ConnectionError:
+                return
             except Exception as exc:
-                err_bytes = json.dumps({"error": str(exc)}).encode("utf-8")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(err_bytes)))
-                self.end_headers()
-                self.wfile.write(err_bytes)
+                self.send_json({"error": str(exc)}, 500)
+            return
+        elif self.path == "/api/update-stats":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            try:
+                payload = json.loads(body.decode("utf-8")) if body else {}
+                from companion.dashboard_api import update_character_stats_payload
+                result = update_character_stats_payload(payload, runtime_dir=PROJECT_ROOT / "runtime")
+                if result.get("success"):
+                    char_id = payload.get("character_id", "BOMSHAK")
+                    invalidate_pob_session(char_id)
+                self.send_json(result)
+            except ConnectionError:
+                return
+            except Exception as exc:
+                self.send_json({"error": str(exc)}, 500)
             return
         elif self.path == "/api/select-character":
             content_length = int(self.headers.get("Content-Length", 0))
@@ -356,19 +344,11 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
                             daemon=True,
                             name=f"PoB2-Prewarm-{new_char}",
                         ).start()
-                res_bytes = json.dumps(result).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(res_bytes)))
-                self.end_headers()
-                self.wfile.write(res_bytes)
+                self.send_json(result)
+            except ConnectionError:
+                return
             except Exception as exc:
-                err_bytes = json.dumps({"error": str(exc)}).encode("utf-8")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(err_bytes)))
-                self.end_headers()
-                self.wfile.write(err_bytes)
+                self.send_json({"error": str(exc)}, 500)
             return
         elif self.path == "/api/fetch-public-profile":
             content_length = int(self.headers.get("Content-Length", 0))
@@ -382,19 +362,11 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
                 result = fetch_public_profile(account_name, character_id, runtime_dir=PROJECT_ROOT / "runtime", overwrite=overwrite)
                 if result.get("success"):
                     invalidate_pob_session(character_id)
-                res_bytes = json.dumps(result).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(res_bytes)))
-                self.end_headers()
-                self.wfile.write(res_bytes)
+                self.send_json(result)
+            except ConnectionError:
+                return
             except Exception as exc:
-                err_bytes = json.dumps({"error": str(exc)}).encode("utf-8")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(err_bytes)))
-                self.end_headers()
-                self.wfile.write(err_bytes)
+                self.send_json({"error": str(exc)}, 500)
             return
 
         self.send_response(404)
@@ -408,6 +380,12 @@ CustomHandler = DashboardRequestHandler
 class ThreadingDashboardServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     daemon_threads = True
     allow_reuse_address = True
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        exc = sys.exc_info()[1]
+        if isinstance(exc, ConnectionError):
+            return
+        super().handle_error(request, client_address)
 
 
 def serve_dashboard(port: int = 8080, open_browser: bool = True) -> None:

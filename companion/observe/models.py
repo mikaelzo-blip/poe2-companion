@@ -177,3 +177,115 @@ class ObservationEnvelope(BaseModel):
     correlation_missing_due_to_backpressure: bool = False
     priority: EvidencePriority = EvidencePriority.MEDIUM
     payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExistingFindingContext(BaseModel):
+    """Sanitized context of an existing finding passed to Hermes review requests."""
+
+    model_config = ConfigDict(frozen=True)
+
+    finding_id: str
+    category: str
+    classification: str
+    safe_summary: str
+    relevant_subject_or_key: str
+    evidence_count: int
+    recent_evidence_refs: list[str] = Field(default_factory=list)
+
+
+class ReviewRequestEnvelope(BaseModel):
+    """Immutable review request envelope published to the filesystem bridge."""
+
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: str = "1.0"
+    review_batch_id: str
+    session_id: str
+    sequence_start: int
+    sequence_end: int
+    evidence_ids: list[str]
+    high_priority_signals: list[dict[str, Any]] = Field(default_factory=list)
+    marker_refs: list[dict[str, Any]] = Field(default_factory=list)
+    objective_refs: list[dict[str, Any]] = Field(default_factory=list)
+    notification_refs: list[dict[str, Any]] = Field(default_factory=list)
+    unknown_stale_refs: list[dict[str, Any]] = Field(default_factory=list)
+    anomaly_refs: list[dict[str, Any]] = Field(default_factory=list)
+    existing_findings: list[ExistingFindingContext] = Field(default_factory=list)
+    evidence_locations: dict[str, Any] = Field(default_factory=dict)
+    privacy_instructions: str = (
+        "Do NOT reproduce private player chat, whispers, credentials, or session tokens. "
+        "Cite only event IDs and sanitized signature hashes. Paraphrase user marker notes."
+    )
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class ReviewClaimEnvelope(BaseModel):
+    """Claim artifact authored by a Hermes review run to claim a review request."""
+
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: str = "1.0"
+    review_batch_id: str
+    claim_id: str
+    review_run_id: str
+    claimed_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    lease_expires_at: str
+
+
+class ReviewClaimStatusEnvelope(BaseModel):
+    """Self-owned lease renewal and heartbeat status authored by the active claimant."""
+
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: str = "1.0"
+    review_batch_id: str
+    claim_id: str
+    last_heartbeat: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    lease_expires_at: str
+
+
+class RequestPriorityState(BaseModel):
+    """Coordinator-owned mutable scheduling priority metadata for a review batch."""
+
+    model_config = ConfigDict(frozen=True)
+
+    review_batch_id: str
+    priority: str = "NORMAL"  # NORMAL, HIGH_MARKER, HIGH_ERROR
+    priority_reason: str = ""
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class FindingOperationModel(BaseModel):
+    """Single finding operation emitted by external Hermes in review response."""
+
+    model_config = ConfigDict(frozen=True)
+
+    op: str  # CREATE_FINDING, UPDATE_FINDING, NO_FINDING
+    target_finding_id: str | None = None
+    category: str = "routine"
+    semantic_issue_key: str | None = None
+    classification: str = "NOT_ENOUGH_EVIDENCE"
+    safe_summary: str = ""
+    evidence_refs: list[str] = Field(default_factory=list)
+    occurrence_count_delta: int = 1
+    corroboration_note: str | None = None
+    uncertainty: str | None = None
+    missing_evidence: list[str] | str | None = None
+
+
+class ReviewResponseEnvelope(BaseModel):
+    """Claim-specific structured review response published by external Hermes."""
+
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: str = "1.0"
+    review_batch_id: str
+    session_id: str
+    sequence_start: int
+    sequence_end: int
+    accounted_evidence_ids: list[str]
+    claim_id: str
+    review_run_id: str
+    reviewed_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    operations: list[FindingOperationModel] = Field(default_factory=list)
+

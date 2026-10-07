@@ -223,8 +223,8 @@ def parse_slot_topology_for_base(
             is_known=True,
         )
 
-    # One Hand Weapons (Wands, Sceptres, Daggers, Swords, Maces, Flails, Axes)
-    if any(k in cls_lower or k in base_lower for k in ("wand", "sceptre", "dagger", "sword", "mace", "flail", "axe")):
+    # One Hand Weapons (Wands, Sceptres, Daggers, Swords, Maces, Flails, Axes, Spears, Claws)
+    if any(k in cls_lower or k in base_lower for k in ("wand", "sceptre", "scepter", "dagger", "sword", "mace", "flail", "axe", "spear", "claw")):
         slot = target_slot if target_slot in (SlotType.MAIN_HAND, SlotType.OFF_HAND) else SlotType.MAIN_HAND
         return slot, SlotOccupancy.MAIN_HAND, SlotConflictTopology(
             occupied_slots=[slot],
@@ -265,6 +265,32 @@ def parse_item_text(
             current_section.append(line)
     if current_section:
         sections.append(current_section)
+
+    # Fallback for plain/unsegmented item text (e.g. OCR or dashless clipboard)
+    if len(sections) <= 1 and len(lines) > 2:
+        synth_sections: list[list[str]] = []
+        curr: list[str] = []
+        for line in lines:
+            is_boundary = (
+                line.startswith("Requirements:")
+                or line.startswith("Armour:")
+                or line.startswith("Evasion Rating:")
+                or line.startswith("Energy Shield:")
+                or line.startswith("Quality:")
+                or line.startswith("Physical Damage:")
+                or line.startswith("Elemental Damage:")
+                or line.startswith("Critical Strike Chance:")
+                or line.startswith("Attacks per Second:")
+                or (curr and (line.startswith("+") or line.startswith("%") or "increased" in line.lower() or "resistance" in line.lower()))
+            )
+            if is_boundary and curr:
+                synth_sections.append(curr)
+                curr = []
+            curr.append(line)
+        if curr:
+            synth_sections.append(curr)
+        if len(synth_sections) > 1:
+            sections = synth_sections
 
     item_class = ""
     rarity = "normal"

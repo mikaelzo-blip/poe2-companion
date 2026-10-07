@@ -384,19 +384,33 @@ When new corroborating evidence arrives in a NEW review batch, the system SHALL 
 
 ### Requirement: Contiguous Review Cursor Semantics and Review-Batch Accounting
 The review cursor in `hermes_review_cursor.json` SHALL strictly denote that all reviewable evidence up to sequence N has completed durable Hermes review accounting over a contiguous sequence range, and SHALL NOT represent merely that evidence was read into memory or the highest sequence observed.
-The review cursor SHALL advance only over a contiguous reviewed/accounted range. Evidence beyond the frontier MAY be staged or prefetched internally, but SHALL NOT become the durable review frontier until any preceding sequence gap is fully resolved.
+The review cursor SHALL maintain:
+1. `review_contiguous_frontier`: the highest contiguous sequence for which all preceding evidence has been durably reviewed and accounted.
+2. `reviewed_ahead_ranges`: compact array of sequence ranges (`[[start, end], ...]`) for batches that completed review ahead of the contiguous frontier (e.g. prioritized user markers).
+3. `review_session_id`: active observation session ID.
+
+When a later high-priority or marker batch finishes review before an earlier pending batch:
+- `review_contiguous_frontier` SHALL NOT jump across the unreviewed sequence gap.
+- The completed range SHALL be durably recorded in `reviewed_ahead_ranges` alongside canonical `ReviewBatchResult` persistence.
+- When earlier pending batches finish review, `review_contiguous_frontier` SHALL advance contiguously through the completed-ahead ranges.
+- Upon restart, the review cursor SHALL restore `reviewed_ahead_ranges`, preserving completed-ahead knowledge and preventing completed out-of-order batches from being re-sent to Hermes.
+
 When an evidence batch contains items reviewed where no candidate finding is warranted, the review plane SHALL persist lightweight review-batch metadata recording the completed sequence range so `review_cursor` advances safely without generating fabricated findings.
 
-#### Scenario: Gap in reviewed sequences holds review cursor at contiguous frontier
-- **WHEN** Hermes completes review for sequences 1..100 and 102..120 while sequence 101 remains pending review
-- **THEN** `review_cursor` remains at sequence 100 and does not advance to 120
+#### Scenario: Later high-priority marker batch completes first without jumping review frontier
+- **WHEN** review frontier is at sequence 100, pending routine batch covers 101..150, and high-priority marker batch 151..175 completes review first
+- **THEN** `review_contiguous_frontier` remains at 100, `reviewed_ahead_ranges` records `[[151, 175]]`, and canonical `ReviewBatchResult` for 151..175 is durably stored
 
-#### Scenario: Completion of pending sequence advances review cursor through accounted range
-- **WHEN** pending sequence 101 finishes durable review accounting after sequences 102..120 were accounted
-- **THEN** `review_cursor` advances from 100 through 120
+#### Scenario: Completion of older missing batch advances frontier through completed-ahead range
+- **WHEN** review frontier is at 100 with `reviewed_ahead_ranges = [[151, 175]]`, and pending batch 101..150 finishes review
+- **THEN** `review_contiguous_frontier` catches up and advances contiguously to 175, and range `[151, 175]` is absorbed from `reviewed_ahead_ranges`
+
+#### Scenario: Process restart preserves reviewed-ahead ranges and prevents duplicate review requests
+- **WHEN** the system restarts with `review_contiguous_frontier = 100` and `reviewed_ahead_ranges = [[151, 175]]`
+- **THEN** `reviewed_ahead_ranges` is restored from `hermes_review_cursor.json`, and batch 151..175 is NOT generated as a review request again
 
 #### Scenario: Batch with no findings advances review cursor via review-batch metadata
-- **WHEN** Hermes completes a review cycle over 50 routine telemetry records with no anomalies or findings
+- **WHEN** Hermes completes a review cycle over 50 routine telemetry records with all 50 evidence items accounted and no findings
 - **THEN** a review-batch record is committed and `hermes_review_cursor.json` advances by 50 events without emitting empty or fake finding records
 
 #### Scenario: Partial batch failure holds review cursor
@@ -496,7 +510,7 @@ The live analyst and Hermes review routines SHALL operate strictly read-only on 
 The system SHALL provide a lightweight, read-only terminal status command (`companion observe live-status` or `companion observe status --live`) that reports three distinct sequence watermarks and two distinct lag metrics based strictly on contiguous frontiers, NEVER on maximum-seen sequences across interleaved streams:
 1. `observer_latest_sequence`: Highest sequence produced/accounted by the continuous runtime observer.
 2. `reader_latest_sequence`: Highest contiguous safely analyzed sequence frontier, displaying `reader_lag = observer_latest_sequence - reader_latest_sequence`. When the read-ahead buffer reaches capacity, status SHALL expose reader saturation state (`ANALYST_READ_AHEAD_SATURATED`).
-3. `hermes_reviewed_sequence`: Highest contiguous durably reviewed sequence frontier, displaying `review_lag = reader_latest_sequence - hermes_reviewed_sequence`. Status SHALL expose pending and completed review batch counts.
+3. `hermes_reviewed_sequence`: Highest contiguous durably reviewed sequence frontier, displaying `review_lag = reader_latest_sequence - hermes_reviewed_sequence`. Status SHALL expose pending review requests, claimed requests, completed responses, bridge validation errors, and review batch counts.
 If Hermes is offline, stopped, or has a stale heartbeat, status SHALL display Hermes as `OFFLINE / INACTIVE / STALE` and SHALL NOT claim "Hermes LIVE" merely because the local data plane is running.
 
 #### Scenario: Querying live analyst status with separate reader and review lags
@@ -514,6 +528,10 @@ If Hermes is offline, stopped, or has a stale heartbeat, status SHALL display He
 #### Scenario: Honest live status reporting when Hermes review is offline
 - **WHEN** `companion observe live-status` is run while the local data plane is active but Hermes review heartbeat is stale
 - **THEN** the CLI reports observation and local analysis metrics while explicitly indicating that Hermes review is OFFLINE/STALE, without displaying "Hermes LIVE"
+
+#### Scenario: Live status reports filesystem bridge request and response metrics
+- **WHEN** 2 review requests are pending, 1 is claimed, and 12 responses have been validated
+- **THEN** live status reports `Review Requests: 2 pending, 1 claimed, 12 completed` with zero bridge errors
 
 ### Requirement: AI Provider Failure Isolation and Seamless Review Recovery
 The system SHALL isolate continuous runtime execution, `DevelopmentObserver` persistence, and the local analysis data plane from AI provider rejections, network errors, rate limits, and Hermes task interruptions. An AI provider failure SHALL NOT cause continuous runtime crashes, observer health degradation, or raw evidence loss.
@@ -558,3 +576,249 @@ Real-time development analysis SHALL initiate immediately at minute 0 upon obser
 #### Scenario: Session duration qualifies dataset acceptance independently of early findings
 - **WHEN** a session completes 32 continuous minutes of gameplay with continuous live analysis
 - **THEN** the session qualifies for technical development-observation acceptance review based on meeting the >=30-minute duration rule and integrity gates
+
+### Requirement: Filesystem Hermes AI Review Bridge and Immutable Review Request Generation
+The companion live analysis layer SHALL decouple evidence processing from external AI providers using a durable filesystem review bridge, communicating with the actual Hermes agent through atomic, immutable request and claim-specific response artifacts without embedding AI provider credentials, client libraries, or LLM APIs in the companion.
+For every pending review batch past the review frontier, the companion SHALL write an atomic, immutable review request artifact to `runtime/observations/<session>/live_analysis/review_requests/<review_batch_id>.json` using a temporary file (`.tmp`), flushing via `os.fsync`, and executing an atomic OS rename.
+The request artifact SHALL be strictly immutable once published; the system SHALL NOT rewrite or mutate the request JSON file as a shared mutable state file.
+The request artifact SHALL contain:
+- `schema_version`: "1.0"
+- `review_batch_id`: deterministic batch identifier
+- `session_id`: active observation session ID
+- `sequence_start`: contiguous start sequence
+- `sequence_end`: contiguous end sequence
+- `evidence_ids`: ordered array of source evidence IDs
+- `high_priority_signals`: array of high-priority factual signal summaries
+- `marker_refs`: array of manual user marker references
+- `objective_refs`: array of objective decision references
+- `notification_refs`: array of notification decision references
+- `unknown_stale_refs`: array of persistent UNKNOWN/STALE state references
+- `anomaly_refs`: array of sanitized parser anomaly references
+- `existing_findings`: bounded, sanitized catalogue of existing logical findings for the session (containing `finding_id`, `category`, `classification`, `safe_summary`, `relevant_subject_or_key`, `evidence_count`, and `recent_evidence_refs`) without model scratchpads or chain-of-thought, enabling Hermes to select `UPDATE_FINDING` rather than duplicating findings
+- `evidence_locations`: mapping of stream names and event IDs to local file paths and byte offsets
+- `privacy_instructions`: explicit instruction forbidding reproduction of private chat, whispers, credentials, or tokens in review responses
+- `created_at`: ISO-8601 UTC timestamp
+The request artifact SHALL NOT copy unredacted private chat, whispers, or credentials.
+
+The review bridge SHALL decouple transient claim/lease state from the immutable request. Hermes review runs SHALL acquire claims by atomically writing an immutable claim-specific artifact to `runtime/observations/<session>/live_analysis/review_claims/<review_batch_id>.<claim_id>.json` containing `schema_version: "1.0"`, `review_batch_id`, `claim_id`, `review_run_id`, `claimed_at`, and `lease_expires_at`. Claim artifacts SHALL NOT be shared multi-writer files: each Hermes review run SHALL publish its own atomic claim artifact, ensuring durable evidence of claimant identity is never overwritten. If a Hermes run requires heartbeat or lease renewal, it SHALL update only state belonging to its own claim (such as writing to `runtime/observations/<session>/live_analysis/review_claim_status/<review_batch_id>.<claim_id>.json` or an atomic self-owned status file), and SHALL NOT overwrite or alter another claimant's claim file.
+The claim lease SHALL use a conservative initial duration (180s) or periodic heartbeat renewal, ensuring that slow provider or model reasoning cycles exceeding 60 seconds do not trigger premature claim expiration or false staleness.
+The coordinator SHALL derive request lifecycle status (`PENDING`, `CLAIMED`, `RESPONSE_AVAILABLE`, `COMPLETED`, `FAILED_VALIDATION`, `RETRYABLE`) from coordinator-owned metadata and existing filesystem artifacts, and SHALL NOT mutate the request file.
+A `CLAIMED` state alone SHALL NOT advance the review cursor or equate to completed review. If a claim lease expires without a response, the request SHALL be safely reclaimable without erasing old claim provenance.
+
+The companion SHALL enforce a strict coverage invariant: a global observation sequence SHALL belong to AT MOST ONE canonical review request. Immutable review request ranges SHALL NEVER overlap across batches (e.g. 101–150, 151–200; never 101–150 and 140–175). When a high-priority user marker arrives, if its observation sequence already belongs to an existing canonical pending request, the system SHALL elevate the scheduling priority of that existing canonical request and SHALL NOT create an overlapping marker-specific request. If no request has yet been formed for the marker sequence, the companion SHALL form the next canonical non-overlapping request covering it according to deterministic batch partitioning, and mark that request high priority. Mutable scheduling priority (`NORMAL`, `HIGH_MARKER`, `HIGH_ERROR`) SHALL be coordinator-owned metadata stored separately from immutable requests, affecting review selection order without modifying request evidence ranges, review batch IDs, immutable request payloads, or review frontiers. Upon companion restart, the coordinator SHALL reconstruct canonical request coverage from disk before generating new requests, and SHALL NOT generate new requests for sequences already owned by PENDING, CLAIMED, RESPONSE_AVAILABLE, COMPLETED, or reviewed-ahead batches. Completed-ahead requests SHALL remain completed and SHALL NOT be regenerated.
+
+#### Scenario: Atomic review request creation for pending batch
+- **WHEN** the local reader contiguous frontier advances ahead of the review cursor
+- **THEN** the companion forms a deterministic review batch, writes a `.tmp` file, flushes with fsync, and atomically renames it to `review_requests/<review_batch_id>.json` as an immutable artifact
+
+#### Scenario: Request artifact remains immutable across claim and completion
+- **WHEN** Hermes claims a review batch and later submits a completed response
+- **THEN** `review_requests/<review_batch_id>.json` content remains bit-for-bit unchanged, transient claim state is recorded in `review_claims/<review_batch_id>.<claim_id>.json`, and completion state is recorded in coordinator metadata and canonical batch results
+
+#### Scenario: Existing findings catalogue provided in review request
+- **WHEN** prior batches have generated active session findings F1 and F2
+- **THEN** subsequent review requests populate `existing_findings` with bounded summaries and IDs for F1 and F2 without chain-of-thought
+
+#### Scenario: Duplicate batch ID does not create duplicate request artifact
+- **WHEN** request generation evaluates an evidence range for which a request with the identical `review_batch_id` already exists
+- **THEN** the existing request artifact is preserved without overwrite or duplicate creation
+
+#### Scenario: Stale claim lease recovery with slow-reviewer tolerance
+- **WHEN** a review request has been claimed but the reviewer stalls and the claim lease expires past the conservative 180-second window
+- **THEN** the companion review bridge marks the request retryable and permits a resuming reviewer to acquire a new claim safely
+
+#### Scenario: Two concurrent review runs create distinct claim artifacts without overwrite
+- **WHEN** task A claims a batch with claim ID `clm_A` and task B later claims the same batch with claim ID `clm_B`
+- **THEN** both `review_claims/<batch_id>.clm_A.json` and `review_claims/<batch_id>.clm_B.json` exist simultaneously on disk, preserving durable provenance for both claimants
+
+#### Scenario: Marker within existing pending request elevates request priority without overlapping batch
+- **WHEN** marker sequence 175 arrives while canonical request covering 151–200 is already pending
+- **THEN** the coordinator elevates the scheduling priority of request 151–200 to `HIGH_MARKER` without creating an overlapping marker request
+
+#### Scenario: Marker outside existing coverage creates next canonical non-overlapping batch
+- **WHEN** marker sequence 220 arrives when current coverage ends at sequence 200
+- **THEN** the coordinator creates the next canonical non-overlapping request covering 201–250 according to deterministic partitioning and marks it `HIGH_MARKER`
+
+#### Scenario: Restart reconstructs canonical request coverage and prevents duplicate request generation
+- **WHEN** the companion restarts while request 101–150 is pending and request 151–200 is completed-ahead
+- **THEN** restart loads canonical coverage, preserves completed-ahead status for 151–200, keeps request 101–150 discoverable, and refuses to generate duplicate requests for sequences 101–200
+
+#### Scenario: Self-owned lease renewal updates only claimant's own status file
+- **WHEN** Hermes task with claim ID `clm_A` renews its claim lease
+- **THEN** task A writes only `review_claim_status/<batch_id>.clm_A.json` without modifying or overwriting any other claimant's claim or status file
+
+#### Scenario: Pending review requests survive process restart
+- **WHEN** the local analyzer or continuous runtime restarts while review requests remain pending
+- **THEN** existing request files in `review_requests/` remain intact and unreviewed sequences are discovered upon resume
+
+### Requirement: Structured Review Response, Ingress Validation, and Concurrency Arbitration
+The actual Hermes agent SHALL communicate review findings exclusively by atomically writing a claim-specific structured review response candidate artifact to `runtime/observations/<session>/live_analysis/review_responses/<review_batch_id>.<claim_id>.json` via temporary file, fsync, and atomic rename.
+The response candidate artifact SHALL contain:
+- `schema_version`: "1.0"
+- `review_batch_id`: matching pending request batch ID
+- `session_id`: matching observation session ID
+- `sequence_start`: matching start sequence
+- `sequence_end`: matching end sequence
+- `accounted_evidence_ids`: array of evidence IDs durably reviewed and accounted as part of this batch
+- `claim_id`: matching the claimant's active claim ID
+- `review_run_id`: identifier of the active Hermes review run
+- `reviewed_at`: ISO-8601 UTC timestamp
+- `operations`: array of finding operations (`CREATE_FINDING`, `UPDATE_FINDING`, `NO_FINDING`)
+
+Finding operations SHALL conform to strict identity and field models:
+1. `CREATE_FINDING`: Hermes externalizes `category`, canonical `semantic_issue_key`, `classification`, `safe_summary`, supporting `evidence_refs`, `occurrence_count_delta`, and optional corroboration notes. The companion derives and assigns the stable logical `finding_id`.
+2. `UPDATE_FINDING`: Hermes MUST provide an explicit `target_finding_id` referencing an existing logical finding from the session's `existing_findings` catalogue. Hermes MAY provide an updated summary, updated classification, corroboration note, and delta counts. Reworded semantic keys SHALL NOT create duplicate findings.
+3. `NO_FINDING`: emitted when evidence is reviewed but indicates no actionable defect or anomaly. Supporting finding `evidence_refs` MAY be empty or a subset, but `accounted_evidence_ids` in the envelope MUST account for all requested evidence.
+Hidden chain-of-thought, scratchpads, and raw model thoughts SHALL NOT be persisted in the response file.
+
+The companion review bridge coordinator MUST NOT blindly trust review response files. Before promoting any candidate into a canonical result, the bridge SHALL execute strict ingress validation:
+1. Matching request and claim provenance: matching immutable review request exists; matching claim artifact exists at `runtime/observations/<session>/live_analysis/review_claims/<review_batch_id>.<claim_id>.json`; `claim.review_batch_id` matches request; `response.claim_id` matches claim; and `response.review_run_id` matches claim.
+2. Schema conformity: matches `ReviewResponseEnvelope` model schema.
+3. Batch ID and session match: `review_batch_id` and `session_id` match the expected pending batch and active session.
+4. Sequence range match: `sequence_start` and `sequence_end` match the request bounds.
+5. Full evidence accounting: `set(response.accounted_evidence_ids) == set(request.evidence_ids)`. If evidence coverage is incomplete (e.g. 10 evidence items requested, but only 2 accounted), the response SHALL be rejected, the cursor SHALL NOT advance, and the request SHALL remain retryable. Finding `evidence_refs` MAY be a subset of `accounted_evidence_ids`. Duplicate accounted evidence IDs SHALL be rejected. Unknown evidence IDs not present in the request SHALL be rejected.
+6. Finding identity integrity: for `UPDATE_FINDING`, `target_finding_id` MUST exist in the current session, match compatible categories, and contain no path traversal or arbitrary filesystem characters.
+7. Operation and classification validity: all operations belong to `{CREATE_FINDING, UPDATE_FINDING, NO_FINDING}` and classifications match the approved taxonomy enum.
+8. Targeted privacy & security validation:
+   - Safe summaries and notes SHALL NOT contain directory traversal characters (`..`, absolute paths outside workspace).
+   - Targeted detection SHALL reject actual sensitive structures: PoE chat/whisper prefixes (`@From`, `@To`, `From: `, `To: `, `Guild: `, `Party: `, `Trade: `, line-start chat markers `^[@#\$%&]`), credentials (`sk-`, `ghp_`, `Bearer `, `ey...`, passwords, session tokens), secrets, and unbounded raw log reproductions.
+   - Text fields SHALL satisfy length bounds: `safe_summary` <= 300 characters, `corroboration_note` <= 500 characters, `semantic_issue_key` <= 100 characters.
+   - Broad character blacklists SHALL NOT be used: safe technical text containing percent signs (e.g. `"Flameblast quality remained below 40%"`) or normal punctuation (`!`, `$`, `#`, `&`) SHALL be valid and accepted.
+
+Concurrency Arbitration:
+When multiple response candidates exist (e.g. slow task A returns after task B claims the batch), the coordinator SHALL arbitrate deterministically:
+- The first valid candidate response promoted to canonical `ReviewBatchResult` (`review_batches/<review_batch_id>.json`) wins.
+- The coordinator SHALL distinguish claim lease eligibility for starting/continuing new work from the valid provenance of a response already produced: a stale claim MAY still produce a response, and an otherwise valid completed response SHALL NOT be rejected solely because its lease expired milliseconds before publication, provided no competing candidate has already been promoted.
+- Once one valid candidate is promoted to canonical `ReviewBatchResult`, all later or competing candidate responses for that `review_batch_id` SHALL be quarantined or safely ignored without overwriting or corrupting the canonical result. No second candidate MAY change the canonical result.
+- If validation fails, `hermes_review_cursor.json` SHALL NOT advance, a bridge error diagnostic SHALL be logged, and the batch SHALL remain retryable.
+
+#### Scenario: Full evidence accounting accepts response with subset finding evidence refs
+- **WHEN** a request contains 10 evidence IDs, response lists all 10 in `accounted_evidence_ids`, and finding operation cites 2 in `evidence_refs`
+- **THEN** the response passes evidence accounting validation and is promoted to canonical `ReviewBatchResult`
+
+#### Scenario: Incomplete evidence accounting rejects response and holds cursor
+- **WHEN** a request contains 10 evidence IDs, but the response lists only 2 in `accounted_evidence_ids`
+- **THEN** the bridge rejects the response for incomplete accounting, does not advance `hermes_review_cursor.json`, and retains the request as retryable
+
+#### Scenario: NO_FINDING accepted when all evidence accounted
+- **WHEN** a request contains 15 evidence IDs and response contains a single `NO_FINDING` operation with all 15 listed in `accounted_evidence_ids`
+- **THEN** the response is accepted, `ReviewBatchResult` records the batch with zero findings, and review cursor advances
+
+#### Scenario: Duplicate or unknown evidence ID in response rejected
+- **WHEN** a response contains duplicate evidence IDs in `accounted_evidence_ids` or an ID not present in the request
+- **THEN** the bridge rejects the response, logs an ingress validation error, and refuses to advance the cursor
+
+#### Scenario: Corroborating batch updates existing finding by target finding ID
+- **WHEN** batch 1 creates finding F1, and batch 2 receives F1 in `existing_findings` and emits `UPDATE_FINDING` with `target_finding_id = F1`
+- **THEN** the coordinator updates F1 with new evidence and increments count without creating a duplicate finding F2, even if AI generated phrasing differs
+
+#### Scenario: Update with nonexistent or invalid target finding ID rejected
+- **WHEN** a response specifies `UPDATE_FINDING` with a `target_finding_id` not present in active session findings or containing path traversal characters
+- **THEN** ingress validation rejects the response, does not advance the cursor, and marks the request retryable
+
+#### Scenario: Unrelated issue legitimately creates second finding
+- **WHEN** batch 2 discovers an unrelated defect distinct from F1
+- **THEN** Hermes emits `CREATE_FINDING` for the new issue, and the coordinator creates stable finding F2 alongside F1
+
+#### Scenario: First valid candidate response wins concurrent claim race
+- **WHEN** task A claims a batch, stalls past lease expiry, task B claims the batch and submits candidate `<batch_id>.<claim_B>.json`, and task A later submits `<batch_id>.<claim_A>.json`
+- **THEN** the coordinator promotes candidate B into canonical `ReviewBatchResult`, completes the batch, and safely ignores/quarantines late candidate A without corrupting the canonical result
+
+#### Scenario: Response A validates against claim A and response B validates against claim B
+- **WHEN** two distinct Hermes tasks A and B publish response candidates `<batch_id>.clm_A.json` and `<batch_id>.clm_B.json`
+- **THEN** the coordinator independently validates candidate A against claim artifact `review_claims/<batch_id>.clm_A.json` and candidate B against `review_claims/<batch_id>.clm_B.json`
+
+#### Scenario: Valid response produced under expired lease wins if no competitor promoted
+- **WHEN** task A's claim lease expires shortly before publishing candidate `<batch_id>.clm_A.json`, and no other candidate has yet been promoted
+- **THEN** the coordinator distinguishes response provenance from lease eligibility, accepts the valid candidate, and promotes it to canonical `ReviewBatchResult`
+
+#### Scenario: Later valid response cannot replace canonical ReviewBatchResult
+- **WHEN** candidate B was already promoted to canonical `ReviewBatchResult`, and candidate A subsequently arrives with valid accounting and schema
+- **THEN** candidate A is quarantined/ignored and the canonical `ReviewBatchResult` remains strictly unchanged
+
+#### Scenario: Technical engineering description with percent sign and punctuation accepted
+- **WHEN** a response safe summary contains `"Flameblast quality remained below 40% (expected >=50% in maps)!"`
+- **THEN** targeted privacy validation accepts the summary without triggering broad character blacklists
+
+#### Scenario: Leaked private tokens or real chat prefixes rejected
+- **WHEN** a response summary contains `@From PlayerName: hey` or an API token pattern `«redacted:sk-…»`
+- **THEN** the ingress validator rejects the response, logs a privacy validation error, and does not advance the review cursor
+
+### Requirement: Subordinate Review Cursor Ownership and Canonical Batch Result Promotion
+The actual Hermes agent SHALL NOT directly write, modify, or delete `hermes_review_cursor.json` or mutate continuous runtime state or `CharacterState`. Hermes SHALL communicate review outcomes strictly by writing its claim-specific candidate file to `review_responses/<review_batch_id>.<claim_id>.json`.
+The companion review bridge coordinator SHALL exclusively own `hermes_review_cursor.json` and canonical `ReviewBatchResult` artifacts (`review_batches/<review_batch_id>.json`).
+Promotion from response candidate to canonical result SHALL occur strictly after:
+1. Candidate file parses completely against `ReviewResponseEnvelope`.
+2. All 8 ingress validation rules pass completely (including claim provenance, full evidence accounting, target finding validation, and targeted privacy).
+3. Durable `ReviewBatchResult` is committed to `review_batches/<review_batch_id>.json` via atomic `.tmp` -> `fsync` -> rename.
+4. Finding operations are idempotently applied to `hermes_findings.jsonl`.
+5. Contiguous review frontier advances in `hermes_review_cursor.json` (absorbing any continuous ranges from `reviewed_ahead_ranges`).
+
+#### Scenario: Companion bridge alone promotes candidate and advances cursor
+- **WHEN** Hermes writes valid candidate `review_responses/<review_batch_id>.<claim_id>.json`
+- **THEN** the coordinator validates the candidate, writes canonical `ReviewBatchResult`, applies findings, and updates `hermes_review_cursor.json`
+
+#### Scenario: Direct external modification of cursor detected and rejected
+- **WHEN** an unexpected process or corrupted task modifies `hermes_review_cursor.json` ahead of validated batch results
+- **THEN** the bridge verifies that every sequence up to the cursor has a corresponding canonical `ReviewBatchResult`, halting progress if unvalidated sequences are detected
+
+### Requirement: Project-Local Live Observation Hermes Workflow and Write Allowlist
+The repository SHALL maintain a project-local Hermes workflow for live development observation (`"Start live development observation"`).
+When live observation is active, Hermes SHALL strictly adhere to the Hermes Write Allowlist:
+- **Approved Write Allowlist**:
+  1. `runtime/observations/<session>/live_analysis/review_claims/<review_batch_id>.<claim_id>.json` (immutable claim artifact)
+  2. Optional `runtime/observations/<session>/live_analysis/review_claim_status/<review_batch_id>.<claim_id>.json` (self-owned lease renewal artifact)
+  3. `runtime/observations/<session>/live_analysis/review_responses/<review_batch_id>.<claim_id>.json` (review response candidate)
+  4. `runtime/observations/<session>/live_analysis/hermes_review_status.json` (Hermes heartbeat/status)
+- **Strictly Forbidden Writes**:
+  Hermes SHALL NOT edit, create, or delete:
+  - companion source (`companion/**`)
+  - tests (`tests/**`)
+  - OpenSpec artifacts (`openspec/**`)
+  - objective rules (`rules/**` or build rules)
+  - CharacterState
+  - observer evidence (`runtime/observations/<session>/*.jsonl`)
+  - reader state (`reader_state.json`)
+  - review cursor (`hermes_review_cursor.json`)
+- **Approved Read Allowlist**:
+  Hermes MAY read:
+  - local evidence files (`events.jsonl`, `state_deltas.jsonl`, `objective_traces.jsonl`, etc.) at specified file locations and byte offsets
+  - bounded `Client.txt` byte ranges around known event offsets when deeper engine context is required
+  - review request files (`review_requests/<review_batch_id>.json`)
+
+When invoked, the actual Hermes agent SHALL:
+1. Locate the active observation session descriptor in `runtime/observations/active_session.json` or the newest active session directory.
+2. Inspect `live_analysis/review_requests/` for pending requests, prioritizing user manual markers (`USER_MARKER`), runtime `ERROR` records, and objective transition churn.
+3. Read `existing_findings` from the request to determine if candidate issues corroborate known findings.
+4. Acquire or refresh an immutable claim artifact in `review_claims/<review_batch_id>.<claim_id>.json` (and write to self-owned status if renewing lease).
+5. Read associated persisted evidence files and optional bounded `Client.txt` windows.
+6. Perform genuine AI reasoning using the active model without delegating to synthetic heuristics.
+7. Formulate structured finding operations: emit `UPDATE_FINDING` with `target_finding_id` when corroborating known findings, `CREATE_FINDING` for novel issues, or `NO_FINDING` when clean.
+8. Ensure all requested evidence IDs are listed in `accounted_evidence_ids`.
+9. Atomically write the candidate response to `live_analysis/review_responses/<review_batch_id>.<claim_id>.json`.
+10. Update Hermes review heartbeat in `hermes_review_status.json`.
+
+#### Scenario: Hermes workflow claims and processes marker request within write allowlist
+- **WHEN** user submits marker and invokes live observation workflow
+- **THEN** Hermes writes `review_claims/<batch_id>.<claim_id>.json`, reads evidence, writes candidate `review_responses/<batch_id>.<claim_id>.json`, updates heartbeat, and touches no code or spec files
+
+#### Scenario: Attempted source or spec modification forbidden by workflow contract
+- **WHEN** Hermes identifies a parser defect in `Client.txt` during live review
+- **THEN** Hermes records the finding in its structured response for post-session engineering review, and does NOT edit `companion/` or `openspec/` files during active observation
+
+#### Scenario: Bounded raw Client.txt inspection without privacy leakage
+- **WHEN** Hermes inspects a bounded range of `Client.txt` to investigate a novel parser anomaly
+- **THEN** Hermes reasons over engine debug context, redacts ambient player chat, and outputs a response citing only sanitized signatures and safe summaries
+
+### Requirement: Review Bridge Coordinator Architecture and Elimination of Synthetic AI Heuristics
+The system SHALL eliminate synthetic heuristics (`if USER_MARKER: CREATE else NO_FINDING`) from `LiveReviewEngine` by refactoring it into `ReviewBridgeCoordinator`.
+The bridge coordinator SHALL manage the deterministic filesystem review lifecycle: generating atomic immutable review requests from unreviewed reader evidence, polling for claim-specific review response candidates, running the 8-point ingress validation gate, arbitrating concurrent candidates, committing canonical `ReviewBatchResult` records, and advancing `hermes_review_cursor.json`.
+The system SHALL provide a deterministic test adapter (`TestReviewResponder`) strictly for offline automated testing and CI verification, enabling repeatable tests without invoking external LLMs or embedding fake AI logic in production code.
+
+#### Scenario: Production review bridge coordinates filesystem review lifecycle
+- **WHEN** `ReviewBridgeCoordinator` executes during live gameplay
+- **THEN** it generates `review_requests/<review_batch_id>.json` and waits for responses from the external Hermes agent without synthesizing fake AI findings
+
+#### Scenario: Offline test adapter simulates responses deterministically for CI
+- **WHEN** automated tests execute `ReviewBridgeCoordinator` with `TestReviewResponder`
+- **THEN** the adapter generates valid response files deterministically, exercising the full validation, batch result, and cursor advancement pipeline without external AI dependencies

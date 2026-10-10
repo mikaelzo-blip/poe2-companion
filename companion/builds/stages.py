@@ -10,9 +10,9 @@ _ACTS = {1: (1, 15), 2: (16, 29), 3: (30, 44), 4: (45, 55)}
 _INTERLUDE = (56, 64)
 _ENDGAME_START = 65
 
-_LVL_RANGE = re.compile(r"\b(?:lvl|level|lv)\.?\s*(\d+)\s*-\s*(\d+)\b", re.I)
+_LVL_RANGE = re.compile(r"\b(?:lvl|level|lv)\.?\s*(\d+)\s*[-–—]\s*(\d+)\b", re.I)
 _LVL_ONE = re.compile(r"\b(?:lvl|level)\.?\s*(\d+)\b", re.I)
-_BARE_RANGE = re.compile(r"\b(\d+)\s*-\s*(\d+)\b")
+_BARE_RANGE = re.compile(r"\b(\d+)\s*[-–—]\s*(\d+)\b")
 _ACT_TO_END = re.compile(r"\bact\s*(\d)\s*to\s*endgame\b", re.I)
 _ACT_PAIR = re.compile(r"\bact\s*(\d)\s*(?:&|and)\s*(\d)\b", re.I)
 _ACT_ONE = re.compile(r"\bact\s*(\d)\b", re.I)
@@ -74,8 +74,27 @@ def assign_level_ranges(profile: GuideProfile) -> GuideProfile:
             auto = True
         out.append(stage.model_copy(update={"min_level": lo, "max_level": hi, "auto": auto}))
         prev_max = hi
-    last_auto = max(i for i, s in enumerate(out) if s.auto)
-    out[last_auto] = out[last_auto].model_copy(update={"max_level": 100})
+    # Normalize auto stages so levels 1-100 are covered exactly once, in guide order.
+    prev_auto_max = 0
+    kw_first: int | None = None
+    for i, st in enumerate(out):
+        if parsed[i][2] and kw_first is None:
+            kw_first = i
+        if not st.auto:
+            continue
+        lo = prev_auto_max + 1
+        if lo > 100:
+            out[i] = st.model_copy(update={"auto": False, "min_level": out[last_ok].min_level,
+                                           "max_level": 100})
+            continue
+        hi = min(100, max(lo, st.max_level))
+        out[i] = st.model_copy(update={"min_level": lo, "max_level": hi})
+        prev_auto_max, last_ok = hi, i
+    out[last_ok] = out[last_ok].model_copy(update={"max_level": 100})
+    for i, st in enumerate(out):  # non-auto keyword duplicates mirror the first keyword stage
+        if parsed[i][2] and not st.auto and kw_first is not None and out[kw_first].auto:
+            out[i] = st.model_copy(update={"min_level": out[kw_first].min_level,
+                                           "max_level": out[kw_first].max_level})
     return profile.model_copy(update={"stages": out})
 
 

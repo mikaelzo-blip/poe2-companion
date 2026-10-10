@@ -4,7 +4,8 @@ from pathlib import Path
 import pytest
 
 from companion.builds.mobalytics import parse_mobalytics_guide
-from companion.builds.stages import parse_level_range, resolve_stage
+from companion.builds.guide import GuideProfile, GuideStage
+from companion.builds.stages import assign_level_ranges, parse_level_range, resolve_stage
 
 GUIDES = Path(__file__).resolve().parents[2] / "fixtures" / "guides"
 
@@ -21,6 +22,8 @@ def _profile(prefix):
     ("lvl 52 Swap", (52, 52, False)),
     ("lvl 85", (85, 85, False)),
     ("33-51", (33, 51, False)),
+    ("lvl 1–14", (1, 14, False)),
+    ("33—51", (33, 51, False)),
     ("Act 1", (1, 15, False)),
     ("Act 2", (16, 29, False)),
     ("Act 3", (30, 44, False)),
@@ -74,3 +77,32 @@ def test_resolve_stage():
     assert resolve_stage(p, 60, override_id=dot.id).title == "DoT Cap"
     assert resolve_stage(p, 60, override_id="nope").title == "lvl 53-68"
     assert resolve_stage(p, None) is p.stages[0]
+
+
+@pytest.mark.parametrize("titles", [
+    ["lvl 30-40", "lvl 1-10"],
+    ["lvl 1-10", "lvl 1-10"],
+    ["Endgame", "lvl 1-20"],
+    ["A", "B", "C"],
+    ["lvl 1-10", "Endgame", "lvl 20-30"],
+    ["lvl 50-60"],
+    ["Endgame"],
+    ["lvl 120-130"],
+    ["Endgame", "Mageblood"],
+])
+def test_synthetic_titles_cover_all_levels_once(titles):
+    p = GuideProfile(slug="x", name="x", imported_at="t",
+                     stages=[GuideStage(id=str(i), title=t) for i, t in enumerate(titles)])
+    out = assign_level_ranges(p)
+    assert all(1 <= s.min_level <= s.max_level <= 100 for s in out.stages)
+    for lvl in range(1, 101):
+        assert sum(s.auto and s.min_level <= lvl <= s.max_level for s in out.stages) == 1, lvl
+
+
+def test_resolve_stage_fallback():
+    p = GuideProfile(slug="x", name="x", imported_at="t", stages=[
+        GuideStage(id="a", title="a", min_level=1, max_level=10),
+        GuideStage(id="b", title="b", min_level=20, max_level=30)])
+    assert resolve_stage(p, 15).id == "a"
+    assert resolve_stage(p, 0).id == "a"
+    assert resolve_stage(p, 200).id == "b"

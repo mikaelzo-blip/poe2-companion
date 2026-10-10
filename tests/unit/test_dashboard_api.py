@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -863,32 +864,54 @@ def test_evaluate_weapon_and_ring_include_tactical_advice(tmp_path: Path) -> Non
     assert "senjata" in res["tactical_advice"]["tactical_headline"].lower()
 
 
-def test_get_account_characters(tmp_path: Path) -> None:
+def test_account_characters_merge_api_and_local(tmp_path, monkeypatch):
+    from companion import dashboard_api
     from companion.dashboard_api import get_account_characters
+    monkeypatch.setattr(dashboard_api, "_list_api_characters", lambda now=None: [{"name": "BOMSHAK", "level": 60, "class": "Mercenary", "league": "Rise"}])
+    (tmp_path / "characters").mkdir(); (tmp_path / "characters" / "Alt.json").write_text(json.dumps({"character_name": "Alt", "level": 5}))
+    res = get_account_characters(runtime_dir=tmp_path)
+    assert {c["name"]: c["league"] for c in res["characters"]} == {"BOMSHAK": "Rise", "Alt": "Local"}
+    assert res["source"] == "api"
 
-    # Create dummy oauth_status.json in sibling folder
-    mock_pob_dir = tmp_path / "mock_pob"
-    mock_pob_dir.mkdir(parents=True, exist_ok=True)
-    oauth_file = mock_pob_dir / "oauth_status.json"
-    oauth_file.write_text(
-        json.dumps({
-            "status": "SUCCESS",
-            "characters": [
-                {"name": "BOMSHAK", "level": 19, "class": "Mercenary", "league": "Forbidden Rites"},
-                {"name": "DaisyofWar", "level": 71, "class": "Witch3", "league": "Standard"},
-            ],
-        }),
-        encoding="utf-8",
-    )
 
-    with patch("companion.equipment.pob2_equipment_advisor.resolve_pob2_backend_path", return_value=mock_pob_dir):
-        res = get_account_characters(account_name="mikaelzo#5674", runtime_dir=tmp_path)
-        assert res.get("account") == "mikaelzo#5674"
-        assert "characters" in res
-        char_names = [c["name"] for c in res["characters"]]
-        assert "BOMSHAK" in char_names
-        assert "DaisyofWar" in char_names
-        assert res.get("active_character_id") == "BOMSHAK"
+def test_account_characters_no_fake_fallback(tmp_path, monkeypatch):
+    from companion import dashboard_api
+    from companion.dashboard_api import get_account_characters
+    monkeypatch.setattr(dashboard_api, "_list_api_characters", lambda now=None: [])
+    res = get_account_characters(runtime_dir=tmp_path)
+    assert res["characters"] == []
+    assert res["source"] == "local"
+
+
+def test_list_api_characters_is_cached(monkeypatch):
+    from types import SimpleNamespace
+    from companion import dashboard_api
+    monkeypatch.setattr(dashboard_api, "_API_CHARS_CACHE", {})
+    calls = []
+    fake_api = SimpleNamespace(list_characters=lambda: calls.append(1) or [{"name": "A", "level": 1, "class": "W", "league": "S"}])
+    fake_oauth = SimpleNamespace(get_valid_token=lambda: "t")
+    monkeypatch.setattr(dashboard_api, "load_pob_mcp_modules", lambda: (fake_api, fake_oauth))
+    dashboard_api._list_api_characters(now=0); dashboard_api._list_api_characters(now=100)
+    assert len(calls) == 1
+
+
+def _raise_not_logged_in():
+    raise RuntimeError("not logged in")
+
+
+@pytest.mark.parametrize("modules, expected", [
+    (None, "POB2_MCP_NOT_FOUND"),
+    ((SimpleNamespace(), SimpleNamespace(get_valid_token=lambda: "")), "OAUTH_REQUIRED"),
+    ((SimpleNamespace(), SimpleNamespace(get_valid_token=_raise_not_logged_in)), "OAUTH_REQUIRED"),
+    ((SimpleNamespace(fetch_character_raw=MagicMock(side_effect=RuntimeError("rate limited (429)"))),
+      SimpleNamespace(get_valid_token=lambda: "t")), "GGG_API_ERROR"),
+])
+def test_fetch_public_profile_errors(tmp_path, monkeypatch, modules, expected):
+    from companion import dashboard_api
+    from companion.dashboard_api import fetch_public_profile
+    monkeypatch.setattr(dashboard_api, "load_pob_mcp_modules", lambda: modules)
+    res = fetch_public_profile("acc", "BOMSHAK", tmp_path)
+    assert res["error"] == expected
 
 
 def test_select_character_payload(tmp_path: Path) -> None:
@@ -1221,85 +1244,6 @@ Dex: 8
     assert tac is not None
     assert "Plague Claw" in tac.get("tactical_headline", "")
     assert "Current Item" not in tac.get("tactical_headline", "")
-
-
-def test_fetch_public_profile_prioritizes_tagged_account_and_does_not_abort_on_403(tmp_path: Path) -> None:
-    """Verify that fetch_public_profile prioritizes exact account_name and continues if first candidate fails."""
-    import io
-    import urllib.error
-    import urllib.request
-    from companion.dashboard_api import fetch_public_profile
-
-    urls_requested = []
-
-    def mock_urlopen(req, timeout=8):
-        url = req.full_url if hasattr(req, "full_url") else str(req)
-        urls_requested.append(url)
-        # If candidate is mikaelzo#5674, simulate 403
-        if "mikaelzo%235674" in url:
-            raise urllib.error.HTTPError(url, 403, "Forbidden", {}, io.BytesIO(b'{"error":{"code":6}}'))
-        # If candidate is clean mikaelzo, return valid items payload
-        sample_item = {
-            "name": "Maelström Keep",
-            "typeLine": "Shrouded Vest",
-            "inventoryId": "BodyArmour",
-            "frameType": 2,
-            "properties": [{"name": "Evasion Rating", "values": [["209", 1]]}],
-            "explicitMods": ["+26 to Maximum Life"],
-        }
-        payload_data = json.dumps({"character": {"name": "BOMSHAK", "level": 19}, "items": [sample_item]}).encode("utf-8")
-        resp = io.BytesIO(payload_data)
-        resp.status = 200
-        return resp
-
-    import unittest.mock
-    with unittest.mock.patch("urllib.request.urlopen", side_effect=mock_urlopen):
-        with unittest.mock.patch("companion.equipment.pob2_equipment_advisor.resolve_pob2_backend_path", return_value=None):
-            result = fetch_public_profile("mikaelzo#5674", "BOMSHAK", runtime_dir=tmp_path)
-            # First requested URL must prioritize exact tagged name mikaelzo#5674
-            assert len(urls_requested) >= 2
-            assert "mikaelzo%235674" in urls_requested[0]
-            # Should have continued to second candidate and succeeded
-            assert result.get("success") is True
-
-
-def test_fetch_public_profile_all_candidates_403_returns_privacy_error(tmp_path: Path) -> None:
-    """Verify that when all candidates return 403, a clear privacy instruction is returned."""
-    import io
-    import urllib.error
-    import unittest.mock
-    from companion.dashboard_api import fetch_public_profile
-
-    def mock_urlopen(req, timeout=8):
-        url = req.full_url if hasattr(req, "full_url") else str(req)
-        raise urllib.error.HTTPError(url, 403, "Forbidden", {}, io.BytesIO(b'{"error":{"code":6}}'))
-
-    with unittest.mock.patch("urllib.request.urlopen", side_effect=mock_urlopen):
-        with unittest.mock.patch("companion.equipment.pob2_equipment_advisor.resolve_pob2_backend_path", return_value=None):
-            result = fetch_public_profile("private_account#1234", "BOMSHAK", runtime_dir=tmp_path)
-            assert result.get("code") == 403
-            assert result.get("error") == "PROFILE_PRIVATE_OR_BLOCKED"
-            assert "private_account" in result.get("message", "")
-            assert "diblokir oleh GGG" in result.get("message", "")
-
-
-def test_fetch_public_profile_404_explains_poe2_context(tmp_path: Path) -> None:
-    """Verify that 404 response gives clear explanation about PoE 2 web limitation and clipboard/JSON alternatives."""
-    import io
-    import urllib.error
-    import unittest.mock
-    from companion.dashboard_api import fetch_public_profile
-
-    def mock_urlopen(req, timeout=8):
-        url = req.full_url if hasattr(req, "full_url") else str(req)
-        raise urllib.error.HTTPError(url, 404, "Not Found", {}, io.BytesIO(b'{"error":{"code":1}}'))
-
-    with unittest.mock.patch("urllib.request.urlopen", side_effect=mock_urlopen):
-        with unittest.mock.patch("companion.equipment.pob2_equipment_advisor.resolve_pob2_backend_path", return_value=None):
-            result = fetch_public_profile("mikaelzo#5674", "BOMSHAK", runtime_dir=tmp_path)
-            assert result.get("code") == 404
-            assert "Path of Exile" in result.get("message", "")
-            assert "Ctrl+C" in result.get("message", "")
 
 
 def test_update_character_stats_payload_updates_state_and_baseline(tmp_path: Path) -> None:

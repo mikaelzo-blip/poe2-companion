@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,7 @@ from companion.equipment.parser import parse_item_text
 from companion.equipment.pob2_equipment_advisor import (
     Pob2EquipmentSession,
     PobEquipmentDelta,
+    load_pob_mcp_modules,
     normalize_and_validate_pob_slot,
     resolve_pob2_backend_path,
 )
@@ -1199,109 +1201,67 @@ def _update_character_stats_payload_locked(payload: dict[str, Any], runtime_dir:
 
 
 
-def fetch_public_profile(account_name: str, character_id: str, runtime_dir: Path, overwrite: bool = True) -> dict[str, Any]:
-    """Attempt to fetch public profile items from pathofexile.com."""
-    import sys
-    import urllib.parse
-    import urllib.request
+_OAUTH_REQUIRED_MSG = "Login PoE belum aktif/kedaluwarsa. Jalankan login via PoB2 MCP (poe_login_start)."
+_API_CHARS_TTL = 300.0
+_API_CHARS_CACHE: dict[str, Any] = {}
 
-    account_name = account_name.strip()
-    character_id = character_id.strip()
 
-    # 1. First check if official PoE2 GGG API is available via pob_mcp
+def _list_api_characters(now: float | None = None) -> list[dict[str, Any]]:
+    """Characters from the official GGG API via PoB2 MCP, cached for 300 s. [] on any failure."""
+    now = time.monotonic() if now is None else now
+    cached = _API_CHARS_CACHE.get("entry")
+    if cached and now - cached[0] < _API_CHARS_TTL:
+        return list(cached[1])
+    modules = load_pob_mcp_modules()
+    if modules is None:
+        logger.warning("PoB2 MCP not found; cannot list GGG characters")
+        return []
+    poe_api, poe_oauth = modules
     try:
-        from companion.equipment.pob2_equipment_advisor import resolve_pob2_backend_path
-        backend_path = resolve_pob2_backend_path()
-        if backend_path:
-            server_dir = backend_path / "server"
-            import_dir = server_dir if server_dir.exists() else backend_path
-            if str(import_dir) not in sys.path:
-                sys.path.insert(0, str(import_dir))
-            from pob_mcp import poe_oauth, poe_api
-            token = poe_oauth.get_valid_token()
-            if token:
-                raw_data = poe_api.fetch_character_raw(character_id)
-                parsed_data = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
-                res = import_character_payload({"character_id": character_id, "character_data": parsed_data, "overwrite": overwrite}, runtime_dir)
-                if res.get("success"):
-                    res["message"] = f"Berhasil menarik {res.get('imported_slots')} slot perlengkapan resmi untuk {character_id} dari GGG PoE2 API!"
-                    return res
-    except Exception:
-        pass
+        if not poe_oauth.get_valid_token():
+            logger.warning("No valid PoE OAuth token; cannot list GGG characters")
+            return []
+        chars = [
+            {
+                "name": c["name"],
+                "level": c.get("level", 1),
+                "class": c.get("class", "Unknown"),
+                "league": c.get("league", "Standard"),
+            }
+            for c in poe_api.list_characters()
+            if c.get("name")
+        ]
+    except Exception as exc:
+        logger.warning("GGG list_characters failed: %s", exc)
+        return []
+    _API_CHARS_CACHE["entry"] = (now, chars)
+    return list(chars)
 
-    # 2. Fallback to web endpoints: if user entered mikaelzo#5674, try exact name first, then clean name
-    candidates = [account_name]
-    if "#" in account_name:
-        clean_name = account_name.split("#")[0].strip()
-        if clean_name and clean_name not in candidates:
-            candidates = [account_name, clean_name]
 
-    last_error = None
-    last_error_candidate = account_name
-    last_url = ""
-
-    for candidate in candidates:
-        encoded_acc = urllib.parse.quote(candidate)
-        encoded_char = urllib.parse.quote(character_id)
-        url = f"https://www.pathofexile.com/character-window/get-items?accountName={encoded_acc}&character={encoded_char}"
-        last_url = url
-
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                "Accept": "application/json",
-                "Referer": "https://www.pathofexile.com/",
-            },
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                return import_character_payload({"character_id": character_id, "character_data": data, "overwrite": overwrite}, runtime_dir)
-        except urllib.error.HTTPError as e:
-            if last_error is None:
-                last_error = e
-                last_error_candidate = candidate
-            continue
-        except Exception as e:
-            if last_error is None:
-                last_error = e
-            continue
-
-    if last_error:
-        if isinstance(last_error, urllib.error.HTTPError):
-            if last_error.code == 403:
-                return {
-                    "error": "PROFILE_PRIVATE_OR_BLOCKED",
-                    "code": 403,
-                    "account_name": last_error_candidate,
-                    "message": (
-                        f"Akun '{last_error_candidate}' terdeteksi PRIVATE atau diblokir oleh GGG (HTTP 403 Forbidden).\n\n"
-                        "Penyebab Teknis PoE 2:\n"
-                        "GGG telah mengunci endpoint publik lama. Karakter PoE 2 TIDAK BISA ditarik lewat web publik tanpa login OAuth resmi, meskipun akun Anda sudah diset Public.\n\n"
-                        "Solusi Praktis PoE 2:\n"
-                        "1. Shortcut Ctrl+C: Arahkan kursor ke item di dalam game lalu tekan Ctrl+C (clipboard auto-scanner akan langsung mendeteksi & mengevaluasi item).\n"
-                        "2. Opsi B (Paste JSON): Jika Anda memiliki export data karakter / PoB2, tempelkan ke tab 'Paste Character JSON'."
-                    ),
-                    "url": last_url,
-                }
-            elif last_error.code == 404:
-                return {
-                    "error": "ACCOUNT_OR_CHARACTER_NOT_FOUND",
-                    "code": 404,
-                    "account_name": account_name,
-                    "message": (
-                        f"Karakter '{character_id}' untuk akun '{account_name}' tidak ditemukan (HTTP 404 Not Found).\n\n"
-                        "Penyebab Teknis:\n"
-                        "Endpoint web warisan GGG (character-window) hanya melayani karakter Path of Exile 1 dan belum mengekspos karakter PoE 2 ke web publik tanpa OAuth 2.0 resmi.\n\n"
-                        "Solusi Praktis PoE 2:\n"
-                        "1. Shortcut Ctrl+C: Arahkan kursor ke item di dalam game lalu tekan Ctrl+C (clipboard auto-scanner akan langsung mendeteksi & mengevaluasi item).\n"
-                        "2. Opsi B (Paste JSON): Jika Anda memiliki export data karakter / PoB2, tempelkan ke tab 'Paste Character JSON'."
-                    ),
-                    "url": last_url,
-                }
-        return {"error": f"HTTP Error: {last_error}", "url": last_url}
-    return {"error": "Gagal menghubungi server PoE.", "url": last_url}
+def fetch_public_profile(account_name: str, character_id: str, runtime_dir: Path, overwrite: bool = True) -> dict[str, Any]:
+    """Import a character through the official GGG API (PoB2 MCP). Returns an error dict on failure."""
+    character_id = character_id.strip()
+    modules = load_pob_mcp_modules()
+    if modules is None:
+        return {"error": "POB2_MCP_NOT_FOUND", "message": "Folder path-of-building-2-mcp tidak ditemukan. Set POB2_MCP_PATH."}
+    poe_api, poe_oauth = modules
+    try:
+        token = poe_oauth.get_valid_token()
+    except Exception as exc:
+        logger.info("get_valid_token raised: %s", exc)
+        token = None
+    if not token:
+        return {"error": "OAUTH_REQUIRED", "message": _OAUTH_REQUIRED_MSG}
+    try:
+        raw_data = poe_api.fetch_character_raw(character_id)
+        parsed_data = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+    except Exception as exc:
+        logger.warning("GGG fetch_character_raw failed for %s: %s", character_id, exc)
+        return {"error": "GGG_API_ERROR", "message": str(exc)}
+    res = import_character_payload({"character_id": character_id, "character_data": parsed_data, "overwrite": overwrite}, runtime_dir)
+    if res.get("success"):
+        res["message"] = f"Berhasil menarik {res.get('imported_slots')} slot perlengkapan resmi untuk {character_id} dari GGG PoE2 API!"
+    return res
 
 
 def get_dashboard_status(
@@ -1401,70 +1361,34 @@ def get_account_characters(
     account_name: str = "mikaelzo#5674",
     runtime_dir: Path | None = None,
 ) -> dict[str, Any]:
-    """Discover available characters for an account from PoB2 OAuth status and local runtime files."""
+    """Discover available characters for an account from the GGG API and local runtime files."""
     if runtime_dir is None:
         runtime_dir = Path(__file__).resolve().parent.parent / "runtime"
 
-    characters: list[dict[str, Any]] = []
-    seen_names: set[str] = set()
+    characters: list[dict[str, Any]] = list(_list_api_characters())
+    source = "api" if characters else "local"
+    seen_names = {c["name"] for c in characters}
 
-    # 1. Read from PoB2 backend oauth_status.json
-    try:
-        from companion.equipment.pob2_equipment_advisor import resolve_pob2_backend_path
-        backend_path = resolve_pob2_backend_path()
-        if backend_path:
-            oauth_file = backend_path / "oauth_status.json"
-            if oauth_file.is_file():
-                oauth_data = json.loads(oauth_file.read_text(encoding="utf-8"))
-                for c in oauth_data.get("characters", []):
-                    c_name = c.get("name")
-                    if c_name and c_name not in seen_names:
-                        seen_names.add(c_name)
-                        characters.append({
-                            "name": c_name,
-                            "level": c.get("level", 1),
-                            "class": c.get("class", "Unknown"),
-                            "league": c.get("league", "Standard"),
-                        })
-    except Exception:
-        pass
-
-    # 2. Augment / merge with local characters in runtime_dir / "characters"
     char_dir = runtime_dir / "characters"
     if char_dir.is_dir():
         for f in char_dir.glob("*.json"):
             try:
                 c_data = json.loads(f.read_text(encoding="utf-8"))
-                c_name = c_data.get("character_name") or c_data.get("character_id") or f.stem
-                if c_name not in seen_names:
-                    seen_names.add(c_name)
-                    lvl_obj = c_data.get("level", 1)
-                    lvl_val = (
-                        lvl_obj.get("value", 1)
-                        if isinstance(lvl_obj, dict)
-                        else (lvl_obj if isinstance(lvl_obj, int) else 1)
-                    )
-                    characters.append({
-                        "name": c_name,
-                        "level": lvl_val,
-                        "class": c_data.get("character_class", "Unknown"),
-                        "league": "Local",
-                    })
-                else:
-                    for ch in characters:
-                        if ch["name"] == c_name:
-                            lvl_obj = c_data.get("level")
-                            if isinstance(lvl_obj, dict) and "value" in lvl_obj:
-                                ch["level"] = lvl_obj["value"]
-                            elif isinstance(lvl_obj, int):
-                                ch["level"] = lvl_obj
-                            if c_data.get("character_class") and ch["class"] in ("Unknown", ""):
-                                ch["class"] = c_data["character_class"]
-            except Exception:
-                pass
-
-    if not characters:
-        characters = [{"name": "BOMSHAK", "level": 19, "class": "Mercenary", "league": "Forbidden Rites"}]
+            except (OSError, ValueError) as exc:
+                logger.warning("Skipping unreadable character file %s: %s", f, exc)
+                continue
+            c_name = c_data.get("character_name") or c_data.get("character_id") or f.stem
+            if c_name in seen_names:
+                continue  # API entry wins
+            seen_names.add(c_name)
+            lvl_obj = c_data.get("level", 1)
+            lvl_val = lvl_obj.get("value", 1) if isinstance(lvl_obj, dict) else (lvl_obj if isinstance(lvl_obj, int) else 1)
+            characters.append({
+                "name": c_name,
+                "level": lvl_val,
+                "class": c_data.get("character_class", "Unknown"),
+                "league": "Local",
+            })
 
     active_char_id = "BOMSHAK"
     active_file = runtime_dir / "active_character.json"
@@ -1480,6 +1404,7 @@ def get_account_characters(
         "account": account_name,
         "characters": characters,
         "active_character_id": active_char_id,
+        "source": source,
     }
 
 

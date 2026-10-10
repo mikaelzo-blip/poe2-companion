@@ -99,7 +99,8 @@ def maybe_refresh_pob_session(
 
     def run() -> None:
         try:
-            sess.sync_character()
+            if sess.sync_character():
+                _apply_session(character_id, sess)
         except Exception:
             logger.warning("PoB2 refresh failed for %s", character_id, exc_info=True)
         finally:
@@ -131,14 +132,27 @@ def sync_equipped_item_to_pob_session(character_id: str, slot: str, raw_text: st
     return False
 
 
-def invalidate_pob_session(character_id: str | None = None) -> None:
-    """Invalidate or reset the cached PoB2 session so it will re-initialize on next use."""
+def _apply_session(character_id: str, sess: Any) -> None:
+    from companion.equipment.session_import import apply_session_to_runtime
+    for warning in apply_session_to_runtime(RUNTIME_DIR, character_id, sess):
+        logger.warning("PoB2 runtime import for %s: %s", character_id, warning)
+
+
+def invalidate_pob_session(character_id: str | None = None) -> bool:
+    """Invalidate or reset the cached PoB2 session so it will re-initialize on next use.
+
+    With a character_id, returns True when a cached session synced successfully
+    (its item text and baseline are then written to the runtime).
+    """
     global _GLOBAL_POB_SESSIONS, _FAILED_CHARACTERS
+    synced = False
     if character_id:
         sess = _GLOBAL_POB_SESSIONS.get(character_id)
         if sess is not None:
             try:
-                sess.sync_character()
+                synced = bool(sess.sync_character())
+                if synced:
+                    _apply_session(character_id, sess)
             except Exception:
                 logger.warning("PoB2 sync failed for %s", character_id, exc_info=True)
         _FAILED_CHARACTERS.pop(character_id, None)
@@ -150,6 +164,7 @@ def invalidate_pob_session(character_id: str | None = None) -> None:
                 logger.warning("Failed to close PoB2 session", exc_info=True)
         _GLOBAL_POB_SESSIONS.clear()
         _FAILED_CHARACTERS.clear()
+    return synced
 
 
 class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -320,13 +335,22 @@ def _api_update_stats(payload: dict[str, Any]) -> Any:
     return result
 
 
+def _prewarm_and_apply(character_id: str) -> None:
+    sess = get_or_create_pob_session(character_id)
+    if sess is not None:
+        try:
+            _apply_session(character_id, sess)
+        except Exception:
+            logger.warning("PoB2 runtime import failed for %s", character_id, exc_info=True)
+
+
 def _api_select_character(payload: dict[str, Any]) -> Any:
     from companion.dashboard_api import select_character_payload
     result = select_character_payload(payload, runtime_dir=RUNTIME_DIR)
     new_char = result.get("active_character_id") if result.get("success") else None
     if new_char:
         threading.Thread(
-            target=get_or_create_pob_session,
+            target=_prewarm_and_apply,
             args=(new_char,),
             daemon=True,
             name=f"PoB2-Prewarm-{new_char}",

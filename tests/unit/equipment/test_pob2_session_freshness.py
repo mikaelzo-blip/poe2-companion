@@ -101,3 +101,16 @@ def test_ggg_level_lag_does_not_retrigger(monkeypatch):
 def test_no_level_trigger_when_session_level_unknown():
     s = Pob2EquipmentSession("X"); s.last_synced_at = 1000.0
     assert s.needs_refresh(40, None, now=1001.0) is False
+
+
+@pytest.mark.parametrize("synced", [True, False])
+def test_refresh_applies_session_to_runtime_only_after_successful_sync(monkeypatch, synced):
+    sess = MagicMock(); sess.needs_refresh.return_value = True
+    sess.sync_character.return_value = synced
+    monkeypatch.setitem(dashboard_server._GLOBAL_POB_SESSIONS, "X", sess)
+    applied = []
+    monkeypatch.setattr(dashboard_server, "_apply_session", lambda cid, s: applied.append(cid))
+    pending = []
+    dashboard_server.maybe_refresh_pob_session("X", 40, None, spawn=pending.append)
+    pending[0]()
+    assert applied == (["X"] if synced else [])

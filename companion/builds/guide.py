@@ -6,6 +6,25 @@ import re
 
 from pydantic import BaseModel, field_validator
 
+from companion.equipment.api_adapter import ITEM_CLASS_PLURAL
+
+
+_SINGULAR = {v: k for k, v in ITEM_CLASS_PLURAL.items()}
+
+
+def singular_item_class(label: str) -> str:
+    """Clipboard plural class label ("Crossbows") -> the singular vocabulary guides use."""
+    return _SINGULAR.get(label, label)
+
+
+def weapon_classes_of(items: dict) -> dict[int, list[str]]:
+    """Weapon classes per weapon set (1 = Weapon 1/2, 2 = swap slots) from a stage's items."""
+    wc = {
+        n: sorted({items[s].item_class for s in slots if s in items})
+        for n, slots in ((1, ("Weapon 1", "Weapon 2")), (2, ("Weapon 1 Swap", "Weapon 2 Swap")))
+    }
+    return {n: c for n, c in wc.items() if c}
+
 
 class StageItem(BaseModel):
     slot: str

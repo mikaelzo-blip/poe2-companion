@@ -49,10 +49,11 @@ def test_roundtrip_and_parse():
     assert p.has_pob and p.pob_stage_id == "2"
     assert p.stages[1].main_skill == "Rain of Arrows"
     h = p.stages[0].items["Helmet"]
-    assert h.name == "Doom Crown" and "Item Class: Helmets" in h.raw_text
+    assert h.name == "Iron Crown" and h.item_class == "Helmet" and "Item Class: Helmets" in h.raw_text
+    assert "+30 to maximum Life" in h.mods
     assert "15% increased Armour" in h.raw_text
     assert set(p.stages[0].items) == {"Helmet"}
-    assert p.stages[1].items["Weapon 1"].item_class == "Crossbows"
+    assert p.stages[1].items["Weapon 1"].item_class == "Crossbow"
 
 
 def test_invalid_code():
@@ -137,3 +138,15 @@ def test_decompression_cap():
     big = base64.urlsafe_b64encode(zlib.compress(b"a" * 21_000_000)).decode()
     with pytest.raises(ValueError, match="Kode PoB2 tidak valid"):
         decode_share_code(big)
+
+
+def test_real_fixture_matches_mobalytics_contract():
+    f = Path(__file__).resolve().parents[2] / "fixtures" / "guides" / "fubgun-flameblast-oil-grenade.json"
+    p = parse_pob_xml(decode_share_code(json.loads(f.read_text(encoding="utf-8"))["pob_code"]), "Fubgun")
+    items = [it for s in p.stages for it in s.items.values()]
+    assert not {it.item_class for it in items} & {"Crossbows", "Staves", "Foci", "Helmets"}
+    assert any(it.item_class == "Crossbow" for it in items)
+    rare = next(it for it in items if not it.is_unique)
+    assert rare.name == rare.raw_text.splitlines()[3] and rare.mods
+    assert any(s.weapon_classes.get(1) for s in p.stages)
+    assert any(s.weapon_classes.get(2) == ["Crossbow"] for s in p.stages)

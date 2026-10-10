@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from pydantic import ValidationError
 
-from companion.builds.guide import GuideProfile, GuideStage, StageItem
+from companion.builds.guide import GuideProfile, GuideStage, StageItem, weapon_classes_of
 from companion.builds.stages import assign_level_ranges
 from companion.equipment.api_adapter import ITEM_CLASS_PLURAL
 
@@ -61,29 +61,28 @@ def _parse(data: dict) -> tuple[GuideProfile, str | None, list[str]]:
             if slot is None:
                 warnings.append(f"Slot tidak dikenal dilewati: {key}")
                 continue
+            if not it.get("name"):
+                warnings.append(f"Item tanpa nama dilewati: {key}")
+                continue
             slug = it.get("item_class") or ""
             label = ITEM_CLASS_SLUG_LABELS.get(slug)
             if label is None:
                 label = slug.replace("-", " ").title()
                 warnings.append(f"Kelas item tidak dikenal: {slug}")
             stats = [tuple(s) for s in it.get("stats") or []]
-            mods = [m["text"] for m in it.get("mods") or []]
+            mods = [m["text"] for m in it.get("mods") or [] if m.get("text")]
             unique = bool(it.get("is_unique"))
             items[slot] = StageItem(
                 slot=slot, name=it["name"], item_class=label, is_unique=unique,
                 base_stats={k: v for k, v in stats}, mods=mods,
-                must_have=[m["text"] for m in it.get("mods") or [] if m.get("must_have")],
+                must_have=[m["text"] for m in it.get("mods") or [] if m.get("text") and m.get("must_have")],
                 raw_text=None if unique else _raw_text(slot, it["name"], label, stats, mods),
             )
-        wc = {
-            n: sorted({items[s].item_class for s in slots if s in items})
-            for n, slots in ((1, ("Weapon 1", "Weapon 2")), (2, ("Weapon 1 Swap", "Weapon 2 Swap")))
-        }
         skills = v.get("skills") or []
         stages.append(GuideStage(
             id=str(v["id"]), title=v.get("title") or str(v["id"]), items=items,
             main_skill=skills[0]["name"] if skills else None,
-            weapon_classes={n: c for n, c in wc.items() if c},
+            weapon_classes=weapon_classes_of(items),
         ))
     pob = data.get("pob_code") or None
     profile = GuideProfile(

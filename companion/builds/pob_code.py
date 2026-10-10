@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 from pydantic import ValidationError
 
-from companion.builds.guide import GuideProfile, GuideStage, StageItem
+from companion.builds.guide import GuideProfile, GuideStage, StageItem, singular_item_class, weapon_classes_of
 from companion.builds.stages import assign_level_ranges
 from companion.equipment.parser import parse_item_text
 from companion.equipment.pob_item_text import PobItemTextError, pob_item_to_clipboard
@@ -58,9 +58,11 @@ def _item(slot: str, pob_text: str) -> StageItem:
     except ValueError as exc:  # PobItemTextError is a ValueError
         log.warning("Item PoB di slot %s tidak bisa dikonversi: %s", slot, exc)
         return fallback
-    klass = next((ln[12:].strip() for ln in clip.splitlines() if ln.startswith("Item Class:")), "")
-    return StageItem(slot=slot, name=cand.name, item_class=klass,
-                     is_unique=cand.rarity.lower() == "unique", raw_text=clip)
+    klass = singular_item_class(
+        next((ln[12:].strip() for ln in clip.splitlines() if ln.startswith("Item Class:")), ""))
+    unique = cand.rarity.lower() == "unique"
+    return StageItem(slot=slot, name=cand.name if unique else cand.base_type, item_class=klass,
+                     is_unique=unique, mods=[m.raw_text for m in cand.modifiers], raw_text=clip)
 
 
 def _main_skill(root: ET.Element, title: str, index: int) -> str | None:
@@ -101,7 +103,8 @@ def _parse_pob_xml(xml: str, name: str) -> GuideProfile:
             slot, text = sl.get("name"), texts.get(sl.get("itemId"), "").strip()
             if slot in _SLOTS and text:
                 items[slot] = _item(slot, text)
-        stages.append(GuideStage(id=sid, title=s.get("title") or f"Set {sid}", items=items, main_skill=_main_skill(root, s.get("title") or "", n)))
+        stages.append(GuideStage(id=sid, title=s.get("title") or f"Set {sid}", items=items, main_skill=_main_skill(root, s.get("title") or "", n),
+                                  weapon_classes=weapon_classes_of(items)))
     profile = GuideProfile(
         slug=re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "pob",
         name=name, imported_at=datetime.now(timezone.utc).isoformat(), stages=stages,

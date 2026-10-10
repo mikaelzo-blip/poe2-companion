@@ -122,7 +122,6 @@ def test_malformed_structures_give_indonesian_error(tmp_path):
 
     bad = [
         _moba(format=FORMAT, variants=[{}]),
-        _moba(format=FORMAT, variants=[{"id": "1", "items": {"helmet": {"item_class": "x"}}}]),
         _moba(format=FORMAT, variants=[{"id": "1", "items": {"helmet": {"name": "x", "stats": [1]}}}]),
         _moba(format=FORMAT, variants="abc"),
     ]
@@ -133,6 +132,16 @@ def test_malformed_structures_give_indonesian_error(tmp_path):
         assert "error" in res, text
         assert res["error"].startswith(("Struktur guide tidak valid", "XML PoB2 tidak valid", "Panduan")), res
     assert _empty(tmp_path)
+
+
+def test_nameless_item_skipped_with_warning(tmp_path):
+    from companion.builds.mobalytics import FORMAT
+
+    items = {"helmet": {"item_class": "helmet"}, "gloves": {"name": "G", "item_class": "gloves"}}
+    res = import_guide_payload({"text": _moba(format=FORMAT, variants=[{"id": "1", "items": items}])}, tmp_path)
+    assert res["success"] and any("tanpa nama" in w for w in res["warnings"])
+    from companion.builds.store import load_guide
+    assert list(load_guide(tmp_path, "s").stages[0].items) == ["Gloves"]
 
 
 def test_overwrite_warns_and_stage_override_validated(tmp_path):

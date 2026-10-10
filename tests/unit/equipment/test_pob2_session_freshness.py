@@ -127,3 +127,39 @@ def test_get_or_create_applies_session_after_successful_init(monkeypatch):
     monkeypatch.setattr(dashboard_server, "_apply_session", lambda cid, s: applied.append((cid, s)))
     assert dashboard_server.get_or_create_pob_session("ZED", force_retry=True) is fake
     assert applied == [("ZED", fake)]
+
+
+def test_concurrent_get_or_create_creates_one_session_and_no_orphans(monkeypatch):
+    import threading
+    import time
+    import companion.equipment.pob2_equipment_advisor as adv
+
+    created = []
+
+    class SlowSession:
+        def __init__(self, character_name):
+            self.character_name, self.is_available, self.closed = character_name, False, False
+            created.append(self)
+
+        def initialize(self):
+            time.sleep(0.3)  # a real init takes seconds (GGG fetch + docker run)
+            self.is_available = True
+            return True
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(adv, "Pob2EquipmentSession", SlowSession)
+    monkeypatch.setattr(dashboard_server, "normalize_char_id", lambda c: c)
+    monkeypatch.setattr(dashboard_server, "_GLOBAL_POB_SESSIONS", {})
+    monkeypatch.setattr(dashboard_server, "_FAILED_CHARACTERS", {})
+    monkeypatch.setattr(dashboard_server, "_apply_session", lambda cid, s: None)
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(
+        dashboard_server.get_or_create_pob_session("ZED", force_retry=True))) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(5)
+    assert len(created) == 1 and not created[0].closed
+    assert results == [created[0]] * 4

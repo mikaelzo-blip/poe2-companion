@@ -31,14 +31,11 @@ def normalize_char_id(char_id: str | None) -> str:
     return resolve_char_id(char_id, RUNTIME_DIR)
 
 
-def get_or_create_pob_session(character_id: str = "BOMSHAK", force_retry: bool = False):
-    """Reuse or lazily initialize the PoB2 simulation session.
-    
-    Caches successful sessions per character and uses a retry cooldown on failed characters
-    to prevent UI stalling and Docker thrashing on 800ms clipboard polls.
-    """
-    global _GLOBAL_POB_SESSIONS, _FAILED_CHARACTERS
-    character_id = normalize_char_id(character_id)
+_CREATE_LOCKS: dict[str, threading.Lock] = {}
+_CREATE_LOCKS_GUARD = threading.Lock()
+
+
+def _usable_session(character_id: str):
     existing = _GLOBAL_POB_SESSIONS.get(character_id)
     if (
         existing is not None
@@ -46,34 +43,59 @@ def get_or_create_pob_session(character_id: str = "BOMSHAK", force_retry: bool =
         and getattr(existing, "is_available", False)
     ):
         return existing
-    if existing is not None:
-        _GLOBAL_POB_SESSIONS.pop(character_id, None)
-        try:
-            existing.close()
-        except Exception:
-            logger.warning("Failed to close stale PoB2 session %s", character_id, exc_info=True)
-
-    now = time.time()
-    last_fail = _FAILED_CHARACTERS.get(character_id, 0.0)
-    if not force_retry and (now - last_fail < POB_RETRY_INTERVAL_SECONDS):
-        return None
-
-    try:
-        from companion.equipment.pob2_equipment_advisor import Pob2EquipmentSession
-        sess = Pob2EquipmentSession(character_name=character_id)
-        if sess.initialize():
-            _GLOBAL_POB_SESSIONS[character_id] = sess
-            _FAILED_CHARACTERS.pop(character_id, None)
-            try:
-                _apply_session(character_id, sess)
-            except Exception:
-                logger.warning("PoB2 runtime import failed for %s", character_id, exc_info=True)
-            return sess
-        _FAILED_CHARACTERS[character_id] = now
-    except Exception:
-        logger.warning("PoB2 session init failed for %s", character_id, exc_info=True)
-        _FAILED_CHARACTERS[character_id] = now
     return None
+
+
+def get_or_create_pob_session(character_id: str = "BOMSHAK", force_retry: bool = False):
+    """Reuse or lazily initialize the PoB2 simulation session.
+
+    Caches successful sessions per character and uses a retry cooldown on failed characters
+    to prevent UI stalling and Docker thrashing on 800ms clipboard polls. Creation is
+    serialized per character: concurrent callers wait for the one in flight and reuse its
+    result, so a slow init can never leave an orphaned engine.
+    """
+    character_id = normalize_char_id(character_id)
+    if (sess := _usable_session(character_id)) is not None:
+        return sess
+    with _CREATE_LOCKS_GUARD:
+        create_lock = _CREATE_LOCKS.setdefault(character_id, threading.Lock())
+    with create_lock:
+        if (sess := _usable_session(character_id)) is not None:
+            return sess  # another caller created it while we waited
+        existing = _GLOBAL_POB_SESSIONS.pop(character_id, None)
+        if existing is not None:
+            try:
+                existing.close()
+            except Exception:
+                logger.warning("Failed to close stale PoB2 session %s", character_id, exc_info=True)
+
+        now = time.time()
+        last_fail = _FAILED_CHARACTERS.get(character_id, 0.0)
+        if not force_retry and (now - last_fail < POB_RETRY_INTERVAL_SECONDS):
+            return None
+
+        sess = None
+        try:
+            from companion.equipment.pob2_equipment_advisor import Pob2EquipmentSession
+            sess = Pob2EquipmentSession(character_name=character_id)
+            if sess.initialize():
+                _GLOBAL_POB_SESSIONS[character_id] = sess
+                _FAILED_CHARACTERS.pop(character_id, None)
+                try:
+                    _apply_session(character_id, sess)
+                except Exception:
+                    logger.warning("PoB2 runtime import failed for %s", character_id, exc_info=True)
+                return sess
+            _FAILED_CHARACTERS[character_id] = now
+        except Exception:
+            logger.warning("PoB2 session init failed for %s", character_id, exc_info=True)
+            _FAILED_CHARACTERS[character_id] = now
+            if sess is not None and _GLOBAL_POB_SESSIONS.get(character_id) is not sess:
+                try:
+                    sess.close()
+                except Exception:
+                    logger.warning("Failed to close PoB2 session %s after init error", character_id, exc_info=True)
+        return None
 
 
 _REFRESHING: set[str] = set()

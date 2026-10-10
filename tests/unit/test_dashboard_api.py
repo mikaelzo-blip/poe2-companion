@@ -1433,3 +1433,51 @@ def test_generic_pob2_weapon_verdicts(tmp_path: Path, dps, ehp, verdict, gains, 
     assert result["verdict"] == verdict
     assert result["gains"] == gains
     assert result["trade_offs"] == trade_offs
+
+
+def _inv_item(inv_id: str, type_line: str) -> dict:
+    return {
+        "name": "",
+        "typeLine": type_line,
+        "inventoryId": inv_id,
+        "frameType": 1,
+        "explicitMods": ["+10 to maximum Life"],
+    }
+
+
+def boots_item() -> dict:
+    return _inv_item("Boots", "Rawhide Boots")
+
+
+def gloves_item() -> dict:
+    return _inv_item("Gloves", "Rawhide Gloves")
+
+
+def test_official_import_clears_slots_missing_from_payload(tmp_path: Path) -> None:
+    from companion.dashboard_api import import_character_payload
+    from companion.equipment.loadout_cli import load_loadout
+    from companion.equipment.schema import SlotType
+
+    first = {"items": [boots_item(), gloves_item()]}
+    second = {"items": [boots_item()]}
+    import_character_payload({"character_id": "T", "character_data": first, "overwrite": True}, tmp_path)
+    import_character_payload({"character_id": "T", "character_data": second, "overwrite": True}, tmp_path)
+    lo = load_loadout(tmp_path, "T")
+    assert lo.get_slot(SlotType.GLOVES) is None
+    assert lo.get_slot(SlotType.BOOTS) is not None
+
+
+def test_import_keeps_manual_facts_and_marks_others_stale(tmp_path: Path) -> None:
+    from companion.dashboard_api import import_character_payload
+    from companion.equipment.baseline import BaselineSource, CharacterFact, CharacterStatBaseline
+    from companion.equipment.baseline_cli import load_baseline, save_baseline
+    from companion.state.provenance import VerificationState
+
+    base = CharacterStatBaseline.create_empty(character_id="T", anchored_loadout_revision=1)
+    base.life = CharacterFact[int].create(500, source=BaselineSource.MANUAL_USER_INPUT)
+    base.raw_fire_res = CharacterFact[int].create(30, source=BaselineSource.GGG_OFFICIAL_API)
+    save_baseline(tmp_path, base)
+    import_character_payload({"character_id": "T", "character_data": {"items": [boots_item()]}}, tmp_path)
+    after = load_baseline(tmp_path, "T")
+    assert after.life.value == 500 and after.life.source == BaselineSource.MANUAL_USER_INPUT
+    assert after.raw_fire_res.value == 30 and after.raw_fire_res.verification == VerificationState.STALE

@@ -157,7 +157,8 @@ class GGGCharacterAPIAdapter:
             return None, None, warnings
 
         loadout = EquippedLoadout.create_draft(character_id=character_id)
-        if current_loadout:
+        # Official import replaces gear; only the non-overwrite path keeps current slots.
+        if current_loadout and not overwrite_conflicts:
             for s_val, entry in current_loadout.shared_slots.items():
                 if entry and entry.item:
                     slot_enum = SlotType.from_str(s_val)

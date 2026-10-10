@@ -987,6 +987,7 @@ def import_character_payload(payload: dict[str, Any], runtime_dir: Path) -> dict
 
     from companion.equipment.api_adapter import GGGCharacterAPIAdapter
     from companion.equipment.loadout_cli import load_loadout, save_loadout
+    from companion.equipment.baseline import BaselineSource
     from companion.equipment.baseline_cli import load_baseline, save_baseline
 
     current_loadout = load_loadout(runtime_dir, char_id)
@@ -1011,9 +1012,14 @@ def import_character_payload(payload: dict[str, Any], runtime_dir: Path) -> dict
                 "raw_chaos_res", "effective_chaos_res", "max_chaos_res", "chaos_overcap_buffer",
                 "strength", "dexterity", "intelligence", "movement_speed",
             ):
-                curr_fact = getattr(current_baseline, attr_name, None)
-                if curr_fact is not None and getattr(curr_fact, "is_known", False):
-                    setattr(baseline, attr_name, curr_fact)
+                old = getattr(current_baseline, attr_name, None)
+                new = getattr(baseline, attr_name, None)
+                if old is not None and getattr(old, "source", None) == BaselineSource.MANUAL_USER_INPUT:
+                    setattr(baseline, attr_name, old)
+                elif new is not None and getattr(new, "is_known", False):
+                    continue
+                elif old is not None and getattr(old, "is_known", False):
+                    setattr(baseline, attr_name, old.mark_stale())
         save_baseline(runtime_dir, baseline)
 
     # Persist or update CharacterState with name, class, level

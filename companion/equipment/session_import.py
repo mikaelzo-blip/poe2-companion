@@ -12,8 +12,9 @@ from companion.equipment.loadout_cli import (
     character_runtime_lock, execute_loadout_transition, load_loadout, save_loadout,
 )
 from companion.equipment.parser import parse_item_text
+from companion.equipment.pob_item_text import pob_item_to_clipboard
 from companion.equipment.pob2_equipment_advisor import POB2_PRODUCTION_SLOTS
-from companion.equipment.schema import SlotType, WeaponSetContext
+from companion.equipment.schema import NormalizedModifierType, SlotType, WeaponSetContext
 from companion.state.provenance import VerificationState
 
 logger = logging.getLogger(__name__)
@@ -39,26 +40,57 @@ _DEFENSE_FIELDS = {
 }
 
 
-def _parse_items(equipped: dict[str, Any], warnings: list[str]) -> list[tuple[SlotType, WeaponSetContext | None, Any]]:
-    parsed = []
+def _parse_items(
+    equipped: dict[str, Any], warnings: list[str]
+) -> tuple[list[tuple[SlotType, WeaponSetContext | None, Any]], list[tuple[SlotType, WeaponSetContext | None]]]:
+    """Convert PoB item text to ItemCandidates; also list slots PoB explicitly reports unequipped."""
+    parsed, cleared = [], []
     for pob_slot in sorted(POB2_PRODUCTION_SLOTS):
         mapped = _SLOT_MAP.get(pob_slot)
         eq = equipped.get(pob_slot)
-        if mapped is None or not eq or not eq.get("equipped") or not eq.get("raw"):
+        if mapped is None or not eq:
             continue
         slot, wset = mapped
+        if not eq.get("equipped"):
+            cleared.append((slot, wset))
+            continue
+        if not eq.get("raw"):
+            continue
         try:
-            parsed.append((slot, wset, parse_item_text(eq["raw"], target_slot=slot, target_weapon_set=wset)))
+            text = pob_item_to_clipboard(eq["raw"])
+            parsed.append((slot, wset, parse_item_text(text, target_slot=slot, target_weapon_set=wset)))
         except Exception as exc:
             logger.warning("PoB2 item import failed for %s", pob_slot, exc_info=True)
             warnings.append(f"{pob_slot}: could not import item ({exc})")
-    return parsed
+    return parsed, cleared
 
 
-def _apply_items(loadout: EquippedLoadout, parsed: list) -> bool:
+def _known_mods(item: Any) -> int:
+    return sum(m.modifier_type != NormalizedModifierType.UNKNOWN_MODIFIER for m in item.modifiers)
+
+
+_LOGGED_KEEPS: set[tuple[str, str]] = set()
+
+
+def _apply_items(loadout: EquippedLoadout, parsed: list, cleared: list = ()) -> bool:
     """Mutate loadout in place; True if a decision-relevant change occurred."""
     changed = False
     for slot, wset, item in parsed:
+        entry = loadout.get_slot(slot, weapon_set=wset)
+        stored = entry.item if entry else None
+        if stored is not None:
+            if _known_mods(item) < _known_mods(stored):
+                # PoB text parsed worse than what we already hold: keep the stored item.
+                if (key := (stored.item_id, item.item_id)) not in _LOGGED_KEEPS:
+                    _LOGGED_KEEPS.add(key)
+                    logger.warning("PoB2 item for %s has fewer known mods than stored item; keeping stored", slot.value)
+                continue
+            if (stored.name, stored.base_type) == (item.name, item.base_type):
+                # PoB text carries no attribute requirements; they come from the base, so keep them.
+                item = item.model_copy(update={
+                    "required_str": stored.required_str, "required_dex": stored.required_dex,
+                    "required_int": stored.required_int,
+                })
         if loadout.transition_slot(
             slot, item, source=BaselineSource.GGG_OFFICIAL_API, weapon_set=wset,
             verification=VerificationState.VERIFIED,
@@ -66,12 +98,25 @@ def _apply_items(loadout: EquippedLoadout, parsed: list) -> bool:
             changed = True
         else:
             loadout.refresh_slot_text(slot, item.raw_text, weapon_set=wset)
+    for slot, wset in cleared:
+        if loadout.transition_clear_slot(slot, weapon_set=wset):
+            changed = True
     return changed
 
 
+def _is_manual(fact: CharacterFact) -> bool:
+    return fact.source == BaselineSource.MANUAL_USER_INPUT and fact.value is not None
+
+
+def _mark_known_facts_stale(baseline: CharacterStatBaseline) -> None:
+    for name in type(baseline).model_fields:
+        fact = getattr(baseline, name)
+        if isinstance(fact, CharacterFact) and fact.value is not None:
+            setattr(baseline, name, fact.mark_stale())
+
+
 def _set_fact(baseline: CharacterStatBaseline, attr: str, value: Any) -> None:
-    old = getattr(baseline, attr)
-    if old.source == BaselineSource.MANUAL_USER_INPUT and old.value is not None:
+    if _is_manual(getattr(baseline, attr)):
         return
     setattr(baseline, attr, CharacterFact[int].create(
         int(value), source=BaselineSource.DERIVED_CALCULATION, evidence_ref="pob2",
@@ -89,8 +134,11 @@ def _apply_baseline(baseline: CharacterStatBaseline, defenses: dict, stats: dict
         if raw is None:
             continue
         cap = getattr(baseline, f"max_{el}_res").value or 75
-        _set_fact(baseline, f"raw_{el}_res", raw)
-        _set_fact(baseline, f"effective_{el}_res", min(int(raw), cap))
+        pair = (f"raw_{el}_res", f"effective_{el}_res")
+        if any(_is_manual(getattr(baseline, a)) for a in pair):
+            continue  # keep a coherent raw/effective pair when one side is user-entered
+        _set_fact(baseline, pair[0], raw)
+        _set_fact(baseline, pair[1], min(int(raw), cap))
 
 
 def _snapshot(session: Any) -> tuple[dict, dict, dict]:
@@ -108,18 +156,21 @@ def apply_session_to_runtime(runtime_dir: Path, character_id: str, session: Any)
     warnings: list[str] = []
     try:
         equipped, defenses, stats = _snapshot(session)
-        parsed = _parse_items(equipped, warnings)
+        parsed, cleared = _parse_items(equipped, warnings)
         with character_runtime_lock(character_id):
             loadout = load_loadout(runtime_dir, character_id)
+            pre_fingerprint = loadout.compute_fingerprint() if loadout.is_finalized else None
+            gear_changed = True
             if loadout.is_finalized:
                 res = execute_loadout_transition(
-                    runtime_dir, character_id, lambda lo: _apply_items(lo, parsed)
+                    runtime_dir, character_id, lambda lo: _apply_items(lo, parsed, cleared)
                 )
                 loadout = res.loadout
+                gear_changed = res.is_changed
                 if not res.is_changed:
                     save_loadout(runtime_dir, loadout)  # raw_text refreshes carry no revision bump
             else:
-                _apply_items(loadout, parsed)
+                _apply_items(loadout, parsed, cleared)
                 loadout.finalize(loadout_id=f"pob2_{character_id}")
                 save_loadout(runtime_dir, loadout)
 
@@ -127,6 +178,10 @@ def apply_session_to_runtime(runtime_dir: Path, character_id: str, session: Any)
                 baseline_id=f"pob2_{character_id}", character_id=character_id,
                 anchored_loadout_revision=loadout.revision,
             )
+            # Facts are only still current if they were anchored to this exact gear and the gear did not
+            # just change; otherwise moving the anchor would certify them. Keep them, mark them STALE.
+            if gear_changed or baseline.anchored_loadout_fingerprint != pre_fingerprint:
+                _mark_known_facts_stale(baseline)
             baseline.anchored_loadout_revision = loadout.revision
             baseline.anchored_loadout_fingerprint = loadout.compute_fingerprint()
             _apply_baseline(baseline, defenses, stats)

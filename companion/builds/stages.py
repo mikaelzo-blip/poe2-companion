@@ -11,14 +11,14 @@ _INTERLUDE = (56, 64)
 _ENDGAME_START = 65
 
 _LVL_RANGE = re.compile(r"\b(?:lvl|level|lv)\.?\s*(\d+)\s*[-–—]\s*(\d+)\b", re.I)
-_LVL_ONE = re.compile(r"\b(?:lvl|level)\.?\s*(\d+)\b", re.I)
+_LVL_ONE = re.compile(r"\b(?:lvl|level|lv)\.?\s*(\d+)\b", re.I)
 _BARE_RANGE = re.compile(r"\b(\d+)\s*[-–—]\s*(\d+)\b")
 _ACT_TO_END = re.compile(r"\bact\s*(\d)\s*to\s*endgame\b", re.I)
-_ACT_PAIR = re.compile(r"\bact\s*(\d)\s*(?:&|and)\s*(\d)\b", re.I)
+_ACT_PAIR = re.compile(r"\bact\s*(\d)\s*(?:&|and|[-–—])\s*(\d)\b", re.I)
 _ACT_ONE = re.compile(r"\bact\s*(\d)\b", re.I)
 _INTERLUDE_RE = re.compile(r"\binterlude\b", re.I)
 _KEYWORD = re.compile(
-    r"\b(?:endgame|maps?|t\d{1,2}|mageblood|dot cap|pinnacle|uber|late|mid|early)\b", re.I
+    r"\b(?:endgame|maps?|t\d{1,2}|mageblood|dot cap|pinnacle|uber)\b", re.I
 )
 
 
@@ -32,8 +32,6 @@ def parse_level_range(title: str) -> tuple[int | None, int | None, bool]:
         return int(m[1]), int(m[2]), False
     if m := _LVL_ONE.search(title):
         return int(m[1]), int(m[1]), False
-    if m := _BARE_RANGE.search(title):
-        return int(m[1]), int(m[2]), False
     if m := _ACT_TO_END.search(title):
         if a := _act(m[1]):
             return a[0], _INTERLUDE[1], False
@@ -46,6 +44,8 @@ def parse_level_range(title: str) -> tuple[int | None, int | None, bool]:
             return a[0], a[1], False
     if _INTERLUDE_RE.search(title):
         return _INTERLUDE[0], _INTERLUDE[1], False
+    if m := _BARE_RANGE.search(title):
+        return int(m[1]), int(m[2]), False
     if _KEYWORD.search(title):
         return _ENDGAME_START, None, True
     return None, None, False
@@ -66,9 +66,22 @@ def assign_level_ranges(profile: GuideProfile) -> GuideProfile:
                 kw_min = max(_ENDGAME_START, prev_max + 1)
             lo, hi = kw_min, 100
         else:
+            unparsed = parsed[i] == (None, None, False)
             lo = lo if lo is not None else prev_max + 1
             nxt = parsed[i + 1] if i + 1 < len(parsed) else None
-            if nxt and not nxt[2] and nxt[0] is not None:
+            if unparsed:  # split the gap to the next parsed/keyword stage evenly over the run
+                j = i
+                while j < len(parsed) and parsed[j] == (None, None, False):
+                    j += 1
+                after = parsed[j] if j < len(parsed) else None
+                if after is None:
+                    end = 100
+                elif after[2]:
+                    end = _ENDGAME_START - 1
+                else:
+                    end = after[0] - 1
+                hi = lo + max(1, (end - lo + 1) // (j - i)) - 1
+            elif nxt and not nxt[2] and nxt[0] is not None:
                 hi = nxt[0] - 1
             elif hi is None:
                 hi = 100

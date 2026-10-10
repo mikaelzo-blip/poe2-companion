@@ -119,3 +119,41 @@ def test_resolve_stage_fallback():
     assert resolve_stage(p, 15).id == "a"
     assert resolve_stage(p, 0).id == "a"
     assert resolve_stage(p, 200).id == "b"
+
+
+def _stages(titles):
+    p = GuideProfile(slug="g", name="G", imported_at="x",
+                     stages=[GuideStage(id=str(i), title=t) for i, t in enumerate(titles)])
+    return assign_level_ranges(p).stages
+
+
+@pytest.mark.parametrize("titles,ranges", [
+    (["Leveling", "Endgame"], [(1, 64, True), (65, 100, True)]),
+    (["Campaign", "Maps"], [(1, 64, True), (65, 100, True)]),
+    (["Act 1", "Campaign", "Endgame"], [(1, 15, True), (16, 64, True), (65, 100, True)]),
+])
+def test_unparsed_before_keyword_stage_ends_at_64(titles, ranges):
+    st = _stages(titles)
+    assert [(s.min_level, s.max_level, s.auto) for s in st] == ranges
+
+
+def test_leveling_endgame_level_70_resolves_to_endgame():
+    p = GuideProfile(slug="g", name="G", imported_at="x", stages=_stages(["Leveling", "Endgame"]))
+    assert resolve_stage(p, 70).title == "Endgame"
+    assert resolve_stage(p, 30).title == "Leveling"
+
+
+def test_bare_early_mid_late_are_not_keywords():
+    st = _stages(["Early Game", "Mid Game", "Late Game"])
+    assert len(st) == 3 and all(s.auto for s in st)
+    for lv in range(1, 101):
+        assert sum(s.min_level <= lv <= s.max_level for s in st if s.auto) == 1
+
+
+@pytest.mark.parametrize("title,expected", [
+    ("Act 1-2", (1, 29, False)),
+    ("Act 3-4 Leveling", (30, 55, False)),
+    ("Lv 12", (12, 12, False)),
+])
+def test_act_pair_dash_and_lv(title, expected):
+    assert parse_level_range(title) == expected

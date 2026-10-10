@@ -82,9 +82,9 @@ def test_unknown_slug_errors(tmp_path):
 def test_assignment_and_delete(tmp_path):
     import_guide_payload({"text": _text(NAMES[0])}, tmp_path)
     res = set_character_guide_payload(
-        {"character_id": "C", "guide": NAMES[0], "stage_override": "x"}, tmp_path)
+        {"character_id": "C", "guide": NAMES[0], "stage_override": None}, tmp_path)
     assert res["success"] is True
-    assert get_available_guides(tmp_path, "C")["active"] == {"guide": NAMES[0], "stage_override": "x"}
+    assert get_available_guides(tmp_path, "C")["active"] == {"guide": NAMES[0], "stage_override": None}
     assert delete_guide_payload({"slug": NAMES[0]}, tmp_path)["success"] is True
     assert get_available_guides(tmp_path, "C")["guides"] == []
 
@@ -101,3 +101,45 @@ def test_post_guides_foreign_origin_403():
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def _moba(**over):
+    d = {"format": "poe2-companion-guide/1", "slug": "s", "name": "N",
+         "variants": [{"id": "1", "title": "t", "items": {}}]}
+    d.update(over)
+    return json.dumps(d)
+
+
+def _empty(tmp_path):
+    g = tmp_path / "guides"
+    return not g.exists() or not list(g.glob("*"))
+
+
+def test_malformed_structures_give_indonesian_error(tmp_path):
+    from companion.builds.mobalytics import FORMAT
+    import base64
+    import zlib
+
+    bad = [
+        _moba(format=FORMAT, variants=[{}]),
+        _moba(format=FORMAT, variants=[{"id": "1", "items": {"helmet": {"item_class": "x"}}}]),
+        _moba(format=FORMAT, variants=[{"id": "1", "items": {"helmet": {"name": "x", "stats": [1]}}}]),
+        _moba(format=FORMAT, variants="abc"),
+    ]
+    code = base64.urlsafe_b64encode(zlib.compress(b"<PathOfBuilding2><Items>")).decode()
+    bad.append(code)
+    for text in bad:
+        res = import_guide_payload({"text": text}, tmp_path)
+        assert "error" in res, text
+        assert res["error"].startswith(("Struktur guide tidak valid", "XML PoB2 tidak valid", "Panduan")), res
+    assert _empty(tmp_path)
+
+
+def test_overwrite_warns_and_stage_override_validated(tmp_path):
+    import_guide_payload({"text": _text(NAMES[0])}, tmp_path)
+    res = import_guide_payload({"text": _text(NAMES[0])}, tmp_path)
+    assert any("ditimpa" in w for w in res["warnings"])
+    res = set_character_guide_payload(
+        {"character_id": "C", "guide": NAMES[0], "stage_override": "zzz"}, tmp_path)
+    assert "error" in res
+    assert get_available_guides(tmp_path, "C")["active"]["guide"] is None

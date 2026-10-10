@@ -1523,7 +1523,7 @@ def import_guide_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str
 
     from companion.builds import pob_code
     from companion.builds.mobalytics import parse_mobalytics_guide
-    from companion.builds.store import save_guide
+    from companion.builds.store import load_guide, save_guide
 
     text = str(payload.get("text") or "").strip()
     if not text:
@@ -1552,7 +1552,11 @@ def import_guide_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str
                 code = text
             xml = pob_code.decode_share_code(code)
             profile = pob_code.parse_pob_xml(xml, f"PoB Guide {date.today().isoformat()}")
+        replaced = load_guide(runtime_dir, profile.slug) is not None
         saved = save_guide(runtime_dir, profile, pob_xml=xml)
+        if replaced:
+            warnings.append(
+                f"Guide '{saved.name}' yang sudah ada ditimpa (aturan breaker dipertahankan)")
     except ValueError as exc:
         return {"error": str(exc)}
     return {"success": True, "slug": saved.slug, "name": saved.name,
@@ -1593,8 +1597,13 @@ def set_character_guide_payload(payload: dict[str, Any], runtime_dir: Path) -> d
     char_id, guide = payload.get("character_id"), payload.get("guide")
     if not char_id:
         return {"error": "character_id wajib diisi."}
-    if guide is not None and load_guide(runtime_dir, str(guide)) is None:
-        return {"error": "Guide tidak ditemukan."}
+    if guide is not None:
+        profile = load_guide(runtime_dir, str(guide))
+        if profile is None:
+            return {"error": "Guide tidak ditemukan."}
+        override = payload.get("stage_override")
+        if override is not None and override not in {s.id for s in profile.stages}:
+            return {"error": "Tahap guide tidak dikenal."}
     set_assignment(runtime_dir, str(char_id), guide, payload.get("stage_override"))
     return {"success": True}
 

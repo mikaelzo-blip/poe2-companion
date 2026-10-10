@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from pydantic import ValidationError
+
 from companion.builds.guide import GuideProfile, GuideStage, StageItem
 from companion.builds.stages import assign_level_ranges
 from companion.equipment.api_adapter import ITEM_CLASS_PLURAL
@@ -42,7 +44,7 @@ def _raw_text(slot: str, name: str, label: str, stats: list, mods: list[str]) ->
     return "\n--------\n".join(blocks)
 
 
-def parse_mobalytics_guide(data: dict) -> tuple[GuideProfile, str | None, list[str]]:
+def _parse(data: dict) -> tuple[GuideProfile, str | None, list[str]]:
     if data.get("format") != FORMAT:
         raise ValueError(f"Format panduan tidak dikenal (harus {FORMAT}).")
     variants = data.get("variants") or []
@@ -90,3 +92,12 @@ def parse_mobalytics_guide(data: dict) -> tuple[GuideProfile, str | None, list[s
         has_pob=pob is not None, pob_stage_id=stages[-1].id,
     )
     return assign_level_ranges(profile), pob, warnings
+
+
+def parse_mobalytics_guide(data: dict) -> tuple[GuideProfile, str | None, list[str]]:
+    try:
+        return _parse(data)
+    except ValidationError as exc:
+        raise ValueError(f"Struktur guide tidak valid: {exc.errors()[0]['msg']}") from exc
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise ValueError(f"Struktur guide tidak valid: {type(exc).__name__} {exc}") from exc

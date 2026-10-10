@@ -10,6 +10,8 @@ import xml.etree.ElementTree as ET
 import zlib
 from datetime import datetime, timezone
 
+from pydantic import ValidationError
+
 from companion.builds.guide import GuideProfile, GuideStage, StageItem
 from companion.builds.stages import assign_level_ranges
 from companion.equipment.parser import parse_item_text
@@ -82,7 +84,7 @@ def _main_skill(root: ET.Element, title: str, index: int) -> str | None:
     return gem.get("nameSpec") if gem is not None else None
 
 
-def parse_pob_xml(xml: str, name: str) -> GuideProfile:
+def _parse_pob_xml(xml: str, name: str) -> GuideProfile:
     try:
         root = ET.fromstring(xml)
     except ET.ParseError as exc:
@@ -106,3 +108,12 @@ def parse_pob_xml(xml: str, name: str) -> GuideProfile:
         has_pob=True, pob_stage_id=items_el.get("activeItemSet"),
     )
     return assign_level_ranges(profile)
+
+
+def parse_pob_xml(xml: str, name: str) -> GuideProfile:
+    try:
+        return _parse_pob_xml(xml, name)
+    except ValidationError as exc:
+        raise ValueError(f"XML PoB2 tidak valid: {exc.errors()[0]['msg']}") from exc
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise ValueError(f"XML PoB2 tidak valid: {type(exc).__name__} {exc}") from exc

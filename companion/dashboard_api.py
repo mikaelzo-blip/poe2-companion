@@ -19,6 +19,39 @@ from companion.equipment.schema import SlotType
 from companion.state.schema import CharacterState
 from companion.state.store import CharacterStateStore
 
+_STAGE_MAP = {
+    "lvl 1-14": BuildProgressionStage.LEVELING_1_14,
+    "lvl 15-32": BuildProgressionStage.LEVELING_15_32,
+    "lvl 33-51": BuildProgressionStage.LEVELING_33_51,
+    "lvl 52 swap": BuildProgressionStage.SWAP_52,
+    "lvl 53-68": BuildProgressionStage.LEVELING_53_68,
+    "lvl 85": BuildProgressionStage.LEVEL_85,
+    "endgame": BuildProgressionStage.ENDGAME,
+    "mageblood": BuildProgressionStage.MAGEBLOOD,
+    "dot cap": BuildProgressionStage.DOT_CAP,
+    # Navira stages approximated onto the Fubgun stage enum (no Navira-specific policy exists).
+    "act 1 & 2": BuildProgressionStage.LEVELING_1_14,
+    "act 2": BuildProgressionStage.LEVELING_15_32,
+    "act 3": BuildProgressionStage.LEVELING_15_32,
+    "act 4 to endgame": BuildProgressionStage.LEVELING_33_51,
+    "early endgame": BuildProgressionStage.LEVELING_53_68,
+    "mid-endgame": BuildProgressionStage.LEVEL_85,
+    "late endgame": BuildProgressionStage.LEVEL_85,
+    "uber endgame": BuildProgressionStage.ENDGAME,
+}
+
+
+def _resolve_stage(stage_str: str | None, char_level: int | None) -> BuildProgressionStage:
+    """Map a stage label to an enum; auto/legacy "lvl 1-14"/unknown labels infer from level."""
+    from companion.equipment.fubgun_priorities import infer_stage_from_level
+
+    key = (stage_str or "").strip().lower()
+    if key in _STAGE_MAP and key != "lvl 1-14":
+        return _STAGE_MAP[key]
+    if char_level and char_level >= 15:
+        return infer_stage_from_level(char_level)
+    return BuildProgressionStage.LEVELING_1_14
+
 
 def get_current_raw(
     runtime_dir: Path,
@@ -178,20 +211,6 @@ def _evaluate_item_payload_impl(
     stage_str = payload.get("stage", "lvl 1-14")
     requested_slot = payload.get("slot")
 
-    # Map stage
-    stage_map = {
-        "lvl 1-14": BuildProgressionStage.LEVELING_1_14,
-        "lvl 15-32": BuildProgressionStage.LEVELING_15_32,
-        "lvl 33-51": BuildProgressionStage.LEVELING_33_51,
-        "lvl 52 swap": BuildProgressionStage.SWAP_52,
-        "lvl 53-68": BuildProgressionStage.LEVELING_53_68,
-        "lvl 85": BuildProgressionStage.LEVEL_85,
-        "endgame": BuildProgressionStage.ENDGAME,
-        "mageblood": BuildProgressionStage.MAGEBLOOD,
-        "dot cap": BuildProgressionStage.DOT_CAP,
-    }
-
-    from companion.equipment.fubgun_priorities import infer_stage_from_level
     char_level = getattr(pob_session, "level", None) if pob_session is not None else None
     zone_id = payload.get("zone")
     char_class = None
@@ -239,10 +258,7 @@ def _evaluate_item_payload_impl(
     from companion.equipment.zone_threats import get_zone_threat_profile
     zone_profile = get_zone_threat_profile(zone_id, character_level=char_level)
 
-    if (stage_str.lower() in ("lvl 1-14", "default", "auto", "")) and char_level and char_level >= 15:
-        stage = infer_stage_from_level(char_level)
-    else:
-        stage = stage_map.get(stage_str.lower(), BuildProgressionStage.LEVELING_1_14)
+    stage = _resolve_stage(stage_str, char_level)
 
     def _get_current_raw(slot_name: str) -> str:
         return get_current_raw(runtime_dir, char_id, slot_name, pob_session)
@@ -1318,8 +1334,8 @@ def get_dashboard_status(
     target_pob = pob_session
     if target_pob is None and char_id:
         try:
-            from companion.dashboard_server import _GLOBAL_POB_SESSIONS, _GLOBAL_POB_SESSION
-            target_pob = _GLOBAL_POB_SESSIONS.get(char_id) or _GLOBAL_POB_SESSION
+            from companion.dashboard_server import _GLOBAL_POB_SESSIONS
+            target_pob = _GLOBAL_POB_SESSIONS.get(char_id)
         except Exception:
             pass
 

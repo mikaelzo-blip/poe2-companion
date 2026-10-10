@@ -233,7 +233,7 @@ def test_evaluate_item_payload_auto_infers_stage_from_pob_session_level(tmp_path
 
 
 def test_dashboard_server_equip_item_syncs_to_global_pob_session(monkeypatch, tmp_path: Path):
-    """When /api/equip-item is called, _GLOBAL_POB_SESSION should equip the item directly."""
+    """When /api/equip-item is called, _GLOBAL_POB_SESSIONS should equip the item directly."""
     from companion import dashboard_server
 
     engine = SyncFakePobEngine()
@@ -244,7 +244,7 @@ def test_dashboard_server_equip_item_syncs_to_global_pob_session(monkeypatch, tm
         poe_api_client=api,
     )
     sess.initialize()
-    monkeypatch.setattr(dashboard_server, "_GLOBAL_POB_SESSION", sess)
+    monkeypatch.setitem(dashboard_server._GLOBAL_POB_SESSIONS, "BOMSHAK", sess)
 
     # Simulate equip-item handler execution
     dashboard_server.sync_equipped_item_to_pob_session(

@@ -20,6 +20,10 @@ const appState = {
   historyFilter: 'slot' // 'slot' | 'all'
 };
 
+function esc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 // Fallback Demo Data for instant zero-server preview
 const DEMO_DATA = {
   status: {
@@ -664,7 +668,7 @@ function renderCompareForSlot(slotKey) {
   const equippedItem = getEquippedItemForSlot(slotKey);
   const equippedDesc = equippedItem ? `${equippedItem.name || equippedItem.base_type}` : 'Slot Kosong';
   if (titleEl) {
-    titleEl.innerHTML = `${label.toUpperCase()} <span style="font-size: 11px; font-weight: 500; color: var(--accent-gold); margin-left: 8px;">[Terpasang: <strong>${equippedDesc}</strong>]</span>`;
+    titleEl.innerHTML = `${esc(label.toUpperCase())} <span style="font-size: 11px; font-weight: 500; color: var(--accent-gold); margin-left: 8px;">[Terpasang: <strong>${esc(equippedDesc)}</strong>]</span>`;
   }
 
   const slotData = appState.slotCompareData[slotKey];
@@ -707,9 +711,9 @@ function renderCompareForSlot(slotKey) {
             <line x1="12" y1="8" x2="12" y2="12"></line>
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
-          <div style="font-weight: 700; color: #FFF; margin-bottom: 4px;">Belum Ada Perbandingan untuk ${label}</div>
+          <div style="font-weight: 700; color: #FFF; margin-bottom: 4px;">Belum Ada Perbandingan untuk ${esc(label)}</div>
           <p style="font-size: 11px; color: var(--text-dim); max-width: 360px;">
-            Arahkan kursor ke item ${label} di PoE2 lalu tekan <strong>Ctrl+C</strong> (Auto-Scan aktif), atau paste teks item di atas lalu klik Bandingkan.
+            Arahkan kursor ke item ${esc(label)} di PoE2 lalu tekan <strong>Ctrl+C</strong> (Auto-Scan aktif), atau paste teks item di atas lalu klik Bandingkan.
           </p>
         </div>
       `;
@@ -751,7 +755,7 @@ function renderCompareHistory() {
   if (!entriesToDisplay.length) {
     listContainer.innerHTML = `
       <div style="text-align: center; padding: 18px 12px; color: var(--text-dim); font-size: 11px; font-family: var(--font-mono);">
-        ${filter === 'slot' ? `Belum ada riwayat perbandingan untuk slot ${SLOT_LABELS[currentSlot] || currentSlot}.` : 'Belum ada riwayat perbandingan di seluruh loadout.'}
+        ${filter === 'slot' ? `Belum ada riwayat perbandingan untuk slot ${esc(SLOT_LABELS[currentSlot] || currentSlot)}.` : 'Belum ada riwayat perbandingan di seluruh loadout.'}
       </div>
     `;
     return;
@@ -768,30 +772,30 @@ function renderCompareHistory() {
 
     let diffChipsHtml = '';
     if (item.gains && item.gains.length) {
-      diffChipsHtml += item.gains.slice(0, 3).map(g => `<span class="diff-chip-gain">${g}</span>`).join('');
+      diffChipsHtml += item.gains.slice(0, 3).map(g => `<span class="diff-chip-gain">${esc(g)}</span>`).join('');
     }
     if (item.tradeOffs && item.tradeOffs.length) {
-      diffChipsHtml += item.tradeOffs.slice(0, 2).map(t => `<span class="diff-chip-loss">${t}</span>`).join('');
+      diffChipsHtml += item.tradeOffs.slice(0, 2).map(t => `<span class="diff-chip-loss">${esc(t)}</span>`).join('');
     }
 
     card.innerHTML = `
       <div class="history-card-header">
         <div style="display: flex; align-items: center; gap: 6px;">
-          <span class="history-slot-tag">${item.slotLabel || item.slot.toUpperCase()}</span>
-          <span class="history-time">${item.timestamp}</span>
+          <span class="history-slot-tag">${esc(item.slotLabel || item.slot.toUpperCase())}</span>
+          <span class="history-time">${esc(item.timestamp)}</span>
         </div>
-        <span class="verdict-badge ${badgeClass}" style="margin-bottom: 0; font-size: 9px; padding: 1px 6px;">${item.verdict}</span>
+        <span class="verdict-badge ${badgeClass}" style="margin-bottom: 0; font-size: 9px; padding: 1px 6px;">${esc(item.verdict)}</span>
       </div>
       <div class="history-item-row">
         <div class="history-item-title">
-          <span class="rarity-${item.rarity || 'rare'}">${item.itemName}</span>
-          <span class="history-item-base">${item.baseType || ''}</span>
+          <span class="rarity-${esc(item.rarity || 'rare')}">${esc(item.itemName)}</span>
+          <span class="history-item-base">${esc(item.baseType || '')}</span>
         </div>
       </div>
       ${diffChipsHtml ? `<div class="history-diff-chips">${diffChipsHtml}</div>` : ''}
       <div class="history-actions">
-        <button class="btn-history-view" data-hist-id="${item.id}">Lihat Hasil</button>
-        <button class="btn-history-del" data-hist-id="${item.id}" title="Hapus riwayat ini">✕</button>
+        <button class="btn-history-view" data-hist-id="${esc(item.id)}">Lihat Hasil</button>
+        <button class="btn-history-del" data-hist-id="${esc(item.id)}" title="Hapus riwayat ini">✕</button>
       </div>
     `;
 
@@ -972,28 +976,8 @@ function setupCompareSubtabs() {
 }
 
 function getEffectiveStage() {
-  if (appState.selectedStage && appState.selectedStage !== "auto") {
-    return appState.selectedStage;
-  }
-  const lvlObj = appState.characterState?.level;
-  const lvl = (typeof lvlObj === 'object' ? lvlObj?.value : lvlObj)
-    || appState.baseline?.character_level
-    || 22;
-  if (appState.selectedGuide === 'navira_varashta') {
-    if (lvl >= 85) return "Uber Endgame";
-    if (lvl >= 75) return "Late Endgame";
-    if (lvl >= 68) return "Mid-Endgame";
-    if (lvl >= 55) return "Early Endgame";
-    if (lvl >= 40) return "Act 4 to Endgame";
-    if (lvl >= 28) return "Act 3";
-    if (lvl >= 16) return "Act 2";
-    return "Act 1 & 2";
-  }
-  if (lvl >= 53) return "lvl 53-68";
-  if (lvl >= 52) return "lvl 52 swap";
-  if (lvl >= 33) return "lvl 33-51";
-  if (lvl >= 15) return "lvl 15-32";
-  return "lvl 1-14";
+  // Server infers the stage when "auto".
+  return appState.selectedStage || 'auto';
 }
 
 async function simulateVersusComparison(rawText, container, explicitSlot = null) {
@@ -1001,7 +985,7 @@ async function simulateVersusComparison(rawText, container, explicitSlot = null)
   const targetLabel = SLOT_LABELS[targetSlot] || targetSlot.toUpperCase();
 
   container.style.display = 'block';
-  container.innerHTML = `<div style="color: var(--accent-gold); font-size: 12px; font-family: var(--font-mono); padding: 12px;">⏳ Mengevaluasi calon untuk slot ${targetLabel} dengan PoB2 Engine & Fubgun Rules...</div>`;
+  container.innerHTML = `<div style="color: var(--accent-gold); font-size: 12px; font-family: var(--font-mono); padding: 12px;">⏳ Mengevaluasi calon untuk slot ${esc(targetLabel)} dengan PoB2 Engine & Fubgun Rules...</div>`;
 
   try {
     const stage = getEffectiveStage();
@@ -1041,7 +1025,7 @@ async function simulateVersusComparison(rawText, container, explicitSlot = null)
       container.innerHTML = `
         <div class="verdict-box verdict-reject">
           <span class="verdict-badge badge-red">EVALUATION ERROR</span>
-          <div class="verdict-details">${errorMsg}</div>
+          <div class="verdict-details">${esc(errorMsg)}</div>
         </div>
       `;
       return;
@@ -1058,14 +1042,6 @@ async function checkHttpHost() {
   if (window.location.protocol.startsWith('http')) {
     try {
       const res = await fetch('/api/status');
-      if (res.ok) {
-        startHttpPolling();
-        return;
-      }
-    } catch (_) {}
-
-    try {
-      const res = await fetch('/runtime/runtime_status.json');
       if (res.ok) {
         startHttpPolling();
         return;
@@ -1222,7 +1198,7 @@ function startAutoClipboardWatcher() {
 function renderEvaluationVerdict(data, container, targetSlot = null) {
   container.style.display = 'block';
   if (data.error) {
-    container.innerHTML = `<div class="verdict-box verdict-reject"><span class="verdict-badge badge-red">PARSER ERROR</span><div class="verdict-details">${data.error}</div></div>`;
+    container.innerHTML = `<div class="verdict-box verdict-reject"><span class="verdict-badge badge-red">PARSER ERROR</span><div class="verdict-details">${esc(data.error)}</div></div>`;
     return;
   }
 
@@ -1234,16 +1210,16 @@ function renderEvaluationVerdict(data, container, targetSlot = null) {
   const boxClass = isEquip ? 'verdict-equip-now' : (isConditional ? 'verdict-conditional' : (isInsufficient ? 'verdict-insufficient' : 'verdict-reject'));
 
   const slotLabel = SLOT_LABELS[currentSlot] || currentSlot.toUpperCase().replace('_', ' ');
-  const slotBadgeHtml = `<div style="font-size: 11px; color: var(--accent-gold); font-family: var(--font-mono); margin-bottom: 4px;">🎯 Slot Evaluasi: ${slotLabel.toUpperCase()}</div>`;
+  const slotBadgeHtml = `<div style="font-size: 11px; color: var(--accent-gold); font-family: var(--font-mono); margin-bottom: 4px;">🎯 Slot Evaluasi: ${esc(slotLabel.toUpperCase())}</div>`;
 
   let gainsHtml = '';
   if (data.gains && data.gains.length > 0) {
-    gainsHtml = `<div style="margin-top: 6px; color: var(--accent-green);"><strong>Peningkatan (+):</strong><ul>${data.gains.map(g => `<li>${g}</li>`).join('')}</ul></div>`;
+    gainsHtml = `<div style="margin-top: 6px; color: var(--accent-green);"><strong>Peningkatan (+):</strong><ul>${data.gains.map(g => `<li>${esc(g)}</li>`).join('')}</ul></div>`;
   }
 
   let tradeOffsHtml = '';
   if (data.trade_offs && data.trade_offs.length > 0) {
-    tradeOffsHtml = `<div style="margin-top: 6px; color: var(--accent-red);"><strong>Penurunan / Trade-offs (-):</strong><ul>${data.trade_offs.map(t => `<li>${t}</li>`).join('')}</ul></div>`;
+    tradeOffsHtml = `<div style="margin-top: 6px; color: var(--accent-red);"><strong>Penurunan / Trade-offs (-):</strong><ul>${data.trade_offs.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>`;
   }
 
   let tacticalCardHtml = '';
@@ -1253,40 +1229,40 @@ function renderEvaluationVerdict(data, container, targetSlot = null) {
     tacticalCardHtml = `
       <div class="tactical-card">
         <div class="tactical-header">
-          <span class="tactical-badge" style="color: ${badgeColor};">${tac.verdict_badge || 'BRIEFING TAKTIS'}</span>
-          <span class="tactical-zone">📍 ${tac.zone_name || 'Zona Aktif'}</span>
+          <span class="tactical-badge" style="color: ${badgeColor};">${esc(tac.verdict_badge || 'BRIEFING TAKTIS')}</span>
+          <span class="tactical-zone">📍 ${esc(tac.zone_name || 'Zona Aktif')}</span>
         </div>
-        <div class="tactical-headline">${tac.tactical_headline || ''}</div>
+        <div class="tactical-headline">${esc(tac.tactical_headline || '')}</div>
         ${tac.zone_threat_warning ? `
           <div class="tactical-row threat-warning">
             <div class="tactical-label">⚠️ Ancaman Wilayah & Boss:</div>
-            <div class="tactical-text">${tac.zone_threat_warning}</div>
+            <div class="tactical-text">${esc(tac.zone_threat_warning)}</div>
           </div>
         ` : ''}
         ${tac.sustain_evaluation ? `
           <div class="tactical-row sustain-note">
             <div class="tactical-label">💚 Evaluasi Sustain:</div>
-            <div class="tactical-text">${tac.sustain_evaluation}</div>
+            <div class="tactical-text">${esc(tac.sustain_evaluation)}</div>
           </div>
         ` : ''}
         ${tac.attribute_warning ? `
           <div class="tactical-row attr-warning">
             <div class="tactical-label">🔴 Peringatan Syarat Atribut:</div>
-            <div class="tactical-text">${tac.attribute_warning}</div>
+            <div class="tactical-text">${esc(tac.attribute_warning)}</div>
           </div>
         ` : ''}
         ${tac.stat_analysis_notes && tac.stat_analysis_notes.length > 0 ? `
           <div class="tactical-row" style="background: rgba(30, 41, 59, 0.4); border-left: 3px solid #60a5fa; padding: 6px 10px; margin-top: 6px; border-radius: 4px;">
             <div class="tactical-label" style="color: #93c5fd; font-weight: 700; font-size: 11px;">📊 Analisis Stat Karakter Terhadap Item:</div>
             <ul style="margin: 4px 0 0 16px; padding: 0; font-size: 11px; color: #cbd5e1; line-height: 1.4;">
-              ${tac.stat_analysis_notes.map(note => `<li>${note}</li>`).join('')}
+              ${tac.stat_analysis_notes.map(note => `<li>${esc(note)}</li>`).join('')}
             </ul>
           </div>
         ` : ''}
         ${tac.actionable_recommendation ? `
           <div class="tactical-row action-box">
             <div class="tactical-label">🎯 Rekomendasi Taktis & Tindakan:</div>
-            <div class="tactical-action-text">${tac.actionable_recommendation}</div>
+            <div class="tactical-action-text">${esc(tac.actionable_recommendation)}</div>
           </div>
         ` : ''}
       </div>
@@ -1325,8 +1301,8 @@ function renderEvaluationVerdict(data, container, targetSlot = null) {
     <div class="compare-matchup-container">
       <div class="matchup-card current-gear ${isWinnerCurrent ? 'is-winner' : (isWinnerCandidate ? 'is-loser' : '')}">
         <div class="matchup-role-tag">🛡️ Terpasang (Current)</div>
-        <div class="matchup-item-name">${currentName}</div>
-        ${currentBaseType ? `<div class="matchup-base-type">(${currentBaseType})</div>` : ''}
+        <div class="matchup-item-name">${esc(currentName)}</div>
+        ${currentBaseType ? `<div class="matchup-base-type">(${esc(currentBaseType)})</div>` : ''}
         ${currentOutcomeBadge}
       </div>
 
@@ -1336,8 +1312,8 @@ function renderEvaluationVerdict(data, container, targetSlot = null) {
 
       <div class="matchup-card candidate-gear ${isWinnerCandidate ? 'is-winner' : (isWinnerCurrent ? 'is-loser' : '')}">
         <div class="matchup-role-tag">📋 Kandidat (Candidate)</div>
-        <div class="matchup-item-name">${candidateName}</div>
-        ${candidateBaseType ? `<div class="matchup-base-type">(${candidateBaseType})</div>` : ''}
+        <div class="matchup-item-name">${esc(candidateName)}</div>
+        ${candidateBaseType ? `<div class="matchup-base-type">(${esc(candidateBaseType)})</div>` : ''}
         ${candidateOutcomeBadge}
       </div>
     </div>
@@ -1347,21 +1323,21 @@ function renderEvaluationVerdict(data, container, targetSlot = null) {
     if (isEquip) {
       equipBtnHtml = `
         <button class="btn btn-primary btn-block" id="btn-equip-candidate" style="margin-top: 12px; background: var(--accent-green); color: #000; font-weight: 700; cursor: pointer;">
-          🛡️ Pasang ${candidateName} (Gantikan ${currentName})
+          🛡️ Pasang ${esc(candidateName)} (Gantikan ${esc(currentName)})
         </button>
         <div id="equip-status-msg" style="margin-top: 6px; font-size: 11px; text-align: center; display: none;"></div>
       `;
     } else if (isConditional) {
       equipBtnHtml = `
         <button class="btn btn-primary btn-block" id="btn-equip-candidate" style="margin-top: 12px; background: var(--accent-gold); color: #000; font-weight: 700; cursor: pointer;">
-          ⚠️ Pertahankan ${currentName} (Pasang ${candidateName} Hanya Jika Butuh Resistensi)
+          ⚠️ Pertahankan ${esc(currentName)} (Pasang ${esc(candidateName)} Hanya Jika Butuh Resistensi)
         </button>
         <div id="equip-status-msg" style="margin-top: 6px; font-size: 11px; text-align: center; display: none;"></div>
       `;
     } else if (data.verdict === 'REJECT') {
       equipBtnHtml = `
         <button class="btn btn-block" id="btn-equip-candidate" style="margin-top: 12px; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--accent-red); color: var(--accent-red); font-weight: 600; cursor: pointer; font-size: 11px;">
-          🛑 Tahan ${currentName} (${currentName} LEBIH BAGUS — Jangan Pasang ${candidateName})
+          🛑 Tahan ${esc(currentName)} (${esc(currentName)} LEBIH BAGUS — Jangan Pasang ${esc(candidateName)})
         </button>
         <div id="equip-status-msg" style="margin-top: 6px; font-size: 11px; text-align: center; display: none;"></div>
       `;
@@ -1369,8 +1345,8 @@ function renderEvaluationVerdict(data, container, targetSlot = null) {
   }
 
   const winnerBadgeHtml = (data.verdict === 'REJECT')
-    ? `<div style="display: block; background: rgba(239, 68, 68, 0.18); border: 1px solid var(--accent-red); color: #ff9999; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; margin-bottom: 8px;">👑 KEPUTUSAN TEGAS: <u>${currentName}</u> LEBIH BAGUS DARI <u>${candidateName}</u></div>`
-    : (isEquip ? `<div style="display: block; background: rgba(34, 197, 94, 0.18); border: 1px solid var(--accent-green); color: #86efac; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; margin-bottom: 8px;">👑 KEPUTUSAN TEGAS: <u>${candidateName}</u> LEBIH BAGUS DARI <u>${currentName}</u> (PASANG SEKARANG)</div>` : '');
+    ? `<div style="display: block; background: rgba(239, 68, 68, 0.18); border: 1px solid var(--accent-red); color: #ff9999; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; margin-bottom: 8px;">👑 KEPUTUSAN TEGAS: <u>${esc(currentName)}</u> LEBIH BAGUS DARI <u>${esc(candidateName)}</u></div>`
+    : (isEquip ? `<div style="display: block; background: rgba(34, 197, 94, 0.18); border: 1px solid var(--accent-green); color: #86efac; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; margin-bottom: 8px;">👑 KEPUTUSAN TEGAS: <u>${esc(candidateName)}</u> LEBIH BAGUS DARI <u>${esc(currentName)}</u> (PASANG SEKARANG)</div>` : '');
 
   // Format freshness / evaluation timestamp
   let timeStr = data.timestamp || '';
@@ -1389,7 +1365,7 @@ function renderEvaluationVerdict(data, container, targetSlot = null) {
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 4px;">
       ${slotBadgeHtml}
       <span style="font-size: 10.5px; font-family: var(--font-mono); color: #94a3b8; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 4px;">
-        🕒 Dievaluasi: <strong style="color: #f1f5f9;">${timeStr}</strong>
+        🕒 Dievaluasi: <strong style="color: #f1f5f9;">${esc(timeStr)}</strong>
       </span>
     </div>
   `;
@@ -1403,20 +1379,20 @@ function renderEvaluationVerdict(data, container, targetSlot = null) {
 
   // Avoid repeating the headline paragraph if tactical advice card is already rendering it
   const showGenericReason = !data.tactical_advice && data.reason;
-  const reasonHtml = showGenericReason ? `<p style="margin-top: 6px; margin-bottom: 6px;">${data.reason}</p>` : '';
+  const reasonHtml = showGenericReason ? `<p style="margin-top: 6px; margin-bottom: 6px;">${esc(data.reason)}</p>` : '';
 
   const rawReportCollapsible = data.formatted_report ? `
     <details class="report-audit-details" style="margin-top: 10px; border-top: 1px dashed rgba(255,255,255,0.15); padding-top: 8px;">
       <summary style="cursor: pointer; font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); user-select: none; outline: none;">
         ▶ 🔍 Detail Log Audit Teknis (PoB2 / CLI Raw Report)
       </summary>
-      <pre class="report-raw-box" style="margin-top: 8px; font-size: 10.5px; opacity: 0.9; max-height: 220px; overflow-y: auto;">${data.formatted_report}</pre>
+      <pre class="report-raw-box" style="margin-top: 8px; font-size: 10.5px; opacity: 0.9; max-height: 220px; overflow-y: auto;">${esc(data.formatted_report)}</pre>
     </details>
   ` : '';
 
   container.innerHTML = `
     <div class="verdict-box ${boxClass}">
-      <span class="verdict-badge ${badgeClass}">VERDICT: ${data.verdict}</span>
+      <span class="verdict-badge ${badgeClass}">VERDICT: ${esc(data.verdict)}</span>
       <div class="verdict-details">
         ${metaBarHtml}
         ${controllerTipHtml}
@@ -1541,32 +1517,9 @@ async function fetchHttpRuntime() {
       return;
     }
   } catch (err) {
-    console.warn('HTTP API /api/status error, falling back to static files:', err);
+    console.warn('HTTP API /api/status error:', err);
   }
-
-  try {
-    const [statusRes, objRes] = await Promise.allSettled([
-      fetch('/runtime/runtime_status.json').then(r => r.json()),
-      fetch('/runtime/CURRENT_OBJECTIVE.json').then(r => r.json())
-    ]);
-
-    const statusJson = statusRes.status === 'fulfilled' ? statusRes.value : null;
-    const objJson = objRes.status === 'fulfilled' ? objRes.value : null;
-
-    const charId = (statusJson && statusJson.active_character_id) || appState.activeCharId;
-    const [charRes, loadoutRes] = await Promise.allSettled([
-      fetch(`/runtime/characters/${charId}.json`).then(r => r.json()),
-      fetch(`/runtime/loadouts/${charId}.json`).then(r => r.json())
-    ]);
-
-    const charJson = charRes.status === 'fulfilled' ? charRes.value : null;
-    const loadoutJson = loadoutRes.status === 'fulfilled' ? loadoutRes.value : null;
-
-    loadDataIntoUI(statusJson, charJson, objJson, loadoutJson);
-    document.getElementById('last-sync-time').textContent = 'Live Sync: ' + new Date().toLocaleTimeString();
-  } catch (err) {
-    console.warn('HTTP fetch runtime error:', err);
-  }
+  updateStatusBadge('DISCONNECTED', 'idle');
 }
 
 // Setup Tab Navigation
@@ -2046,10 +1999,10 @@ function addNotification(title, msg, type = 'info', time = 'Just now') {
     <div class="notif-indicator"></div>
     <div class="notif-content">
       <div class="notif-head">
-        <strong class="notif-title">${title}</strong>
-        <span class="notif-time">${time}</span>
+        <strong class="notif-title">${esc(title)}</strong>
+        <span class="notif-time">${esc(time)}</span>
       </div>
-      <p class="notif-msg">${msg}</p>
+      <p class="notif-msg">${esc(msg)}</p>
     </div>
   `;
   feed.insertBefore(item, feed.firstChild);
@@ -2066,15 +2019,15 @@ function renderObjectivesTable(objectives) {
   objectives.forEach(obj => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><span class="priority-chip" style="font-size: 9px; padding: 2px 6px;">P${obj.priority}</span></td>
+      <td><span class="priority-chip" style="font-size: 9px; padding: 2px 6px;">P${esc(obj.priority)}</span></td>
       <td>
-        <strong style="color: #FFFFFF; font-size: 13px;">${obj.title}</strong>
-        <div style="font-size: 10px; color: var(--text-dim); font-family: var(--font-mono);">${obj.id}</div>
+        <strong style="color: #FFFFFF; font-size: 13px;">${esc(obj.title)}</strong>
+        <div style="font-size: 10px; color: var(--text-dim); font-family: var(--font-mono);">${esc(obj.id)}</div>
       </td>
-      <td style="color: var(--text-gold); font-size: 12px;">${obj.action}</td>
-      <td style="font-size: 11px; color: var(--text-muted);">${obj.source}</td>
+      <td style="color: var(--text-gold); font-size: 12px;">${esc(obj.action)}</td>
+      <td style="font-size: 11px; color: var(--text-muted);">${esc(obj.source)}</td>
       <td>
-        <span style="font-family: var(--font-mono); font-size: 11px; color: #F59E0B;">Trust: ${obj.evidence_trust || 3}</span>
+        <span style="font-family: var(--font-mono); font-size: 11px; color: #F59E0B;">Trust: ${esc(obj.evidence_trust || 3)}</span>
       </td>
     `;
     tbody.appendChild(tr);
@@ -2170,10 +2123,10 @@ function renderGearSlots(loadout) {
       card.innerHTML = `
         <div class="slot-header-row">
           <span class="slot-type-label">${slotDef.label}</span>
-          <span class="slot-rarity-tag rarity-${it.rarity || 'normal'}">${it.rarity || 'normal'}</span>
+          <span class="slot-rarity-tag rarity-${esc(it.rarity || 'normal')}">${esc(it.rarity || 'normal')}</span>
         </div>
-        <div class="slot-item-name">${it.name || it.base_type}</div>
-        <div class="slot-item-base">${it.base_type || ''}</div>
+        <div class="slot-item-name">${esc(it.name || it.base_type)}</div>
+        <div class="slot-item-base">${esc(it.base_type || '')}</div>
         <div class="slot-card-meta">
           ${compareBadgeHtml}
           ${historyBadgeHtml}
@@ -2217,7 +2170,7 @@ function renderSlotInspector(slotKey, item) {
   if (!item) {
     container.innerHTML = `
       <div class="empty-state">
-        <p>Slot <strong>${slotKey}</strong> kosong atau belum diobservasi dalam audit loadout.</p>
+        <p>Slot <strong>${esc(slotKey)}</strong> kosong atau belum diobservasi dalam audit loadout.</p>
       </div>
     `;
     return;
@@ -2225,7 +2178,7 @@ function renderSlotInspector(slotKey, item) {
 
   let modsHtml = '';
   if (item.modifiers && item.modifiers.length > 0) {
-    modsHtml = item.modifiers.map(m => `<div class="tt-mod">${m.raw_text}</div>`).join('');
+    modsHtml = item.modifiers.map(m => `<div class="tt-mod">${esc(m.raw_text)}</div>`).join('');
   } else {
     modsHtml = '<div class="tt-mod" style="color: var(--text-dim);">(No explicit modifiers)</div>';
   }
@@ -2235,13 +2188,13 @@ function renderSlotInspector(slotKey, item) {
   container.innerHTML = `
     <div class="item-tooltip">
       <div class="tooltip-header">
-        <div class="tt-name rarity-${item.rarity || 'normal'}">${item.name}</div>
-        <div class="tt-base">${item.base_type}</div>
+        <div class="tt-name rarity-${esc(item.rarity || 'normal')}">${esc(item.name)}</div>
+        <div class="tt-base">${esc(item.base_type)}</div>
       </div>
       <div class="tooltip-stats">
-        ${item.local_armour ? `<div>Armour: <strong style="color: #fff;">${item.local_armour}</strong></div>` : ''}
-        ${item.item_level ? `<div>Item Level: <strong style="color: #fff;">${item.item_level}</strong></div>` : ''}
-        ${item.required_level ? `<div>Requires Level: <strong style="color: #fff;">${item.required_level}</strong></div>` : ''}
+        ${item.local_armour ? `<div>Armour: <strong style="color: #fff;">${esc(item.local_armour)}</strong></div>` : ''}
+        ${item.item_level ? `<div>Item Level: <strong style="color: #fff;">${esc(item.item_level)}</strong></div>` : ''}
+        ${item.required_level ? `<div>Requires Level: <strong style="color: #fff;">${esc(item.required_level)}</strong></div>` : ''}
       </div>
       <div class="tooltip-mods">
         ${modsHtml}
@@ -2250,12 +2203,12 @@ function renderSlotInspector(slotKey, item) {
 
     <div class="advisor-recommendation-box">
       <div class="adv-title">PoB2 EQUIPMENT ADVISOR RECOMMENDATION</div>
-      <div class="adv-body">${advisorText}</div>
+      <div class="adv-body">${esc(advisorText)}</div>
     </div>
 
     <div style="margin-top: 14px;">
       <button class="btn btn-secondary btn-block" id="btn-goto-compare-slot" style="font-size: 11px; padding: 8px; cursor: pointer;">
-        ⚡ Ganti / Bandingkan Calon Upgrade untuk Slot Ini (${slotKey.toUpperCase()})
+        ⚡ Ganti / Bandingkan Calon Upgrade untuk Slot Ini (${esc(slotKey.toUpperCase())})
       </button>
     </div>
   `;
@@ -2391,9 +2344,9 @@ function setupSyncModal() {
         if (data.success) {
           if (msgPublic) {
             msgPublic.style.color = 'var(--accent-green)';
-            let details = data.message;
+            let details = esc(data.message);
             if (data.warnings && data.warnings.length > 0) {
-              details += '<br><span style="font-size: 10px; color: var(--text-dim);">' + data.warnings.join('<br>') + '</span>';
+              details += '<br><span style="font-size: 10px; color: var(--text-dim);">' + data.warnings.map(esc).join('<br>') + '</span>';
             }
             msgPublic.innerHTML = `✓ ${details}`;
           }
@@ -2402,14 +2355,14 @@ function setupSyncModal() {
         } else if (data.url) {
           if (msgPublic) {
             msgPublic.style.color = '#F59E0B';
-            msgPublic.innerHTML = `⚠️ ${data.message ? data.message.replace(/\n/g, '<br>') : data.error}<br><br><a href="${data.url}" target="_blank" style="color: #60A5FA; text-decoration: underline; font-weight: bold;">👉 Klik di sini untuk membuka link JSON di browser</a>`;
+            msgPublic.innerHTML = `⚠️ ${data.message ? esc(data.message).replace(/\n/g, '<br>') : esc(data.error)}${/^https:\/\//.test(data.url) ? `<br><br><a href="${esc(data.url)}" target="_blank" rel="noopener" style="color: #60A5FA; text-decoration: underline; font-weight: bold;">👉 Klik di sini untuk membuka link JSON di browser</a>` : ''}`;
           }
           const linkBox = document.getElementById('direct-json-link-box');
           if (linkBox && data.url) linkBox.textContent = data.url;
         } else {
           if (msgPublic) {
             msgPublic.style.color = 'var(--accent-red)';
-            msgPublic.innerHTML = `✕ ${data.message ? data.message.replace(/\n/g, '<br>') : (data.error || 'Gagal mengambil data')}`;
+            msgPublic.innerHTML = `✕ ${data.message ? esc(data.message).replace(/\n/g, '<br>') : esc(data.error || 'Gagal mengambil data')}`;
           }
         }
       } catch (err) {
@@ -2458,9 +2411,9 @@ function setupSyncModal() {
           if (msgJson) {
             msgJson.style.display = 'block';
             msgJson.style.color = 'var(--accent-green)';
-            let details = resData.message;
+            let details = esc(resData.message);
             if (resData.warnings && resData.warnings.length > 0) {
-              details += '<br><span style="font-size: 10px; color: var(--text-dim);">' + resData.warnings.join('<br>') + '</span>';
+              details += '<br><span style="font-size: 10px; color: var(--text-dim);">' + resData.warnings.map(esc).join('<br>') + '</span>';
             }
             msgJson.innerHTML = `✓ ${details}`;
           }

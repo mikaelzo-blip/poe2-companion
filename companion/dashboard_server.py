@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import http.server
 import json
-import os
 from pathlib import Path
 import socketserver
 import sys
 import time
+from urllib.parse import urlparse
 import webbrowser
 from typing import Any
 
@@ -16,7 +16,6 @@ DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-_GLOBAL_POB_SESSION: Any = None
 _GLOBAL_POB_SESSIONS: dict[str, Any] = {}
 _FAILED_CHARACTERS: dict[str, float] = {}
 POB_RETRY_INTERVAL_SECONDS = 300.0
@@ -41,15 +40,8 @@ def get_or_create_pob_session(character_id: str = "BOMSHAK", force_retry: bool =
     Caches successful sessions per character and uses a retry cooldown on failed characters
     to prevent UI stalling and Docker thrashing on 800ms clipboard polls.
     """
-    global _GLOBAL_POB_SESSION, _GLOBAL_POB_SESSIONS, _FAILED_CHARACTERS
+    global _GLOBAL_POB_SESSIONS, _FAILED_CHARACTERS
     character_id = normalize_char_id(character_id)
-    if (
-        _GLOBAL_POB_SESSION is not None
-        and getattr(_GLOBAL_POB_SESSION, "character_name", None) == character_id
-        and getattr(_GLOBAL_POB_SESSION, "is_available", False)
-    ):
-        return _GLOBAL_POB_SESSION
-
     existing = _GLOBAL_POB_SESSIONS.get(character_id)
     if (
         existing is not None
@@ -78,17 +70,7 @@ def get_or_create_pob_session(character_id: str = "BOMSHAK", force_retry: bool =
 
 def sync_equipped_item_to_pob_session(character_id: str, slot: str, raw_text: str) -> bool:
     """Synchronize an equipped item directly into the active PoB2 session."""
-    global _GLOBAL_POB_SESSION, _GLOBAL_POB_SESSIONS
-    if (
-        _GLOBAL_POB_SESSION is not None
-        and getattr(_GLOBAL_POB_SESSION, "character_name", None) == character_id
-        and getattr(_GLOBAL_POB_SESSION, "is_available", False)
-    ):
-        try:
-            return _GLOBAL_POB_SESSION.equip_item(slot, raw_text)
-        except Exception:
-            pass
-
+    global _GLOBAL_POB_SESSIONS
     sess = _GLOBAL_POB_SESSIONS.get(character_id)
     if (
         sess is not None
@@ -104,13 +86,7 @@ def sync_equipped_item_to_pob_session(character_id: str, slot: str, raw_text: st
 
 def invalidate_pob_session(character_id: str | None = None) -> None:
     """Invalidate or reset the cached PoB2 session so it will re-initialize on next use."""
-    global _GLOBAL_POB_SESSION, _GLOBAL_POB_SESSIONS, _FAILED_CHARACTERS
-    if _GLOBAL_POB_SESSION is not None:
-        if character_id is None or getattr(_GLOBAL_POB_SESSION, "character_name", None) == character_id:
-            try:
-                _GLOBAL_POB_SESSION.sync_character()
-            except Exception:
-                _GLOBAL_POB_SESSION = None
+    global _GLOBAL_POB_SESSIONS, _FAILED_CHARACTERS
     if character_id:
         sess = _GLOBAL_POB_SESSIONS.pop(character_id, None)
         if sess is not None:
@@ -120,7 +96,6 @@ def invalidate_pob_session(character_id: str | None = None) -> None:
                 pass
         _FAILED_CHARACTERS.pop(character_id, None)
     else:
-        _GLOBAL_POB_SESSION = None
         _GLOBAL_POB_SESSIONS.clear()
         _FAILED_CHARACTERS.clear()
 
@@ -130,7 +105,7 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def __init__(self, *args, directory: str | None = None, **kwargs) -> None:
-        super().__init__(*args, directory=str(PROJECT_ROOT), **kwargs)
+        super().__init__(*args, directory=str(DASHBOARD_DIR), **kwargs)
 
     def handle_one_request(self) -> None:
         try:
@@ -165,13 +140,22 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Expires", "0")
         super().end_headers()
 
+    def _request_allowed(self, check_origin: bool = False) -> bool:
+        """Block DNS rebinding (bad Host) and cross-site POSTs (foreign Origin)."""
+        hosts = ("localhost", "127.0.0.1", "::1")
+        host = urlparse("//" + self.headers.get("Host", "")).hostname
+        origin = self.headers.get("Origin") if check_origin else None
+        if host in hosts and (origin is None or urlparse(origin).hostname in hosts):
+            return True
+        self.close_connection = True  # unread POST body must not poison keep-alive
+        self.send_json({"error": "forbidden"}, 403)
+        return False
+
     def do_GET(self) -> None:
+        if self.path.startswith("/api/") and not self._request_allowed():
+            return
         if self.path == "/" or self.path == "":
-            self.path = "/dashboard/index.html"
-        elif self.path.startswith("/style.css"):
-            self.path = "/dashboard/style.css"
-        elif self.path.startswith("/app.js"):
-            self.path = "/dashboard/app.js"
+            self.path = "/index.html"
         elif self.path == "/favicon.ico":
             self.send_response(204)
             self.end_headers()
@@ -255,6 +239,8 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self) -> None:
+        if not self._request_allowed(check_origin=True):
+            return
         if self.path == "/api/evaluate-item":
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length)
@@ -269,7 +255,6 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
                     runtime_dir=PROJECT_ROOT / "runtime",
                     pob_session=pob,
                 )
-                res_bytes = json.dumps(result).encode("utf-8")
                 self.send_json(result)
             except ConnectionError:
                 return
@@ -390,9 +375,6 @@ class ThreadingDashboardServer(socketserver.ThreadingMixIn, socketserver.TCPServ
 
 def serve_dashboard(port: int = 8080, open_browser: bool = True) -> None:
     """Start local HTTP server for dashboard without external dependencies."""
-    # Serve from project root so both /dashboard and /runtime are accessible via HTTP
-    os.chdir(PROJECT_ROOT)
-
     try:
         # Pre-warm PoB2 session in background thread
         import threading
@@ -415,7 +397,7 @@ def serve_dashboard(port: int = 8080, open_browser: bool = True) -> None:
         pass
 
     try:
-        httpd = ThreadingDashboardServer(("", port), DashboardRequestHandler)
+        httpd = ThreadingDashboardServer(("127.0.0.1", port), DashboardRequestHandler)
     except OSError:
         url = f"http://localhost:{port}"
         is_our_dashboard = False
@@ -436,7 +418,7 @@ def serve_dashboard(port: int = 8080, open_browser: bool = True) -> None:
         # Port used by another process, try port + 1
         alt_port = port + 1
         try:
-            httpd = ThreadingDashboardServer(("", alt_port), DashboardRequestHandler)
+            httpd = ThreadingDashboardServer(("127.0.0.1", alt_port), DashboardRequestHandler)
             port = alt_port
         except OSError:
             print(f"Error: Port {port} dan {alt_port} sudah digunakan oleh proses lain.")

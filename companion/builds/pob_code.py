@@ -28,7 +28,11 @@ def decode_share_code(code: str) -> str:
     try:
         s = "".join(code.split())
         s += "=" * (-len(s) % 4)
-        return zlib.decompress(base64.urlsafe_b64decode(s)).decode("utf-8")
+        d = zlib.decompressobj()
+        out = d.decompress(base64.urlsafe_b64decode(s), 20_000_000)
+        if d.unconsumed_tail:
+            raise ValueError("too large")
+        return out.decode("utf-8")
     except Exception as exc:
         raise ValueError("Kode PoB2 tidak valid") from exc
 
@@ -38,25 +42,26 @@ def fetch_pobb_code(url: str, opener=urllib.request.urlopen) -> str:
     if not m:
         raise ValueError("URL harus berbentuk https://pobb.in/<id>")
     with opener(f"https://pobb.in/{m[1]}/raw", timeout=15) as resp:
-        return resp.read().decode("utf-8").strip()
+        return resp.read(5_000_000).decode("utf-8").strip()
 
 
 def _item(slot: str, pob_text: str) -> StageItem:
     text = pob_text.strip()
-    try:
-        text = pob_item_to_clipboard(text)
-        cand = parse_item_text(text)
-    except (PobItemTextError, ValueError) as exc:
-        log.warning("Item PoB di slot %s tidak bisa dikonversi: %s", slot, exc)
-        first = [ln.strip() for ln in text.splitlines() if ln.strip()]
-        return StageItem(slot=slot, name=first[1] if len(first) > 1 else slot,
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    fallback = StageItem(slot=slot, name=lines[1] if len(lines) > 1 else slot,
                          item_class="", raw_text=text)
-    klass = next((ln[12:].strip() for ln in text.splitlines() if ln.startswith("Item Class:")), "")
+    try:
+        clip = pob_item_to_clipboard(text)
+        cand = parse_item_text(clip)
+    except ValueError as exc:  # PobItemTextError is a ValueError
+        log.warning("Item PoB di slot %s tidak bisa dikonversi: %s", slot, exc)
+        return fallback
+    klass = next((ln[12:].strip() for ln in clip.splitlines() if ln.startswith("Item Class:")), "")
     return StageItem(slot=slot, name=cand.name, item_class=klass,
-                     is_unique=cand.rarity.lower() == "unique", raw_text=text)
+                     is_unique=cand.rarity.lower() == "unique", raw_text=clip)
 
 
-def _main_skill(root: ET.Element) -> str | None:
+def _main_skill(root: ET.Element, title: str, index: int) -> str | None:
     build, skills = root.find("Build"), root.find("Skills")
     if build is None or skills is None:
         return None
@@ -64,7 +69,11 @@ def _main_skill(root: ET.Element) -> str | None:
     container = skills
     if sets:
         active = skills.get("activeSkillSet")
-        container = next((s for s in sets if s.get("id") == active), sets[0])
+        container = (
+            next((s for s in sets if s.get("title") == title), None)
+            or (sets[index] if index < len(sets) else None)
+            or next((s for s in sets if s.get("id") == active), sets[0])
+        )
     try:
         idx = int(build.get("mainSocketGroup", "1")) - 1
         gem = container.findall("Skill")[idx].find("Gem")
@@ -82,16 +91,15 @@ def parse_pob_xml(xml: str, name: str) -> GuideProfile:
     if items_el is None:
         raise ValueError("XML PoB2 tidak memiliki item")
     texts = {i.get("id"): (i.text or "") for i in items_el.findall("Item")}
-    main = _main_skill(root)
     stages = []
-    for s in items_el.findall("ItemSet"):
+    for n, s in enumerate(items_el.findall("ItemSet")):
         sid = s.get("id", "")
         items = {}
         for sl in s.findall("Slot"):
             slot, text = sl.get("name"), texts.get(sl.get("itemId"), "").strip()
             if slot in _SLOTS and text:
                 items[slot] = _item(slot, text)
-        stages.append(GuideStage(id=sid, title=s.get("title") or f"Set {sid}", items=items, main_skill=main))
+        stages.append(GuideStage(id=sid, title=s.get("title") or f"Set {sid}", items=items, main_skill=_main_skill(root, s.get("title") or "", n)))
     profile = GuideProfile(
         slug=re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "pob",
         name=name, imported_at=datetime.now(timezone.utc).isoformat(), stages=stages,

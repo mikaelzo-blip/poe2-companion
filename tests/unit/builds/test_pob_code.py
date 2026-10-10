@@ -45,7 +45,7 @@ def _code(xml):
 def test_roundtrip_and_parse():
     assert decode_share_code("  " + _code(XML) + "\n") == XML
     p = parse_pob_xml(XML, "Test")
-    assert [(s.min_level, s.max_level) for s in p.stages] == [(1, 40), (41, 100)]
+    assert [(s.min_level, s.max_level) for s in p.stages] == [(1, 64), (65, 100)]
     assert p.has_pob and p.pob_stage_id == "2"
     assert p.stages[1].main_skill == "Rain of Arrows"
     h = p.stages[0].items["Helmet"]
@@ -64,7 +64,7 @@ def test_fetch_pobb():
     seen = {}
 
     class R:
-        def read(self):
+        def read(self, n=None):
             return b" abc \n"
 
         def __enter__(self):
@@ -83,7 +83,8 @@ def test_fetch_pobb():
     assert seen["url"] == "https://pobb.in/abc/raw"
 
 
-@pytest.mark.parametrize("u", ["https://evil.com/x", "http://pobb.in/abc", "https://pobb.in/", "https://pobb.in/a/b"])
+@pytest.mark.parametrize("u", ["https://evil.com/x", "http://pobb.in/abc", "https://pobb.in/", "https://pobb.in/a/b",
+                               "https://pobb.in.evil.com/x", "https://pobb.in@evil.com/x", "https://evil.com/pobb.in/x"])
 def test_fetch_rejects(u):
     with pytest.raises(ValueError):
         fetch_pobb_code(u)
@@ -102,3 +103,37 @@ def test_real_fixture():
                 parse_item_text(it.raw_text)
                 n += 1
     assert n > 0
+
+
+SK_XML = """<PathOfBuilding2><Build mainSocketGroup="1"/>
+<Skills activeSkillSet="2">
+<SkillSet id="1" title="Endgame"><Skill><Gem nameSpec="Late Skill"/></Skill></SkillSet>
+<SkillSet id="2" title="Other"><Skill><Gem nameSpec="Early Skill"/></Skill></SkillSet>
+</Skills>
+<Items activeItemSet="1">
+<ItemSet id="1" title="Leveling"/><ItemSet id="2" title="Endgame"/>
+</Items></PathOfBuilding2>"""
+
+
+def test_main_skill_per_stage_title_and_position():
+    p = parse_pob_xml(SK_XML, "S")
+    # "Leveling" has no title match -> position 0 -> Late Skill; "Endgame" matches by title -> Late Skill
+    assert [s.main_skill for s in p.stages] == ["Late Skill", "Late Skill"]
+    p = parse_pob_xml(SK_XML.replace('title="Endgame"><Skill', 'title="X"><Skill').replace('title="Other"', 'title="Y"'), "S")
+    assert [s.main_skill for s in p.stages] == ["Late Skill", "Early Skill"]  # position match
+    p = parse_pob_xml(SK_XML.replace('<ItemSet id="1" title="Leveling"/><ItemSet id="2" title="Endgame"/>',
+                                     '<ItemSet id="1" title="Z"/><ItemSet id="2" title="Other"/>'), "S")
+    assert [s.main_skill for s in p.stages] == ["Late Skill", "Early Skill"]  # title match
+
+
+def test_conversion_failure_falls_back(caplog):
+    bad = "Rarity: RARE\nMy Thing\nNo Such Base\nImplicits: 0"
+    xml = f'<P><Items activeItemSet="1"><Item id="1">{bad}</Item><ItemSet id="1"><Slot name="Belt" itemId="1"/></ItemSet></Items></P>'
+    it = parse_pob_xml(xml, "B").stages[0].items["Belt"]
+    assert it.name == "My Thing" and it.raw_text == bad
+
+
+def test_decompression_cap():
+    big = base64.urlsafe_b64encode(zlib.compress(b"a" * 21_000_000)).decode()
+    with pytest.raises(ValueError, match="Kode PoB2 tidak valid"):
+        decode_share_code(big)

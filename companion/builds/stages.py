@@ -85,6 +85,10 @@ def assign_level_ranges(profile: GuideProfile) -> GuideProfile:
         if not st.auto:
             continue
         lo = prev_auto_max + 1
+        want = min(100, st.min_level)
+        if prev_auto_max and want > lo:  # gap: stretch the previous auto stage, keep this min
+            out[last_ok] = out[last_ok].model_copy(update={"max_level": want - 1})
+            lo = want
         if lo > 100:
             out[i] = st.model_copy(update={"auto": False, "min_level": out[last_ok].min_level,
                                            "max_level": 100})

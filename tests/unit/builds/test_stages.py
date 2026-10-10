@@ -101,6 +101,17 @@ def test_synthetic_titles_cover_all_levels_once(titles):
         assert sum(s.auto and s.min_level <= lvl <= s.max_level for s in out.stages) == 1, lvl
 
 
+def _rng(titles):
+    p = GuideProfile(slug="x", name="x", imported_at="t",
+                     stages=[GuideStage(id=str(i), title=t) for i, t in enumerate(titles)])
+    return [(s.min_level, s.max_level) for s in assign_level_ranges(p).stages]
+
+
+def test_gap_extends_previous_stage():
+    assert _rng(["lvl 1-40", "Endgame"]) == [(1, 64), (65, 100)]
+    assert _rng(["lvl 50-60"]) == [(1, 100)]
+
+
 def test_resolve_stage_fallback():
     p = GuideProfile(slug="x", name="x", imported_at="t", stages=[
         GuideStage(id="a", title="a", min_level=1, max_level=10),

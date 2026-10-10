@@ -1,0 +1,2379 @@
+{
+  "format": "poe2-companion-guide/1",
+  "source_url": "https://mobalytics.gg/poe-2/builds/fubgun-flameblast-oil-grenade",
+  "slug": "fubgun-flameblast-oil-grenade",
+  "name": "0.5.5 Fubgun Flameblast Oil Grenade",
+  "pob_code": "eNrtfW1znEiS8OfRryB88TxxF5ZtqqB48Xn2Qq-WPJKs0Ys9u18cBRRqxjT0AC1ZMzH__TKrgIZu6KbV3r0er2djsRoys4qsfK-i6s3_fBnH2r3I8ihNfnxGXurPNJH4aRAldz8-u705fuE8-5-_7by55MXofbg_jWJ8Qv-288Mb-UPjuS-S4CDmeX7Bx-LHZ2_FOAYQ7UzcAcmER5l4pvkjnnG_ENmZuBfx3rRIz9MAgEMe5_h4hn4uMiDIs8dnWoywPz5znWfamEfJdep_FsXbLJ1OoKPPtIJnd6L4UHVd_wT37iPxoCifnl--v7p5Bh394c1lzB9Fdl3wQsvh8uOzPXhhfidOogJQeDwFeOIQx7TpS_vZq6U4-9MsLw75GP4cjns9ESKowfWXuutaDtGpbhuGxWgf2sGIJ4mIb6Jxo62XJjNMxzFsqrtGH-ZlJo7CUPhFdC8OsqhASv6MiN7b4pqw59O4iCZxJLLV8CcLpIneC3yTFjw-vLxu8pha9ktKTJdQ6izHS4vV3fkYFaP9GMblCa2c3iVRIVqITHcooc5L27GZ7S5rtAuZWobhWi91nULDy5Av0yhPkw0Y84ROH0xj1OgmZi9Xr0QusnteRO1O9gtROvaiZG4QhrHjIE3jIH1IGuL0Ujd6lemcJ_wgzQdIBkJeSjNUrIVwLfwUTGEThfZztdFKN25vc2dRKIZDrvUmJcK6vXnaexxdD4Vbm_DTOvSRZ2tArsXYEmGd3lyBixkGeZ1O44GQxcxQE4P1a_FvLUhi9UEeii81mGUuodcEtHvJnSYNj8yW9a8Nqff37z5FY7SaNTdZ5E2LAX5PWtKjk8sGIx1DN19Cfy3Tsfp98ugxj3wen_Mv0Xg6Bnd4wz-LWc8s13H7lexuVCRghPuQKXWdXtN3DDFYL6Jh23a_iY2DJ7UIjj7N-zCBUUsEimefE5HnQ10NuI7BGNeTKIsGiY2CvE2yso0a54U5FKU0DzNM-tJq_Gcvs6c1kkHZsqDSf43Qp4k_Q3CW0e14oWUtIMoVWCyMfL1YDMbpZ8KSiE81dieSssXHYa7nTAh_9BbSgys-RHnR69ZQjs6WMheBm8xly6h28HYJ_TbGGmxCxG42uWZ_AoJYa3LqKBHZ3eP1KBJxsB501bMDPhmik8DoJnaT4QObW0tomqhrsgSd-DCoNfuErn7d17jnedOvudQgy3msEJrsNc0l1AMxl631W8tzAXnUeiiXWforpqfxmnjwKnH8BJSntncowhjxUhQR8L-rB6bEGJpF72XjdJo1TIbuOEvHUSE0h5FYdFXMoQoWVyKY-q1oqD_iqMsH-3Hqfx76NjWWZPpaqHtFwf3Ph2lwJ4aiyEbWwmj373o6mYAJRrUYSgBDKQg8okawbbPVwO9BqZvmkCwNuQY3MANeaGB1KDm4lTmMhaaspVHg8JeZQc83Ya4cz3Mwm2NwobLSdp4GjXoZ67WLLaSPIzAOtzm85vXnKI4b1TpIlNwlhbZcgORc8SCa5ueigN-ru308jeNB5REJ2C7a9JvU9AG4NsKqaL4eNATqs9iutyuZSH5_HEy_BT6ogaMkmGaohYPbmMcY1MyelBdI4sT4LBpHi0nz_jQMc82D6xmI4o_PTkTm8TjKx9rprnaahCJLeKwdZI-7GoZV2pUYJzwp8l3tegT27oHfC02ShxvRXRRraahJbu9qH6KsmKbTXNvnWSaLpn469nihGoJf0ywX6sdxBgm9tg-Pd7X3QOQt8BMc1652FEuZhS58FFwlPqrfWCaO4echL7gWlHnvB55F0DkiK-ZzN6m8mQue-aOqB7NfxzyOPbDI8q4svR9HcSGyQ3iGPK8Y9uaVnAjAvw547OeyL6fJZFpoiazoj6Pc_4TsxMI80CoyObdwdHx8dHBz-uGo7H4TJUcN_JRMxx7ySP07G9Jr5ZCBd3HMJ7kI6nmECP6U2nst0AdDY1MvV9A_PvsQiQf58FAUPIrzQdQgea2K_U1aks7s2RBKEBb6MOZ5m9DReIKiIQKU0GFdktXthc6onmDwKKcLBnFKzUo0SSknfMDzQkbEQ6gcyJS6SQTvDHuV0_GEx3OsLe8NHuqbx4lQzFtkSgHPcgiaojDyhzO4MVHR4o0P6sn9x0E05MxCG1_dGoKsivxt7PLeIK7KCYY5rqp7g-RL-Pyxja1uDUGuM6o2gfp2muCk2xBKYOf2ohhN3dzIXqSJFHawIjXAEILnYIdUvDBH8H0xEln1ZAgl0BJVLMwXtKe6P4hXstLTYhPeGfQusozRRJV3hml9tKCx5b1Bw9IqC7RMWfPJQIs4R-JqmkS-vD0Ev4osWxTkvYHDWKZerSFU9wZxosrAW0wobw5SNGmy9-7TKFi0NvMPNyYok7Gv0C9Mt74CmTqvHkTrOOb55zltK-_1ohfZdAn2bRHFUfG4GRHU180ooNpuRgFj3_Eg7KuFMOZqafAyw6wj8vmG70T-ZPw6en8yBZVjPBldBuWDXQdILCZ6Xb6jfrQZretimhwCS5ZrxeylVvRqgO0YTks52rVeVOl_OfWzaNrUg80JQRhwMjTe7KVU1xFOBI9xlUUab0Zwfu5rwBD00sKi8HTCk6Ci9n6dKL-fe2mRA1GZvR1i8TnfqJfg_sePDTpvXlXp4JuDNAmjO42r5Ujyx7UoMPuU7dV3ZAO4sisqYiF9BJ_GhQRq54e_TUVeQCKv0Q-QpYpHTLFBTLWbCFLT_FwEcFe55jLZNPT_p0WJnwkOr6NJk6mVNkHDsFQEOz88J-WD6zgtY6GeVo0PIknHWAKYFLn6-zDj07tRMWuRsmaLqNrazSgT-SitoqMe4uaeB6OSQpe0ywxj_rdpEEBaj-_4bpoXkS_63gvdkVZNIWhhBv1q-pa-Bo8eBRI_ATZ8TjOOE-E81oCLkQ-3-hp7G6cIpgKmXa0MfDTou6YiQa0ZCva1fQIjlWvvQ2CO0A4FDy7uQMBG0__PJ2n-37l2I_IGU58DU4tUw7qqpiK9mX0b3MINzzlIx9IWsLC6SQsPo5QvbaCuqQ5p5TQpRBZPA6HRnyPgzrW4F4l2CQkuz_LG-DSHp6ptairLL0lfxtwXKIIiKxs4GGG5BLP-fFZpIf3w136a-aN1ELAotgY8LpCJ0KQcpFk2neCkCygaEJD-uyagL6UA9mQ_zfNjeLSfpdJWVZjM6scMxDhNjtNsvNDfJc0JNHxVLlEhOHq1EKQXRda7q-JSXeNyrCFoVepToa3qHsrzfFOuxQZgXTZ5ZwxAmO8aW9m3xprTGmkAzgLrhjSEk2FV3XR-kOkqAuUsGrjFK540m7ZXYlYqPryxOr2sZZDYq9iChnH9YUastYa5OQk2eJjlyu-GgtBV8JWFXP-FatS13mphYmzwq7VnWdfpaVmCncnRkqbG9Vrrg2kGmU_RLsXMTNUgGocRhLxIZW88TnFAg0HWuYNAOTPxFBoYFkGgAyEL0Ikf18SWFfXH2_zpBCLMbWTt3f98kE6T4lrEYYPIkuHLcWrnfShzyAXnVKEdQLyWjs_TIAqhOVmB0YBZXjyLqbti3R-obTd9OZfORVJ81UFSBtGv6ihaxd7yF_55Op6kWaGJL_jPJc-Kxzo9gNgQLa_6MuOE5yPwgKFlmZALCWYElkFdm4UBDQLLCTgzmGlbnqcHxHMU8pngdzh1Bi7TiyBKTbSrSFZF8eEVpFJjzLKP6DNtmou3IPGQ3IrgtBDjG_GlKFkgkwW8l5cZAv5d5gcaxMsPWLmvpA2Sz4pzQFItpwV7PkkTiaFeTM0nAZUyoZBMveJg_h9fa1d7V0c7quCpXfs827maeo87t0kEoZZ2evhaM6jh6zbVGTF9nXu6o7ueZ4ec-iG3Q9vTfdMHeTetIHRMQUxGfV1nnHssNKhwxI5sWZq715qj78i_rsRvrzV9BwYjhqi6yPEHNZuDrCKIHUqbN1XZXjvn-C8EgDv7-EVIpsnZjVwb4VwjcZsYVQFhjpAMmZV92vnDz3gI4_Ana0WMKgeWs5WZCKMvIpcSB6ImvV2VnGX4A6fFa-VoQdCVEMZKCHMlBFuEePMK-d4eetox9KDKILPaBwgARLww-JbpMsMMPCsIXNvwhC6IZ1mhE9imy4nr2TaxjdA1XBqYnsUMotvCNHQDNIMYhslag285_YPfTqbKwW8PJeRu4zH3ZJ2yIQLEWSohpD2o9WzxwuDTb3zwjfbg316c_nx7tPMhhQQ637nmk8kIdKI59hwGFcba9XVH6B6hukMNx3Ncg1FPMJ9ZniWEY9DA8F3fEQ4hOtepw0Lm-75jeq2xt93W2MulBsDnIn2tkbYk7MVgxMEu5hrVrqMEQg9Q8HfiQcTlvHu-U6ZCWKUYMChdzDA7NAFSv7HIIl8KmlhQBTv0GZg_5ttG4HOXW5QzblieLlyL2J5jwaPAdwJhMd3xXGpxk7kW93Vglgt8G24HrS47aKxrB9sVl9oOEjZQH6xvXB9Yhwhc8UkxBc_wNo7GIAsLMuBwalGD-aHQQ2rSgBpCd33uBI4PrtC0dWH5JDQcgwV26DHuM2HZLheG57pMN_S2DNA1fSHpqm7dqTACa00YTcxhLppDttoNfuuW0OoY-f0sTQPtREBA2GkMmecEugE2D60hhH-mY1i6cHyf2Jx5ru8JYXDf84JAt8EG2CHES8Kivm_boctYOwpirH_kCWkVSnFdZjVCxFo6tGWlU4Phg9Eaq4q7WpMFwvETWIY5h3qAy6tmlmF7hrVr0OyOQQO-JEr0r4GDWBVcjF7dgJPQgyDW0ymnrm4FlBBimR4DO-45HrGYx80Ao1uPE4hfdRPiHM_CoN_yaduJLQtgSJfGLo9NnP6a-I691Ey3TUFNEQe-WgSiPaZTgAmhi0VDue1vSLnnIKxhkuR0SNJZyouR9i59XDT5BLx-wBzd9wKTOyIIAx2yPhK6EA8QiIhCCJFcuGuFFhXU0_UgCP3AhAhZJ9zhLQGi1hKT76zv9om5RILaMtJt6t1v3NS7HWP93oujezQa-3GU5wsDDtmsEdiuCQ7edhzbdoVvWDYxONW5FXAH3LnlEh1gdBhg1w8h7KU0INzW4R_THe7juwacLM6TyRnJ6WRVKty27UsCu299zInemeng7OEYX3RfxJEIdw4jPk6ToKXrjm_54ARcx9QdwzepBy4i5DbVPS5MGzyJ6XHd0qkfep5BHM5MZglqmsQPQpu0Mx7HHJrxPDfkFBgCY_84eHyZgnhYNipj-q-Q85Cuys_eBJKt-HECgcB-DCHQgjqEhNAQ5F3nWP4JdHCNjPmG6ep2aHq27vkQ-wacMscMPdf0HB4GkAp6esACLryw7UDNNSsAVF_D_qkCqJrh27GW-0_jqf6T_Nv7T9JVRjoB8Uwz7TwqID__KcG5g_ix_KnG8rVmuW6rvuDrxHIhS-Y6B5vq6yYzbPCeBORM6IEnfIsLcK2G7gTgbrkIGXUpJNrM9gI_dOcT6p-nPJYdomRHbY4DcnUNAp0I-DedxhrokBziG-5D2NgQRYs1ZZHs_CESf8ST4s8_MsD-8zmKC06D41xjY4Z65zmxLHxQSqvdlbk_J0RHmCogx7wNVN7pmrrfeW6q6F3hginIUw2yETBYOYIvynHLh6gRQXxVPw7TaRL8peRtDsIeKJHdta0LuRlToZ2kE7FzM-IPuL5ArmlpiiFE_MSzTCp3LfI8LwwD1yOuywNuB8TyDJOB1XNt2yGGaQvdExa4el8XpslBWq12ZufMxLBZ4iG0LWA4S6M9jEQirQyIejoW2nGW_i4SmcGrCWAc8jseJRovV-fMUNApaDzR5LTZTmuFCS55UdAgVBkYMgh1prno411XKew8yrgfC-3mIcrinbdy9Qcwr8U22zINIkzDMHSfhaELRt_XDeEy4tue5XjMJMA30GqLGISjmnPgnS9CPQD3qveXwyy9zat2SNQt44bVF-u2k-Zu7Eq_0fPOVGymljnopd6pr7VfGKKIz12yYAi-LXfxRPWdK8Wd7709Pdg5m-ZFhh-HHcKl1txqadv1FAQ8TVr-RAgOYbpphlyH6J1DTK5TywHN9ZkfBNTSdVcwy2CC-bbteYEwBGMOtxk4G5u685FKpyKbzgBFVnFKsLOH5vsuw6_hNOq42tspz0BW2dr63cM3q4tv-1PPkzvO3cZFNOYQL8lKoVz5VnEP119AAyJr8g8013OER3Vdp54IKOPMcQIIgkPuhiY3eOByGlJieMxwTd22BaWUmYHuuAIiQKPfH_drtwr7oFf1Mj3l7SDWS1DFIIiQ9fAMP9UulyriIsWJyEqb9jXUp5O5dqdPgVAR4nIMlMsV85hOFDuzlZLwUrSVU5iur-twcU1GHIvalmPohIQ2FR64E1NQbojADkzL4pBH-JBX2sBRMKKmw7lB-u0kawUtdOeE45RJoycyegbeqqFfwuEzccd9aa72IUeaFqPGnbfALBDmpTDvOMTieyCwyJ1qnZ98jHGLnI0wW_ZRqLgZRxEyW3gFrsL6NvKj1ARE_24m8ZWd3rr1ZRoLOX-Fen9d8DBsGUYD0tMgYJwEnkFdYoHD5qFvhw6KoANW0fN9m1twyw8EDQKXuZawjNCyTZ3P1a4d0hNo4__KYPtmlE2DaijPMRcoH7yDPoE4VY9aQflVhHIJQYYCPRHBnXiICn-k7eW4MDurV5AiAGJ8jPIgHTc1omVbrMUwfiHPVvX1MsWeA99Pk0AEr7VyiWp_cNCDt5f5I5yVqfQOpD2CsRJfJhBE5BoavpDj7OaAfl6k91x1U3sLAcU8xgF4iizFmQIBTlNtaqGNy0Ux-c5b5YIk_uuSMNXnPsfe-SPElS9TMLV_PncWKxIY-bTYNVdw-qIYrwCrBTkQ7JSpNfQCPZ1NpElSwZkGFuvoS5HxVsRGDdY7BUJta2VR02zl9geyhiJLAjWE7AlRPZlPqWZ9koueS-JfR6vnIJyVEO5KCKKvBlltK8lqY0mMgVaqq-R6OUpFEn2Rur4DwpqkuEROO8jSPPfSh1b5lXs2ZAmBGYI_xLCMhfC3h7PqzA6579hmYJmW59rE5iIMPMfwQxr4rksoxHhtf2m1orimreoqC-z97vMJL59cikz6qCvhRVkxkkanaWrcpqkxF1WYoQapdVXzD6X4mUzFZegDZZAnQz6U0m5rUs_0Ck1_abam-Go6uVz_tVOuQKxWA0glAQPBA7WQHER9tv3PXFW5WrpZyf1eEOSafBVitBTiOaWy8FF-BK6p7YDmbIL6fL7Uvo4q56wblU15Tk2EOhRfwC7CsM2_i4wl8MuUcrNT7bYrCPw_c9vbo-Cdy7_0LtVEYTzAT5sylejvjaexKFpz37bODUilXN0PKBXUF5S4ZijgBgl9iF9dSAhCjCqYcHTGg9CATIy4jq0L3WTW0FSfzmR_tgjokmf8Dtfv6asT7KYHM5f7ekj53cWqHNMbWlv6_dKA1FTKWKHyJe1ZnKFfAe38UfC7_HWQpZM___DlGlbQdxzD1-TP_yTsBXH-6wmVvW88Ku5VL7JE6ElnHocLc2XowyG4BHuGog-p90J10AgD5oS6C3GxENSzTO5TnxshZMOCOsSQK-JsymwhOAD4uASWUp0yakMCp7enhCy3u6jA9GVFBVUKQBGAHmda2TlVGLgEB4orNwPNeyzltvryal_wDOQkw0hPOYYVlUDaVdcHgU7H2tuUBzvqQzFwJGCTwQzP6vrMaGW8emi58P5hSENiUtB_4lHT8AJmMOFzRoVDDUvXgY2WYXCuhyLwqWMYPvGIDcnv_Cza0rp-lQvs-RloXhH5eYOvTp95abvWrpknLQrr7DNRiUehyY_9NfzgRcgqq1xkv-D69ZeGNpY7X0lXVuNoQVU1bAe47U_TdtorNGaTCPaiucLJgp6P58DdWmvNJDw3Oz8m_Dbsw3K3aCxdWnQQZX4suovgWLMBK2BbzHMDDE6dMDS90A-tUFATLIBpurbr6twLiQ_hrKczLwg9QyeC-IS0l0fb1j-tCP7cNRakZwjF58RZVRgndvfU2FqV8e_lHXihromYnzL8shwSJcjrd855_hljDGBlMRLxuDbA4IZYa26G2IZBKWRFZmhanHme5wrfCz1IlizfNl09NKltCMosiOTkkgeUYzcEZ8YcZg8r-JQW-GgMcQ2arw_RHZqqmQzbw8zvc6r350rPF6ZMZKbjVHYNFPTot2k0mQhcvRmD3W1FgdRdYiHh3RuTt26X3R00e7TmnO1zJFp9VI2R4bzu5P8ORpd1hmVn_B4ijLu61KeEAmtH2R0IxRSiD7mgVZa0myJPGSOhEBBz2bbDPeb4zHS4wwUkKpbt-J7hGoYJymD4ArIUIyTcCqwQbDJEH4yy-Y8VuicvTLc9eXEzivKyvO5jVaPQPKHJ6M2bFrUQAHC1UgTCsKrojpWwalpjb4xf21UlehE8edaCdq1tPpxC_yBvSXY-8ixOM1z5G2UQ-NYGhLq63p60sKkVsNCTrPMtyO10A0JcXRjUYIGnUxfMBnEs3_S4bxHbtD3f9H3ievD_YGEN3MqK8XH6RTsN0rgqvgCLRqDmzVtlPeY0A5WfK8a04zxn3obQjvhuaW621E61nOgwUBTZFdXlniyzB8fp8bnztlNfZpgUelU9baMi4_PyexvgWZRoBYp6hMMqZyxxFtGDHCRE4VazilGmqQ42Ks_PqbmebaSu3bDJhHQtCqvi3rldKSDkXWbtzTV74jiNjpi0ox_fXkF3HmS1UyFDPz3sWr9_IR6kJ8XIJo_uxdx6MRds74GKIl9r-JHrjlpl91qrSyVnuHrxtBqYnu29VW3S_vRpI_zyUAJ7kUiNjybB3bmehu3n6n32lLDdpLWoqWbYIkJjTwtr8Sly7BgjD8XLqnWjYWVpt5WtbOh-GjwqG7r8_kW6xMwaHTXv4QbSfCqosqWqelZuv7WrPgj_84-JHBnoiKs3dHc5MNG7TIzCgagbfvhiN4b-Ncibi6XDZj0vlyM2KPFRaD6O96esNla78sbu7EZN8zntS7e6XnJXVKI2I4CzY2uYwW-rtt5pmZxllqm36EWIaa-yTlVl54OIU1CaR2s7DNhwi_KVTdlKA9VRzdvAQrEFC2WzJ0ZwXynY-5dXGpVZyLGwWNuvpdXHf5Fl_TcwlN_iBKK7zFSC5oks4nFXgcpk9CuGcv2h2BpEnI5ArtsOKrgNrKG0Ul8xjpsvuZXGEw3Ii5t06o9w2cwI15o-JY77p9Xl2hRa3V1ldyglX9HuVIbQHmp3vr65UHSnyb2IwMR_gox59_M0u-Mx_vnnH4HIhS93B5qfHgYF_fP5f1LjhUH-a3B2_xeuFvbvg7pix6Mf3uAiWFmyOFWrJ-Xfl97t1Rke4qH2rVKoWr1FVRvHXYqjXT_wSSeivgyPPgGlvyna3Uelc90YVieGDK2a-73Po9mdaG9jCCDybgynp6G06EHoZoJakdKNYXRi4Dxd35ia_RjrjIxEMLqb6OYULhTvhu9-CbWSu_stKFmC0v0aWKnpRel5kW5JUQXvno6xJSjr8Hev99374dehfybu1qKP8DP60iufBgDRBat2K5KHdWtJGgjJmPro7oHotmvpM3T5a63WieuYjeblz7UIWMR2GgTkzzUJuFaLgGutScBGcZoRwJ_rEDAtx6EzAurnOgSYSdDsVQTUz7UIMMiYGgTkz3UIWMREL1QRUD_XIkAJa_BA_SwJYHQoRR8DsguJhKHiMy2HmxcNP6IS8_8gayA23MlXwV6n08onPalZcE1tPBWOqH0kf3hzk_EAgg48FOyjwGmGXO3tLkNG_OsiLYQ88wvvVj_eyH0m8Ty0h73gHtPQmzSN83rjSQjbRDLbph6CP0hQeHkCS6y23n9TroBVe0KWp3oV5TlmMiB6K8Yyxv_xWZJm4_pg7ebzMrOQNg63klSf2eAXBXXjcofJ6QR3x4T7eJoUPNs7O8NTz-StfP_x8PK62nWydfMYp8_wGMaxh3vI4zF9agf9srfN_SfVzfntPyEcx429T5PySMDG3pwevtkzSDmiZG_GA8mAuXtyo_3yMDc86q3sqcAT3uTfalfRN9BvzVfbKpSMI8-qG7Mu-Tg1Kx-pvqolnjXZ5k3avlmTuFOO5VwUPOAFV9LyCtn2SnYY_ppt-ADvqjqD0RBqMh5zKj1oDfBbNYwIIg-HOw2aEOqQv_KR3I31oHwJhC94AWNxCkneFxCVKG7fKpkn79-rg_HaxEt16mKf3mJfOXL_ZP7VonqQJlgUkEmTmm2vOUmajGzCgYkRvMHPJjtLyk1whK55-yQ2zlMrG9kmnrZZmkcBLkjAr2jkcb89HC3BtBpuBUvbZDfmaZvcdjP1UMSRV27Z183PNsQyTjYhN2Nik9IW8q-p6Oh-YZSlRbp5SLt5WAKpjXS009NVfORB_Kg-284VIyXlp_KyQa1sAcltr-EsMjnT0Ph6sFfTS1CtBbtC2xfJb6zxiyTbUvtGedZ_dahRBVEDYo3_AxtUxhrvo7j8rGo2ym5zmBsH7PYFGzMamw1loy9bqh746e3sQ7W8WzHk97kNKG2FwZkjuhkP54htt_vDaZBpLrrZeJT4Wcr9EVrutxkW4JezsQGvwDdj5AK5LfeEct-yMKri3V5nWMPJeHelN6zBZ_HuBt6wRW07vWGDpUdfJiIAv90fWIzw-IhjEOGVfJSgCLkxD2tK2x9NXPu8KESWj9Il8ohHjiDEalGsIDcXw4rSAgu3JlSQhaj56SVNLUGrp73Kj6q3Ma5QY1T2s_q2v6ecUT3GoljRIwPnIhaiAtzMsnd37XuC-E0miPvYzmOv9VGPV5oeBbax3VFktt9uX0Y9wgYPVkWzALKhekbbLlPnqTp4pseh1U-XOrMSajNeVVS2It9dKK3X7uomE-I1brRPnm3ViJa-ag-3BsXjoB8_RFkxTaf5Ps-yCIel019VUFoN1jnSc8Q2G-lZH6HDuDXWfFe3VFcOxTiNIdZqMLOlLeW83gxslX1RCDP4Ddk6R23rFKmKDFvR4EyzkOevifN6tvXbrtba-20rFe66cUBgT9mpvR9Zn0g06GwmB60efc_w_1kZ_rZ4pq30Qhm8gF8dllwNrNM2lghSLczrqcY26WxqHBs92lKlOE3uRDKNloT49fZg9aanqzSiwqgQNlaKeYLbnwF8T5uewLQTkQGJKB93M61-vCrEqQE3U9-azHZmBwPH8F-58AbXDLxP5LdTsyG0WsYEdxCFEKyEmVlgo1WrKniD1Ibzm40-vdpGv3WTZgkP0h6XVT_tdlbl481YVLWxnSU8tcoPl6IUadZjGmoYrQRamgG1CG7o4lu0tnu2EL8pK6b5UqcUxCLPqy08hrgniaDgv4qfatDbfod1muSTSJVxe7kKyUbkRyLxV_NzBroxK2ektn6W8DDicczzQ5FHWc9UtgKp9jGqIJfW6ptENyzWN0n9pUOBf-X8FX65fSXGCW6W3uPa5OZTM5huB9eks2Gtt9mj7VSFn0bwJM6vxK_Te5EsmbRSgPUe_i34ZWrR0cBmTO0guOUrRqM8jyZ8yaKEE_wuNYn8WjRX2u3jWAhcK9uW0w2s9zzBrbfhp3heMBq6bpaW76FdpoVyhMv5WVPbTDbLVstGvy9pHGq6T3FZfRDx7FGtJ6hG1GwO6Qxo2aqDNqm98XjDTGWua9_HcuVY-kJuXtDwwXZrGH2hVQDdI1gR-AqDV_dlW6fts2jM471szHF_gZ5wvt58oIJbZc1qjAphw3WV8-S229-i2OBHJSK7X54nIaDWhFzpdudJb-x25wn-VcrMy2vMw0vMX6W-_H3RyV970ck2lkhPk1BkCY8PssfecERBaBKkJxapiWwahChCsjvfQ5DVqxVGqf_5gd-LG4jEZwVcY24luILRSqBuNWxR2nDFQrtX22rgs2khGXEzykRPdlXDgMdcZe0r0NJXKqJPtPoVrcpNSmJbykc8wOFSJKJYUa2VBz00AFfn_m3Cm6f-bXpbn_mfQED_KFUoX1ZRCR6VYq8upjQIbszMBq3tL6FkafKQpkEvF69ElIRphlvcD2TlDOMr8XOe4Pf1ScMz8Tpv-yj450Tkec_CvVmCOQPsLo0vUPxKiWXd7tYuE8HNYsBGBgfTrO_rxxmQVkItXbGEIGpZ4IarDWaEvn_v-G_xveNffj74u81eY22OtXxtzr_D0pxWxVRkuBk07ufaK_CXWRqnyR1uczFdFVTXsBVo9VHUpvLfR3iLjcnRlwnHb_Y7jUj5bKn1kDAbxgSSxpZ7sqPEn469DLeC6_nMPE4fqrnHFV-ZA2QJuGF1YUboe5lvcKFIRPk48ltVvrmNiCTAkiLfjMSG4zfryrbGGrglEgYa_YUhtWvS6qqQgvsKJSFF6K9QD_qL1tW-W48luz5maV7sp2OvJ7GWzzUF0DmWNYHNTMesH1u6aVCRRZO9B94zEya9VqGB50_z6apllgq4gt3wu_UWrS2POd7fi4x7U_lFcX_o24Jame5Vh1acReNo84i3Re0vsNXNRMTxkT_q2ykIH2vq-dIAriKzofuvyGy5GH4bX-81vFr5p9oiuvwhd33GLRCq_Zrli5FyO2T4oXH5cf9BzPP8VB3wy-vP_eViwoSXHxbhWTc8ewQIv4J2q78bgC66RMhrs0dVHcvlTuBpgPs3G8zcNSxzl1Bd38Wd6HdxO_dd6hATLib-BU8N3YEL0d1dgzKyi8flAhajuyYx9V1mALBtE2sX96LfdUzX2HWJBRcDQFzbsHeJTgwCV2ri34ZFdwlhlO3KbSDgaqurY0FHqAn3qUkAxjAo3DEcBlfTMA24mtTdJbaO920dIW1DN_AKHUEyQN-Gx3h1AcbRbXjqEAb3oWPWLtUNF96K6DZeKTHgajj4t83YrtwMf5caOjLCMAAXrg6Fq-M4wB8H4XG7-l255zxcXXhFausIY1NLXvGpA-TgatjAVYcRvLoI4-rAROoaLl5N5K_LkNWuRYCvugu4BgEoeWVwteBNDarb8BSYZ-IA4IBQW15dG54ajDhwtSmFkaG6vCIF04EWDQZ4MFjEcuWQwR0bOWDYjMAdF8fFcKEBGEvbcnZNajB91zQc4LZp4tuZDN4bro7Ddk3LADkxLQZiIzfN3zVh3OGp7QId08HRMR3LAEiXwFubLkUsF-kwnegmXBkICtNdGGvgC1CG9zfxb2aRXQZDwuBK4U0ZtaDPDIYXRQzeFa429JmZwKZdueM-XCn0gUEXARfYA3QYvhFcYbzkpvpwRVlijBn4lCE8c3S8Yp-ZZQP_meVCb5ntGHDfQeFnrg5iDCAwpsw1HXjqWthD1wbJwauLV3g7S6cgP3L_fbwazq4FQmbiFXTFogbIjAWqhfctwAUWQm8tg0ArwCkYX7gCNQvEAe6bNjUxPMXja0C599rWQJqjAszHByxW4Tbw-qfywOw3t1dnyrCPimKSv3716uHh4eWEF6M0FF-iWLz00_GriTpQ9YU0lC-Q0qs9-G__7vNh8vNxtPfx4SjfG9sHv37-6dNdHh78vnd-uPcQH56dXwR37Ojo4OH2YWR-PvlyNzq7vjx7d3o3PrgWNz_t-amI9OOzXz4XxrX505l7-xAe_vz-Itoz938fBT-n7w7i2_e__Gx_OTq4vR1f_f3q7fjWK66P9i-zD-8-3BbkJiI39gexz89JcfGR_CO4fXtY_OPzu_GHt6OY344mj-PJC_7b_vSQ2tceYV8ukuMrvwh-3zcufvKtgh2fpJb41bWjhJyExeTTxckn5-7i4MBO31ujf_x27KSjgyh8vLj-u_Xb59HH61_Zrx6k6b_-9NOH6W_6-_vx2eFe_juM3dkvvHj8yfz5LLfvr6n7wv708eH0l8PT8_fmlw83J_z8V_r4MTlL_IfH3z3j8l2xf6UH4c2te3FP9rLbF8EvnJD7X-IL8ZGe3PzjpEgsmtwHUcHem-LX-H7qfWAvztKP7z9fWH8_mdy9GL-zjE_31otPL5z47PHvn85OHZrop_c3H9zIoNH93fjF8b1NPv1-C0P1o_Iy1Wi_qc84IpVRlya8NLDKnC4a0tIwSpOozJ00X6XpkEajVPZSkaUKL6pkpXSobkp9pJqUQi6F-dVcP2nT-UhPI12L9Bal4S8NfNO02_PGW5lnZZKlEe0wmdLsKbNUGh5lWpRJkKov1bR9cEZexkfqV338i9V5ZssCmNl5NssCmNt9BMsCnN190soCHNG7T1RZAHS6D05ZJNh9PsoCHOs-BmUBjnafdrIAZ3QfarLYP9JzeMmr5ii-wbQliwJRDepeASmjNy1E9UCDYO9CCaQKHZTDVg61clHSOUnHUJl4MOhYoCgqVAygZGAkYyIV0pRBhQohqiBhPjwoQwIZACgXL51y6Y6V2205WXSvpTMtHaJ0fy2HVTopdE_KxaBzwQA3K_vbCO4wpJMxnIzcmqFaGRrJ0KUMDKTrL9106Yhp7VIrBweurR6MFv9hbCDEldEwxsBVLPwhEg_g8vDwFEjoMTyVh41ANH4YQciaySP2qlzi9zStjjNBmcefv_z47AVh7kswamCgLHgNRz34Oz6AXr6kNvQYTJMuxf3Nq0twi-_D_WkUB1FyR_-287_v_qtS",
+  "variants": [
+    {
+      "id": "default-variant",
+      "title": "lvl 1-14",
+      "items": {
+        "helmet": {
+          "name": "Face Mask",
+          "item_class": "helmet",
+          "is_unique": false,
+          "stats": [
+            [
+              "Evasion Rating",
+              "32"
+            ],
+            [
+              "Energy Shield",
+              "16"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+60 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "gloves": {
+          "name": "Runeforged Sombre Gloves",
+          "item_class": "gloves",
+          "is_unique": false,
+          "stats": [
+            [
+              "Energy Shield",
+              "15"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "Adds 2 to 4 Physical Damage to Attacks",
+              "must_have": false
+            }
+          ]
+        },
+        "boots": {
+          "name": "Bronze Greaves",
+          "item_class": "boots",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "74"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "20% increased Movement Speed",
+              "must_have": false
+            }
+          ]
+        },
+        "amulet": {
+          "name": "Amber Amulet",
+          "item_class": "amulet",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+85 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "belt": {
+          "name": "Utility Belt",
+          "item_class": "belt",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "leftRing": {
+          "name": "Iron Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "Adds 1 to 3 Physical Damage to Attacks",
+              "must_have": false
+            }
+          ]
+        },
+        "rightRing": {
+          "name": "Iron Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": []
+        },
+        "mainHand.set1": {
+          "name": "Tense Crossbow",
+          "item_class": "crossbow",
+          "is_unique": false,
+          "stats": [
+            [
+              "Minimum Physical Damage",
+              "12"
+            ],
+            [
+              "Maximum Physical Damage",
+              "22"
+            ],
+            [
+              "Critical Hit Chance",
+              "5"
+            ],
+            [
+              "Weapon Speed",
+              "12"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "40% increased Physical Damage",
+              "must_have": false
+            }
+          ]
+        }
+      },
+      "skills": [
+        {
+          "name": "Crossbow Shot",
+          "weapon_set": null
+        },
+        {
+          "name": "Explosive Grenade",
+          "weapon_set": null
+        },
+        {
+          "name": "Flash Grenade",
+          "weapon_set": null
+        },
+        {
+          "name": "Gas Grenade",
+          "weapon_set": null
+        },
+        {
+          "name": "Frost Bomb",
+          "weapon_set": null
+        },
+        {
+          "name": "Herald of Ash",
+          "weapon_set": null
+        },
+        {
+          "name": "Pounce",
+          "weapon_set": null
+        }
+      ]
+    },
+    {
+      "id": "1",
+      "title": "lvl 15-32",
+      "items": {
+        "helmet": {
+          "name": "Face Mask",
+          "item_class": "helmet",
+          "is_unique": false,
+          "stats": [
+            [
+              "Evasion Rating",
+              "32"
+            ],
+            [
+              "Energy Shield",
+              "16"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+60 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "gloves": {
+          "name": "Runeforged Sombre Gloves",
+          "item_class": "gloves",
+          "is_unique": false,
+          "stats": [
+            [
+              "Energy Shield",
+              "15"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "Adds 2 to 4 Physical Damage to Attacks",
+              "must_have": false
+            }
+          ]
+        },
+        "boots": {
+          "name": "Bronze Greaves",
+          "item_class": "boots",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "74"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "20% increased Movement Speed",
+              "must_have": false
+            }
+          ]
+        },
+        "amulet": {
+          "name": "Amber Amulet",
+          "item_class": "amulet",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+85 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "belt": {
+          "name": "Utility Belt",
+          "item_class": "belt",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "leftRing": {
+          "name": "Iron Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "Adds 1 to 3 Physical Damage to Attacks",
+              "must_have": false
+            }
+          ]
+        },
+        "rightRing": {
+          "name": "Iron Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": []
+        },
+        "mainHand.set1": {
+          "name": "Varnished Crossbow",
+          "item_class": "crossbow",
+          "is_unique": false,
+          "stats": [
+            [
+              "Minimum Physical Damage",
+              "18"
+            ],
+            [
+              "Maximum Physical Damage",
+              "54"
+            ],
+            [
+              "Critical Hit Chance",
+              "5"
+            ],
+            [
+              "Weapon Speed",
+              "12"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "40% increased Physical Damage",
+              "must_have": false
+            }
+          ]
+        }
+      },
+      "skills": [
+        {
+          "name": "Explosive Grenade",
+          "weapon_set": null
+        },
+        {
+          "name": "Flash Grenade",
+          "weapon_set": null
+        },
+        {
+          "name": "Gas Grenade",
+          "weapon_set": null
+        },
+        {
+          "name": "Frost Bomb",
+          "weapon_set": null
+        },
+        {
+          "name": "Herald of Ash",
+          "weapon_set": null
+        },
+        {
+          "name": "Pounce",
+          "weapon_set": null
+        },
+        {
+          "name": "Oil Grenade",
+          "weapon_set": null
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "title": "lvl 33-51",
+      "items": {
+        "helmet": {
+          "name": "Face Mask",
+          "item_class": "helmet",
+          "is_unique": false,
+          "stats": [
+            [
+              "Evasion Rating",
+              "32"
+            ],
+            [
+              "Energy Shield",
+              "16"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+60 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "gloves": {
+          "name": "Runeforged Sombre Gloves",
+          "item_class": "gloves",
+          "is_unique": false,
+          "stats": [
+            [
+              "Energy Shield",
+              "15"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "Adds 2 to 4 Physical Damage to Attacks",
+              "must_have": false
+            }
+          ]
+        },
+        "boots": {
+          "name": "Bronze Greaves",
+          "item_class": "boots",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "74"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "20% increased Movement Speed",
+              "must_have": false
+            }
+          ]
+        },
+        "amulet": {
+          "name": "Amber Amulet",
+          "item_class": "amulet",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+85 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "belt": {
+          "name": "Utility Belt",
+          "item_class": "belt",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "leftRing": {
+          "name": "Topaz Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "Adds 1 to 3 Physical Damage to Attacks",
+              "must_have": false
+            }
+          ]
+        },
+        "rightRing": {
+          "name": "Sapphire Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": []
+        },
+        "mainHand.set1": {
+          "name": "Bombard Crossbow",
+          "item_class": "crossbow",
+          "is_unique": false,
+          "stats": [
+            [
+              "Minimum Physical Damage",
+              "26"
+            ],
+            [
+              "Maximum Physical Damage",
+              "103"
+            ],
+            [
+              "Critical Hit Chance",
+              "5"
+            ],
+            [
+              "Weapon Speed",
+              "12"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "65% increased Physical Damage",
+              "must_have": false
+            }
+          ]
+        }
+      },
+      "skills": [
+        {
+          "name": "Explosive Grenade",
+          "weapon_set": null
+        },
+        {
+          "name": "Flash Grenade",
+          "weapon_set": null
+        },
+        {
+          "name": "Gas Grenade",
+          "weapon_set": null
+        },
+        {
+          "name": "Herald of Ash",
+          "weapon_set": null
+        },
+        {
+          "name": "Pounce",
+          "weapon_set": null
+        },
+        {
+          "name": "Oil Grenade",
+          "weapon_set": null
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "title": "lvl 52 Swap",
+      "items": {
+        "helmet": {
+          "name": "Face Mask",
+          "item_class": "helmet",
+          "is_unique": false,
+          "stats": [
+            [
+              "Evasion Rating",
+              "32"
+            ],
+            [
+              "Energy Shield",
+              "16"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+60 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "body": {
+          "name": "Ancestral Mail",
+          "item_class": "body-armour",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "409"
+            ],
+            [
+              "Evasion Rating",
+              "371"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "80% increased Armour and Evasion",
+              "must_have": false
+            }
+          ]
+        },
+        "gloves": {
+          "name": "Runeforged Sombre Gloves",
+          "item_class": "gloves",
+          "is_unique": false,
+          "stats": [
+            [
+              "Energy Shield",
+              "15"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+85 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "boots": {
+          "name": "Bronze Greaves",
+          "item_class": "boots",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "74"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "20% increased Movement Speed",
+              "must_have": false
+            }
+          ]
+        },
+        "amulet": {
+          "name": "Surefooted Sigil",
+          "item_class": "amulet",
+          "is_unique": true,
+          "stats": [],
+          "mods": []
+        },
+        "belt": {
+          "name": "Utility Belt",
+          "item_class": "belt",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "leftRing": {
+          "name": "Topaz Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "rightRing": {
+          "name": "Sapphire Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "mainHand.set1": {
+          "name": "Pyrophyte Staff",
+          "item_class": "staff",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "69% increased Fire Damage",
+              "must_have": false
+            },
+            {
+              "text": "+4 to Level of all Fire Spell Skills",
+              "must_have": false
+            }
+          ]
+        },
+        "mainHand.set2": {
+          "name": "Bombard Crossbow",
+          "item_class": "crossbow",
+          "is_unique": false,
+          "stats": [
+            [
+              "Minimum Physical Damage",
+              "14"
+            ],
+            [
+              "Maximum Physical Damage",
+              "56"
+            ],
+            [
+              "Critical Hit Chance",
+              "5"
+            ],
+            [
+              "Weapon Speed",
+              "12"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+2 to Level of all Projectile Skills",
+              "must_have": false
+            }
+          ]
+        }
+      },
+      "skills": [
+        {
+          "name": "Flameblast",
+          "weapon_set": null
+        },
+        {
+          "name": "Oil Grenade",
+          "weapon_set": null
+        },
+        {
+          "name": "Frost Bomb",
+          "weapon_set": null
+        },
+        {
+          "name": "Elemental Weakness",
+          "weapon_set": null
+        },
+        {
+          "name": "Tornado",
+          "weapon_set": null
+        },
+        {
+          "name": "Cast on Dodge",
+          "weapon_set": null
+        }
+      ]
+    },
+    {
+      "id": "4",
+      "title": "lvl 53-68",
+      "items": {
+        "helmet": {
+          "name": "Face Mask",
+          "item_class": "helmet",
+          "is_unique": false,
+          "stats": [
+            [
+              "Evasion Rating",
+              "32"
+            ],
+            [
+              "Energy Shield",
+              "16"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+60 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "body": {
+          "name": "Ancestral Mail",
+          "item_class": "body-armour",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "409"
+            ],
+            [
+              "Evasion Rating",
+              "371"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "80% increased Armour and Evasion",
+              "must_have": false
+            }
+          ]
+        },
+        "gloves": {
+          "name": "Runeforged Sombre Gloves",
+          "item_class": "gloves",
+          "is_unique": false,
+          "stats": [
+            [
+              "Energy Shield",
+              "15"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+85 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "boots": {
+          "name": "Bronze Greaves",
+          "item_class": "boots",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "74"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "20% increased Movement Speed",
+              "must_have": false
+            }
+          ]
+        },
+        "amulet": {
+          "name": "Surefooted Sigil",
+          "item_class": "amulet",
+          "is_unique": true,
+          "stats": [],
+          "mods": []
+        },
+        "belt": {
+          "name": "Utility Belt",
+          "item_class": "belt",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "leftRing": {
+          "name": "Topaz Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "rightRing": {
+          "name": "Sapphire Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "mainHand.set1": {
+          "name": "Pyrophyte Staff",
+          "item_class": "staff",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "69% increased Fire Damage",
+              "must_have": false
+            },
+            {
+              "text": "+4 to Level of all Fire Spell Skills",
+              "must_have": false
+            }
+          ]
+        },
+        "mainHand.set2": {
+          "name": "Bombard Crossbow",
+          "item_class": "crossbow",
+          "is_unique": false,
+          "stats": [
+            [
+              "Minimum Physical Damage",
+              "14"
+            ],
+            [
+              "Maximum Physical Damage",
+              "56"
+            ],
+            [
+              "Critical Hit Chance",
+              "5"
+            ],
+            [
+              "Weapon Speed",
+              "13.92"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "14% increased Attack Speed",
+              "must_have": false
+            },
+            {
+              "text": "+2 to Level of all Projectile Skills",
+              "must_have": false
+            },
+            {
+              "text": "Grenade Skills have +1 Cooldown Use",
+              "must_have": false
+            }
+          ]
+        }
+      },
+      "skills": [
+        {
+          "name": "Flameblast",
+          "weapon_set": null
+        },
+        {
+          "name": "Oil Grenade",
+          "weapon_set": null
+        },
+        {
+          "name": "Frost Bomb",
+          "weapon_set": null
+        },
+        {
+          "name": "Elemental Weakness",
+          "weapon_set": null
+        },
+        {
+          "name": "Tornado",
+          "weapon_set": null
+        },
+        {
+          "name": "Cast on Dodge",
+          "weapon_set": null
+        }
+      ]
+    },
+    {
+      "id": "5",
+      "title": "lvl 85",
+      "items": {
+        "helmet": {
+          "name": "Runeforged Cryptic Crown",
+          "item_class": "helmet",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "86"
+            ],
+            [
+              "Energy Shield",
+              "24"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+175 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "14% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "+4% to Chaos Resistance",
+              "must_have": false
+            }
+          ]
+        },
+        "body": {
+          "name": "Wolfskin Mantle",
+          "item_class": "body-armour",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "313"
+            ],
+            [
+              "Energy Shield",
+              "87"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+200 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "+57 to Spirit",
+              "must_have": false
+            }
+          ]
+        },
+        "gloves": {
+          "name": "Runeforged Adherent Cuffs",
+          "item_class": "gloves",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "39"
+            ],
+            [
+              "Energy Shield",
+              "11"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+120 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "6% increased Rarity of Items found",
+              "must_have": false
+            }
+          ]
+        },
+        "boots": {
+          "name": "Runeforged Cryptic Leggings",
+          "item_class": "boots",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "59"
+            ],
+            [
+              "Energy Shield",
+              "16"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+190 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "15% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "35% increased Movement Speed",
+              "must_have": false
+            }
+          ]
+        },
+        "amulet": {
+          "name": "Gold Amulet",
+          "item_class": "amulet",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "+34 to Spirit",
+              "must_have": false
+            },
+            {
+              "text": "+3% to Quality of all Skills",
+              "must_have": false
+            }
+          ]
+        },
+        "belt": {
+          "name": "Utility Belt",
+          "item_class": "belt",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "225"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+187 to Armour",
+              "must_have": false
+            },
+            {
+              "text": "+120 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "+31 to Strength",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Fire Resistance",
+              "must_have": false
+            }
+          ]
+        },
+        "leftRing": {
+          "name": "Topaz Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "15% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "+26% to Cold Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+26% to Lightning Resistance",
+              "must_have": false
+            },
+            {
+              "text": "27% increased Fire Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "rightRing": {
+          "name": "Sapphire Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "15% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Fire Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+20% to Chaos Resistance",
+              "must_have": false
+            },
+            {
+              "text": "23% increased Fire Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "mainHand.set1": {
+          "name": "Pyrophyte Staff",
+          "item_class": "staff",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "149% increased Spell Damage",
+              "must_have": false
+            },
+            {
+              "text": "149% increased Fire Damage",
+              "must_have": false
+            },
+            {
+              "text": "+7 to Level of all Fire Spell Skills",
+              "must_have": false
+            },
+            {
+              "text": "Gain 49% of Damage as Extra Fire Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "mainHand.set2": {
+          "name": "Bombard Crossbow",
+          "item_class": "crossbow",
+          "is_unique": false,
+          "stats": [
+            [
+              "Minimum Physical Damage",
+              "14"
+            ],
+            [
+              "Maximum Physical Damage",
+              "56"
+            ],
+            [
+              "Critical Hit Chance",
+              "5"
+            ],
+            [
+              "Weapon Speed",
+              "13.92"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "14% increased Attack Speed",
+              "must_have": false
+            },
+            {
+              "text": "+3 to Level of all Projectile Skills",
+              "must_have": false
+            },
+            {
+              "text": "Grenade Skills have +1 Cooldown Use",
+              "must_have": false
+            }
+          ]
+        }
+      },
+      "skills": [
+        {
+          "name": "Flameblast",
+          "weapon_set": null
+        },
+        {
+          "name": "Oil Grenade",
+          "weapon_set": null
+        },
+        {
+          "name": "Frost Bomb",
+          "weapon_set": null
+        },
+        {
+          "name": "Elemental Weakness",
+          "weapon_set": null
+        },
+        {
+          "name": "Tornado",
+          "weapon_set": null
+        },
+        {
+          "name": "Cast on Dodge",
+          "weapon_set": null
+        },
+        {
+          "name": "Mana Remnants",
+          "weapon_set": null
+        }
+      ]
+    },
+    {
+      "id": "6",
+      "title": "Endgame",
+      "items": {
+        "helmet": {
+          "name": "Runeforged Cryptic Crown",
+          "item_class": "helmet",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "86"
+            ],
+            [
+              "Energy Shield",
+              "24"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+175 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "14% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "+20% to Chaos Resistance",
+              "must_have": false
+            }
+          ]
+        },
+        "body": {
+          "name": "Morior Invictus (life)",
+          "item_class": "body-armour",
+          "is_unique": true,
+          "stats": [],
+          "mods": []
+        },
+        "gloves": {
+          "name": "Runeforged Adherent Cuffs",
+          "item_class": "gloves",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "39"
+            ],
+            [
+              "Energy Shield",
+              "11"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+120 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "15% increased Rarity of Items found",
+              "must_have": false
+            }
+          ]
+        },
+        "boots": {
+          "name": "Runeforged Cryptic Leggings",
+          "item_class": "boots",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "59"
+            ],
+            [
+              "Energy Shield",
+              "16"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+190 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "15% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "35% increased Movement Speed",
+              "must_have": false
+            }
+          ]
+        },
+        "amulet": {
+          "name": "Gold Amulet",
+          "item_class": "amulet",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Fire Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+3 to Level of all Spell Skills",
+              "must_have": false
+            },
+            {
+              "text": "+94 to Spirit",
+              "must_have": false
+            },
+            {
+              "text": "+3% to Quality of all Skills",
+              "must_have": false
+            }
+          ]
+        },
+        "belt": {
+          "name": "Utility Belt",
+          "item_class": "belt",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "225"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+187 to Armour",
+              "must_have": false
+            },
+            {
+              "text": "+120 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "+31 to Strength",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Fire Resistance",
+              "must_have": false
+            }
+          ]
+        },
+        "leftRing": {
+          "name": "Gold Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "31% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "+26% to Cold Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+26% to Lightning Resistance",
+              "must_have": false
+            },
+            {
+              "text": "27% increased Fire Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "rightRing": {
+          "name": "Gold Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "31% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Fire Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+20% to Chaos Resistance",
+              "must_have": false
+            },
+            {
+              "text": "23% increased Fire Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "mainHand.set1": {
+          "name": "Pyrophyte Staff",
+          "item_class": "staff",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "149% increased Spell Damage",
+              "must_have": false
+            },
+            {
+              "text": "149% increased Fire Damage",
+              "must_have": false
+            },
+            {
+              "text": "+7 to Level of all Fire Spell Skills",
+              "must_have": false
+            },
+            {
+              "text": "Gain 49% of Damage as Extra Fire Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "mainHand.set2": {
+          "name": "Bombard Crossbow",
+          "item_class": "crossbow",
+          "is_unique": false,
+          "stats": [
+            [
+              "Minimum Physical Damage",
+              "14"
+            ],
+            [
+              "Maximum Physical Damage",
+              "56"
+            ],
+            [
+              "Critical Hit Chance",
+              "5"
+            ],
+            [
+              "Weapon Speed",
+              "13.92"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "14% increased Attack Speed",
+              "must_have": false
+            },
+            {
+              "text": "+3 to Level of all Projectile Skills",
+              "must_have": false
+            },
+            {
+              "text": "Grenade Skills have +1 Cooldown Use",
+              "must_have": false
+            }
+          ]
+        }
+      },
+      "skills": [
+        {
+          "name": "Flameblast",
+          "weapon_set": null
+        },
+        {
+          "name": "Oil Grenade",
+          "weapon_set": null
+        },
+        {
+          "name": "Frost Bomb",
+          "weapon_set": null
+        },
+        {
+          "name": "Elemental Weakness",
+          "weapon_set": null
+        },
+        {
+          "name": "Tornado",
+          "weapon_set": null
+        },
+        {
+          "name": "Cast on Dodge",
+          "weapon_set": null
+        },
+        {
+          "name": "Mana Remnants",
+          "weapon_set": null
+        }
+      ]
+    },
+    {
+      "id": "ec6511a2-8023-4841-b1a2-731bf5fdcd93",
+      "title": "Mageblood",
+      "items": {
+        "helmet": {
+          "name": "Paragon Greathelm",
+          "item_class": "helmet",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "767"
+            ],
+            [
+              "Item Level",
+              "77"
+            ],
+            [
+              "Quality",
+              "20"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "79% increased Armour",
+              "must_have": false
+            },
+            {
+              "text": "+165 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "17% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "+32% to Cold Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+41% of Armour also applies to Elemental Damage",
+              "must_have": false
+            },
+            {
+              "text": "+17% to Cold and Chaos Resistances",
+              "must_have": false
+            }
+          ]
+        },
+        "body": {
+          "name": "Dastard Armour",
+          "item_class": "body-armour",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "1419"
+            ],
+            [
+              "Evasion Rating",
+              "1327"
+            ],
+            [
+              "Item Level",
+              "79"
+            ],
+            [
+              "Quality",
+              "20"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+159 to Armour",
+              "must_have": false
+            },
+            {
+              "text": "+156 to Evasion Rating",
+              "must_have": false
+            },
+            {
+              "text": "94% increased Armour and Evasion",
+              "must_have": false
+            },
+            {
+              "text": "+40% to Fire Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+40% to Lightning Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+34% of Armour also applies to Elemental Damage",
+              "must_have": false
+            },
+            {
+              "text": "42% increased Armour and Evasion",
+              "must_have": false
+            },
+            {
+              "text": "+44 to maximum Life",
+              "must_have": false
+            }
+          ]
+        },
+        "gloves": {
+          "name": "Ancient Mitts",
+          "item_class": "gloves",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "854"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+226 to Armour",
+              "must_have": false
+            },
+            {
+              "text": "+120 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "15% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Cold Resistance",
+              "must_have": false
+            },
+            {
+              "text": "80% increased Armour",
+              "must_have": false
+            },
+            {
+              "text": "+38% of Armour also applies to Elemental Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "boots": {
+          "name": "Fortress Sabatons",
+          "item_class": "boots",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "454"
+            ],
+            [
+              "Evasion Rating",
+              "410"
+            ],
+            [
+              "Item Level",
+              "82"
+            ],
+            [
+              "Quality",
+              "20"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "35% increased Movement Speed",
+              "must_have": false
+            },
+            {
+              "text": "+77 to Armour",
+              "must_have": false
+            },
+            {
+              "text": "+68 to Evasion Rating",
+              "must_have": false
+            },
+            {
+              "text": "+34% to Fire Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+39% of Armour also applies to Elemental Damage",
+              "must_have": false
+            },
+            {
+              "text": "+33% to Lightning Resistance",
+              "must_have": false
+            },
+            {
+              "text": "69% increased Armour and Evasion",
+              "must_have": false
+            }
+          ]
+        },
+        "amulet": {
+          "name": "Gold Amulet",
+          "item_class": "amulet",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Fire Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+3 to Level of all Spell Skills",
+              "must_have": false
+            },
+            {
+              "text": "+47 to Spirit",
+              "must_have": false
+            },
+            {
+              "text": "+3% to Quality of all Skills",
+              "must_have": false
+            }
+          ]
+        },
+        "belt": {
+          "name": "Mageblood",
+          "item_class": "belt",
+          "is_unique": true,
+          "stats": [],
+          "mods": []
+        },
+        "leftRing": {
+          "name": "Gold Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+15% to all Elemental Resistances",
+              "must_have": false
+            },
+            {
+              "text": "+85 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "27% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "+16% to Chaos Resistance",
+              "must_have": false
+            },
+            {
+              "text": "25% increased Fire Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "rightRing": {
+          "name": "Gold Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+9% to all Elemental Resistances",
+              "must_have": false
+            },
+            {
+              "text": "+85 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "31% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Cold Resistance",
+              "must_have": false
+            },
+            {
+              "text": "25% increased Fire Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "mainHand.set1": {
+          "name": "Ashen Staff",
+          "item_class": "staff",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "209% increased Spell Damage",
+              "must_have": false
+            },
+            {
+              "text": "+7 to Level of all Fire Spell Skills",
+              "must_have": false
+            },
+            {
+              "text": "33% increased Cast Speed",
+              "must_have": false
+            },
+            {
+              "text": "Gain 110% of Damage as Extra Fire Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "mainHand.set2": {
+          "name": "Cannonade Crossbow",
+          "item_class": "crossbow",
+          "is_unique": false,
+          "stats": [
+            [
+              "Item Level",
+              "64"
+            ],
+            [
+              "Minimum Physical Damage",
+              "29"
+            ],
+            [
+              "Maximum Physical Damage",
+              "112"
+            ],
+            [
+              "Minimum Cold Damage",
+              "8"
+            ],
+            [
+              "Maximum Cold Damage",
+              "14"
+            ],
+            [
+              "Critical Hit Chance",
+              "5"
+            ],
+            [
+              "Weapon Speed",
+              "14.28"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "22% increased Physical Damage",
+              "must_have": false
+            },
+            {
+              "text": "Adds 5 to 13 Cold Damage",
+              "must_have": false
+            },
+            {
+              "text": "+22 to Accuracy Rating",
+              "must_have": false
+            },
+            {
+              "text": "19% increased Attack Speed",
+              "must_have": false
+            },
+            {
+              "text": "+3 to Level of all Projectile Skills",
+              "must_have": false
+            },
+            {
+              "text": "+24 to Dexterity",
+              "must_have": false
+            },
+            {
+              "text": "Grenade Skills have +1 Cooldown Use",
+              "must_have": false
+            }
+          ]
+        }
+      },
+      "skills": [
+        {
+          "name": "Flameblast",
+          "weapon_set": null
+        },
+        {
+          "name": "Oil Grenade",
+          "weapon_set": null
+        },
+        {
+          "name": "Cast on Dodge",
+          "weapon_set": null
+        },
+        {
+          "name": "Tornado",
+          "weapon_set": null
+        },
+        {
+          "name": "Frost Bomb",
+          "weapon_set": null
+        },
+        {
+          "name": "Elemental Weakness",
+          "weapon_set": null
+        },
+        {
+          "name": "Virtuous Barrier",
+          "weapon_set": null
+        },
+        {
+          "name": "Arctic Armour",
+          "weapon_set": null
+        },
+        {
+          "name": "Mana Remnants",
+          "weapon_set": null
+        },
+        {
+          "name": "Ice Shards",
+          "weapon_set": null
+        },
+        {
+          "name": "Shockwave Totem",
+          "weapon_set": null
+        },
+        {
+          "name": "Seismic Cry",
+          "weapon_set": null
+        },
+        {
+          "name": "Crossbow Shot",
+          "weapon_set": null
+        }
+      ]
+    },
+    {
+      "id": "600846cb-2882-4f6e-b16a-ca6f8c62464c",
+      "title": "DoT Cap",
+      "items": {
+        "helmet": {
+          "name": "Imperial Greathelm",
+          "item_class": "helmet",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "1346"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+187 to Armour",
+              "must_have": false
+            },
+            {
+              "text": "39% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "92% increased Armour",
+              "must_have": false
+            },
+            {
+              "text": "+38% of Armour also applies to Elemental Damage",
+              "must_have": false
+            },
+            {
+              "text": "+23% of Armour also applies to Chaos Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "body": {
+          "name": "Warlord Cuirass",
+          "item_class": "body-armour",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "2900"
+            ],
+            [
+              "Item Level",
+              "82"
+            ],
+            [
+              "Quality",
+              "21"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+297 to Armour",
+              "must_have": false
+            },
+            {
+              "text": "110% increased Armour",
+              "must_have": false
+            },
+            {
+              "text": "+42% to Cold Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+39% to Lightning Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+44% of Armour also applies to Elemental Damage",
+              "must_have": false
+            },
+            {
+              "text": "+88 to Armour",
+              "must_have": false
+            },
+            {
+              "text": "42% increased Armour",
+              "must_have": false
+            }
+          ]
+        },
+        "gloves": {
+          "name": "Massive Mitts",
+          "item_class": "gloves",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "920"
+            ],
+            [
+              "Quality",
+              "22"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+190 to Armour",
+              "must_have": false
+            },
+            {
+              "text": "100% increased Armour",
+              "must_have": false
+            },
+            {
+              "text": "+149 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "18% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "+27% to Chaos Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+43% of Armour also applies to Elemental Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "boots": {
+          "name": "Tasalian Greaves",
+          "item_class": "boots",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "1147"
+            ],
+            [
+              "Quality",
+              "22"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "35% increased Movement Speed",
+              "must_have": false
+            },
+            {
+              "text": "+190 to Armour",
+              "must_have": false
+            },
+            {
+              "text": "100% increased Armour",
+              "must_have": false
+            },
+            {
+              "text": "18% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "+27% to Chaos Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+43% of Armour also applies to Elemental Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "amulet": {
+          "name": "Gold Amulet",
+          "item_class": "amulet",
+          "is_unique": false,
+          "stats": [
+            [
+              "Item Level",
+              "80"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+4 to Level of all Spell Skills",
+              "must_have": false
+            },
+            {
+              "text": "+139 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "+50 to Spirit",
+              "must_have": false
+            },
+            {
+              "text": "+5% to Quality of all Skills",
+              "must_have": false
+            },
+            {
+              "text": "28% increased Global Armour, Evasion and Energy Shield",
+              "must_have": false
+            },
+            {
+              "text": "18% increased Rarity of Items found",
+              "must_have": false
+            }
+          ]
+        },
+        "belt": {
+          "name": "Mageblood",
+          "item_class": "belt",
+          "is_unique": true,
+          "stats": [
+            [
+              "Charm Slots",
+              "2"
+            ],
+            [
+              "Item Level",
+              "80"
+            ]
+          ],
+          "mods": []
+        },
+        "leftRing": {
+          "name": "Gold Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+17% to all Elemental Resistances",
+              "must_have": false
+            },
+            {
+              "text": "+85 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "27% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "+16% to Chaos Resistance",
+              "must_have": false
+            },
+            {
+              "text": "35% increased Fire Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "rightRing": {
+          "name": "Gold Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+12% to all Elemental Resistances",
+              "must_have": false
+            },
+            {
+              "text": "+85 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "31% increased Rarity of Items found",
+              "must_have": false
+            },
+            {
+              "text": "+36% to Fire Resistance",
+              "must_have": false
+            },
+            {
+              "text": "35% increased Fire Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "mainHand.set1": {
+          "name": "Chiming Staff",
+          "item_class": "staff",
+          "is_unique": false,
+          "stats": [
+            [
+              "Item Level",
+              "81"
+            ],
+            [
+              "Quality",
+              "21"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+8 to Level of all Fire Spell Skills",
+              "must_have": false
+            },
+            {
+              "text": "19% increased Explicit Fire Modifier magnitudes",
+              "must_have": false
+            },
+            {
+              "text": "Gain 71% of Damage as Extra Fire Damage",
+              "must_have": false
+            },
+            {
+              "text": "235% increased Spell Damage",
+              "must_have": false
+            },
+            {
+              "text": "276% increased Fire Damage",
+              "must_have": false
+            },
+            {
+              "text": "43% increased Cast Speed",
+              "must_have": false
+            },
+            {
+              "text": "Gain 11% of Elemental Damage as Extra Cold Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "mainHand.set2": {
+          "name": "Cannonade Crossbow",
+          "item_class": "crossbow",
+          "is_unique": false,
+          "stats": [
+            [
+              "Item Level",
+              "64"
+            ],
+            [
+              "Minimum Physical Damage",
+              "29"
+            ],
+            [
+              "Maximum Physical Damage",
+              "112"
+            ],
+            [
+              "Minimum Cold Damage",
+              "8"
+            ],
+            [
+              "Maximum Cold Damage",
+              "14"
+            ],
+            [
+              "Critical Hit Chance",
+              "5"
+            ],
+            [
+              "Weapon Speed",
+              "14.28"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "22% increased Physical Damage",
+              "must_have": false
+            },
+            {
+              "text": "Adds 5 to 13 Cold Damage",
+              "must_have": false
+            },
+            {
+              "text": "+22 to Accuracy Rating",
+              "must_have": false
+            },
+            {
+              "text": "19% increased Attack Speed",
+              "must_have": false
+            },
+            {
+              "text": "+3 to Level of all Projectile Skills",
+              "must_have": false
+            },
+            {
+              "text": "+24 to Dexterity",
+              "must_have": false
+            },
+            {
+              "text": "Grenade Skills have +1 Cooldown Use",
+              "must_have": false
+            }
+          ]
+        }
+      },
+      "skills": [
+        {
+          "name": "Flameblast",
+          "weapon_set": null
+        },
+        {
+          "name": "Oil Grenade",
+          "weapon_set": null
+        },
+        {
+          "name": "Arctic Armour",
+          "weapon_set": null
+        },
+        {
+          "name": "Cast on Dodge",
+          "weapon_set": null
+        },
+        {
+          "name": "Mana Remnants",
+          "weapon_set": null
+        },
+        {
+          "name": "Incendiary Shot",
+          "weapon_set": null
+        },
+        {
+          "name": "Ice Shards",
+          "weapon_set": null
+        },
+        {
+          "name": "Infernal Cry",
+          "weapon_set": null
+        },
+        {
+          "name": "Shockwave Totem",
+          "weapon_set": null
+        },
+        {
+          "name": "Elemental Weakness",
+          "weapon_set": null
+        },
+        {
+          "name": "Tornado",
+          "weapon_set": null
+        },
+        {
+          "name": "Seismic Cry",
+          "weapon_set": null
+        },
+        {
+          "name": "Frost Bomb",
+          "weapon_set": null
+        }
+      ]
+    }
+  ]
+}

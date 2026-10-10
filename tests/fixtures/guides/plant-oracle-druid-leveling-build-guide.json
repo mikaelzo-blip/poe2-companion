@@ -1,0 +1,346 @@
+{
+  "format": "poe2-companion-guide/1",
+  "source_url": "https://mobalytics.gg/poe-2/builds/plant-oracle-druid-leveling-build-guide",
+  "slug": "plant-oracle-druid-leveling-build-guide",
+  "name": "Raxx's 0.5.5 Plant Oracle Druid Leveling Build Guide",
+  "pob_code": null,
+  "variants": [
+    {
+      "id": "default-variant",
+      "title": "Leveling",
+      "items": {
+        "helmet": {
+          "name": "Inquisitor Crown",
+          "item_class": "helmet",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "676"
+            ],
+            [
+              "Energy Shield",
+              "191"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+103 to Armour",
+              "must_have": false
+            },
+            {
+              "text": "+42 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Fire Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Cold Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Lightning Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+30 to maximum Energy Shield",
+              "must_have": false
+            },
+            {
+              "text": "119% increased Armour and Energy Shield",
+              "must_have": false
+            }
+          ]
+        },
+        "body": {
+          "name": "Heartcarver Mantle",
+          "item_class": "body-armour",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "1025"
+            ],
+            [
+              "Energy Shield",
+              "289"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+145 to Armour",
+              "must_have": false
+            },
+            {
+              "text": "+43 to maximum Energy Shield",
+              "must_have": false
+            },
+            {
+              "text": "119% increased Armour and Energy Shield",
+              "must_have": false
+            }
+          ]
+        },
+        "gloves": {
+          "name": "Ornate Cuffs",
+          "item_class": "gloves",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "82"
+            ],
+            [
+              "Energy Shield",
+              "23"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Fire Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Cold Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Lightning Resistance",
+              "must_have": false
+            }
+          ]
+        },
+        "boots": {
+          "name": "Bastion Sabatons",
+          "item_class": "boots",
+          "is_unique": false,
+          "stats": [
+            [
+              "Armour",
+              "123"
+            ],
+            [
+              "Evasion Rating",
+              "111"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "+70 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Fire Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Cold Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Lightning Resistance",
+              "must_have": false
+            },
+            {
+              "text": "35% increased Movement Speed",
+              "must_have": false
+            }
+          ]
+        },
+        "amulet": {
+          "name": "Lunar Amulet",
+          "item_class": "amulet",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "27% increased Spell Damage",
+              "must_have": false
+            },
+            {
+              "text": "+3 to Level of all Spell Skills",
+              "must_have": false
+            },
+            {
+              "text": "29% increased Cast Speed",
+              "must_have": false
+            },
+            {
+              "text": "+35 to Spirit",
+              "must_have": false
+            }
+          ]
+        },
+        "belt": {
+          "name": "Plate Belt",
+          "item_class": "belt",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+100 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Fire Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Cold Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Lightning Resistance",
+              "must_have": false
+            }
+          ]
+        },
+        "leftRing": {
+          "name": "Prismatic Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+70 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Fire Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Cold Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Lightning Resistance",
+              "must_have": false
+            }
+          ]
+        },
+        "rightRing": {
+          "name": "Prismatic Ring",
+          "item_class": "ring",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "+70 to maximum Life",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Fire Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Cold Resistance",
+              "must_have": false
+            },
+            {
+              "text": "+31% to Lightning Resistance",
+              "must_have": false
+            }
+          ]
+        },
+        "mainHand.set1": {
+          "name": "Bone Wand",
+          "item_class": "wand",
+          "is_unique": false,
+          "stats": [],
+          "mods": [
+            {
+              "text": "75% increased Spell Damage",
+              "must_have": false
+            },
+            {
+              "text": "75% increased Spell Physical Damage",
+              "must_have": false
+            },
+            {
+              "text": "+5 to Level of all Physical Spell Skills",
+              "must_have": false
+            },
+            {
+              "text": "29% increased Cast Speed",
+              "must_have": false
+            },
+            {
+              "text": "Gain 28% of Damage as Extra Lightning Damage",
+              "must_have": false
+            }
+          ]
+        },
+        "offHand.set1": {
+          "name": "Cultist Focus",
+          "item_class": "focus",
+          "is_unique": false,
+          "stats": [
+            [
+              "Energy Shield",
+              "52"
+            ]
+          ],
+          "mods": [
+            {
+              "text": "75% increased Spell Damage",
+              "must_have": false
+            },
+            {
+              "text": "75% increased Spell Physical Damage",
+              "must_have": false
+            },
+            {
+              "text": "+2 to Level of all Spell Skills",
+              "must_have": false
+            },
+            {
+              "text": "29% increased Cast Speed",
+              "must_have": false
+            }
+          ]
+        }
+      },
+      "skills": [
+        {
+          "name": "Entangle",
+          "weapon_set": null
+        },
+        {
+          "name": "Contagion",
+          "weapon_set": null
+        },
+        {
+          "name": "Thunderstorm",
+          "weapon_set": null
+        },
+        {
+          "name": "Ravenous Swarm",
+          "weapon_set": null
+        },
+        {
+          "name": "Bonestorm",
+          "weapon_set": null
+        },
+        {
+          "name": "Thrashing Vines",
+          "weapon_set": null
+        },
+        {
+          "name": "Blasphemy",
+          "weapon_set": null
+        },
+        {
+          "name": "Cast on Critical",
+          "weapon_set": null
+        }
+      ]
+    }
+  ]
+}

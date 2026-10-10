@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import http.server
 import json
+import logging
 from pathlib import Path
 import socketserver
 import sys
@@ -16,6 +17,7 @@ from typing import Any, Callable
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RUNTIME_DIR = PROJECT_ROOT / "runtime"
+logger = logging.getLogger(__name__)
 
 
 _GLOBAL_POB_SESSIONS: dict[str, Any] = {}
@@ -44,6 +46,12 @@ def get_or_create_pob_session(character_id: str = "BOMSHAK", force_retry: bool =
         and getattr(existing, "is_available", False)
     ):
         return existing
+    if existing is not None:
+        _GLOBAL_POB_SESSIONS.pop(character_id, None)
+        try:
+            existing.close()
+        except Exception:
+            logger.warning("Failed to close stale PoB2 session %s", character_id, exc_info=True)
 
     now = time.time()
     last_fail = _FAILED_CHARACTERS.get(character_id, 0.0)
@@ -59,6 +67,7 @@ def get_or_create_pob_session(character_id: str = "BOMSHAK", force_retry: bool =
             return sess
         _FAILED_CHARACTERS[character_id] = now
     except Exception:
+        logger.warning("PoB2 session init failed for %s", character_id, exc_info=True)
         _FAILED_CHARACTERS[character_id] = now
     return None
 
@@ -83,14 +92,19 @@ def invalidate_pob_session(character_id: str | None = None) -> None:
     """Invalidate or reset the cached PoB2 session so it will re-initialize on next use."""
     global _GLOBAL_POB_SESSIONS, _FAILED_CHARACTERS
     if character_id:
-        sess = _GLOBAL_POB_SESSIONS.pop(character_id, None)
+        sess = _GLOBAL_POB_SESSIONS.get(character_id)
         if sess is not None:
             try:
                 sess.sync_character()
             except Exception:
-                pass
+                logger.warning("PoB2 sync failed for %s", character_id, exc_info=True)
         _FAILED_CHARACTERS.pop(character_id, None)
     else:
+        for sess in list(_GLOBAL_POB_SESSIONS.values()):
+            try:
+                sess.close()
+            except Exception:
+                logger.warning("Failed to close PoB2 session", exc_info=True)
         _GLOBAL_POB_SESSIONS.clear()
         _FAILED_CHARACTERS.clear()
 

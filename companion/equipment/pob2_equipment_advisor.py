@@ -22,6 +22,24 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from companion.equipment.schema import SlotType
 
+logger = logging.getLogger(__name__)
+
+
+def load_pob_mcp_modules(backend_path: Path | None = None) -> tuple[Any, Any] | None:
+    """Import (poe_api, poe_oauth) from the PoB2 MCP backend; None if missing or broken."""
+    if not backend_path:
+        return None
+    server_dir = backend_path / "server"
+    import_dir = server_dir if server_dir.exists() else backend_path
+    if str(import_dir) not in sys.path:
+        sys.path.insert(0, str(import_dir))
+    try:
+        from pob_mcp import poe_api, poe_oauth
+    except Exception:
+        logger.warning("Failed to import pob_mcp modules from %s", import_dir, exc_info=True)
+        return None
+    return poe_api, poe_oauth
+
 try:
     from pob_mcp.engine import EngineError, EngineTimeoutError
 except ImportError:
@@ -365,6 +383,7 @@ class Pob2EquipmentSession:
                 self.unavailable_reason = f"Initialization error: {exc}"
                 self.is_healthy = False
                 self.unhealthy_reason = f"Initialization error: {exc}"
+                self.close()
                 return False
 
         # Live environment initialization
@@ -381,13 +400,13 @@ class Pob2EquipmentSession:
             self.unavailable_reason = "Docker daemon is not running (zero-backend fallback active)"
             return False
 
-        server_dir = self.backend_path / "server"
-        import_dir = server_dir if server_dir.exists() else self.backend_path
-        if str(import_dir) not in sys.path:
-            sys.path.insert(0, str(import_dir))
-
+        modules = load_pob_mcp_modules(self.backend_path)
+        if modules is None:
+            self.is_available = False
+            self.unavailable_reason = "Failed to import pob_mcp modules"
+            return False
+        poe_api, poe_oauth = modules
         try:
-            from pob_mcp import poe_api, poe_oauth
             from pob_mcp.engine import PobEngine
         except Exception as exc:
             self.is_available = False
@@ -428,6 +447,7 @@ class Pob2EquipmentSession:
         except Exception as exc:
             self.is_available = False
             self.unavailable_reason = f"Failed to start PoB2 Docker engine: {exc}"
+            self.close()
             return False
 
         # Import character and setup initial baseline
@@ -453,6 +473,7 @@ class Pob2EquipmentSession:
             self.unavailable_reason = f"Failed to import character into PoB2: {exc}"
             self.is_healthy = False
             self.unhealthy_reason = f"Failed to import character into PoB2: {exc}"
+            self.close()
             return False
 
     def _recover_session(self) -> bool:
@@ -1244,12 +1265,12 @@ class Pob2EquipmentSession:
                 try:
                     self.sandbox_engine.close()
                 except Exception:
-                    pass
+                    logger.warning("Failed to close PoB2 sandbox engine", exc_info=True)
                 self.sandbox_engine = None
             if self.engine is not None and hasattr(self.engine, "close"):
                 try:
                     self.engine.close()
                 except Exception:
-                    pass
+                    logger.warning("Failed to close PoB2 engine", exc_info=True)
                 self.engine = None
             self.is_available = False

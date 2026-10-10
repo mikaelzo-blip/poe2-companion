@@ -89,6 +89,8 @@ def test_resolve_stage():
     ["Endgame"],
     ["lvl 120-130"],
     ["Endgame", "Mageblood"],
+    ["lvl 1-64", "lvl 65-100", "Endgame", "Mageblood"],
+    ["lvl 1-100", "Endgame", "Mageblood"],
 ])
 def test_synthetic_titles_cover_all_levels_once(titles):
     p = GuideProfile(slug="x", name="x", imported_at="t",

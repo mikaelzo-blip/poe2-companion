@@ -53,6 +53,8 @@ def parse_level_range(title: str) -> tuple[int | None, int | None, bool]:
 
 def assign_level_ranges(profile: GuideProfile) -> GuideProfile:
     """Return a new profile with min_level/max_level/auto set from stage titles."""
+    if not profile.stages:
+        return profile
     parsed = [parse_level_range(s.title) for s in profile.stages]
     out: list[GuideStage] = []
     prev_max = 0
@@ -92,7 +94,7 @@ def assign_level_ranges(profile: GuideProfile) -> GuideProfile:
         prev_auto_max, last_ok = hi, i
     out[last_ok] = out[last_ok].model_copy(update={"max_level": 100})
     for i, st in enumerate(out):  # non-auto keyword duplicates mirror the first keyword stage
-        if parsed[i][2] and not st.auto and kw_first is not None and out[kw_first].auto:
+        if parsed[i][2] and not st.auto and i != kw_first:
             out[i] = st.model_copy(update={"min_level": out[kw_first].min_level,
                                            "max_level": out[kw_first].max_level})
     return profile.model_copy(update={"stages": out})

@@ -58,7 +58,7 @@ def test_unconvertible_input_raises(bad):
 
 
 def test_unknown_property_line_is_ignored():
-    raw = ("Rarity: RARE\nRune Grip\nIron Gauntlets\nItem Level: 5\nLevelReq: 1\n"
+    raw = ("Rarity: RARE\nRune Grip\nAdorned Gloves\nItem Level: 5\nLevelReq: 1\n"
            "Runic Ward: 62\nImplicits: 0\n+30 to maximum Life")
     text = pob_item_to_clipboard(raw)
     assert "+30 to maximum Life" in text and "Runic Ward" not in text

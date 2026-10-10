@@ -1,0 +1,76 @@
+import json
+from pathlib import Path
+
+import pytest
+
+from companion.builds.mobalytics import parse_mobalytics_guide
+from companion.builds.stages import parse_level_range, resolve_stage
+
+GUIDES = Path(__file__).resolve().parents[2] / "fixtures" / "guides"
+
+
+def _profile(prefix):
+    p = next(GUIDES.glob(f"{prefix}*.json"))
+    return parse_mobalytics_guide(json.loads(p.read_text(encoding="utf-8")))[0]
+
+
+@pytest.mark.parametrize("title,expected", [
+    ("lvl 1-14", (1, 14, False)),
+    ("Level 20-30", (20, 30, False)),
+    ("Lv 5-9", (5, 9, False)),
+    ("lvl 52 Swap", (52, 52, False)),
+    ("lvl 85", (85, 85, False)),
+    ("33-51", (33, 51, False)),
+    ("Act 1", (1, 15, False)),
+    ("Act 2", (16, 29, False)),
+    ("Act 3", (30, 44, False)),
+    ("Act 4", (45, 55, False)),
+    ("Interlude", (56, 64, False)),
+    ("Act 1 & 2 (Pre-Ascend)", (1, 29, False)),
+    ("Act 4 to Endgame", (45, 64, False)),
+    ("Early Endgame", (65, None, True)),
+    ("Mageblood", (65, None, True)),
+    ("DoT Cap", (65, None, True)),
+    ("Uber Endgame", (65, None, True)),
+    ("Random title", (None, None, False)),
+])
+def test_parse_level_range(title, expected):
+    assert parse_level_range(title) == expected
+
+
+def _ranges(p):
+    return [(s.min_level, s.max_level) for s in p.stages], [s.auto for s in p.stages]
+
+
+def test_fubgun_ranges():
+    r, a = _ranges(_profile("fubgun"))
+    assert r == [(1, 14), (15, 32), (33, 51), (52, 52), (53, 84), (85, 85),
+                 (86, 100), (86, 100), (86, 100)]
+    assert a == [True] * 7 + [False] * 2
+
+
+def test_navira_ranges():
+    r, a = _ranges(_profile("navira"))
+    assert r == [(1, 15), (16, 29), (30, 44), (45, 64), (65, 100)] + [(65, 100)] * 3
+    assert a == [True] * 5 + [False] * 3
+
+
+def test_plant_oracle_single_stage():
+    assert _ranges(_profile("plant"))[0] == [(1, 100)]
+
+
+@pytest.mark.parametrize("prefix", ["fubgun", "navira", "plant"])
+def test_every_level_resolves_to_one_auto_stage(prefix):
+    p = _profile(prefix)
+    for lvl in range(1, 101):
+        hits = [s for s in p.stages if s.auto and s.min_level <= lvl <= s.max_level]
+        assert len(hits) == 1, (prefix, lvl)
+
+
+def test_resolve_stage():
+    p = _profile("fubgun")
+    assert resolve_stage(p, 60).title == "lvl 53-68"
+    dot = next(s for s in p.stages if s.title == "DoT Cap")
+    assert resolve_stage(p, 60, override_id=dot.id).title == "DoT Cap"
+    assert resolve_stage(p, 60, override_id="nope").title == "lvl 53-68"
+    assert resolve_stage(p, None) is p.stages[0]

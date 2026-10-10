@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from companion.builds.guide import GuideProfile, GuideStage, StageItem
+from companion.builds.stages import assign_level_ranges
 from companion.equipment.api_adapter import ITEM_CLASS_PLURAL
 
 FORMAT = "poe2-companion-guide/1"
@@ -88,4 +89,4 @@ def parse_mobalytics_guide(data: dict) -> tuple[GuideProfile, str | None, list[s
         imported_at=datetime.now(timezone.utc).isoformat(), stages=stages,
         has_pob=pob is not None, pob_stage_id=stages[-1].id,
     )
-    return profile, pob, warnings
+    return assign_level_ranges(profile), pob, warnings

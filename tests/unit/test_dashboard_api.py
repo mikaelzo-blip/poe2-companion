@@ -1498,3 +1498,49 @@ def test_second_import_keeps_stale_facts_and_manual_facts(tmp_path: Path) -> Non
     after = load_baseline(tmp_path, "T")
     assert after.life.value == 500 and after.life.source == BaselineSource.MANUAL_USER_INPUT
     assert after.raw_fire_res.value == 30 and after.raw_fire_res.verification == VerificationState.STALE
+
+
+def test_import_same_gear_keeps_manual_fact_verified_changed_gear_stales_it(tmp_path: Path) -> None:
+    from companion.dashboard_api import import_character_payload
+    from companion.equipment.baseline import BaselineSource, CharacterFact
+    from companion.equipment.baseline_cli import load_baseline, save_baseline
+    from companion.state.provenance import VerificationState
+
+    req = {"character_id": "T", "character_data": {"items": [boots_item()]}}
+    import_character_payload(req, tmp_path)
+    base = load_baseline(tmp_path, "T")
+    base.life = CharacterFact[int].create(500, source=BaselineSource.MANUAL_USER_INPUT)
+    save_baseline(tmp_path, base)
+    import_character_payload(req, tmp_path)
+    assert load_baseline(tmp_path, "T").life.verification == VerificationState.VERIFIED
+    import_character_payload(
+        {"character_id": "T", "character_data": {"items": [boots_item(), gloves_item()]}}, tmp_path
+    )
+    after = load_baseline(tmp_path, "T")
+    assert after.life.value == 500 and after.life.verification == VerificationState.STALE
+
+
+def test_get_current_raw_converts_pob_session_text(tmp_path: Path) -> None:
+    from companion.dashboard_api import get_current_raw
+
+    eq = json.loads((PROJECT_ROOT / "tests" / "fixtures" / "pob" / "get_equipped.json").read_text(encoding="utf-8"))
+    sess = MagicMock()
+    sess.get_equipped_item.side_effect = lambda s: eq.get(s, {"equipped": False})
+    raw = get_current_raw(tmp_path, "T", "helmet", sess)
+    assert raw.startswith("Item Class: Helmets") and "Implicits:" not in raw and "{" not in raw
+
+
+def test_get_current_raw_falls_back_to_loadout_on_bad_pob_text(tmp_path: Path) -> None:
+    from companion.dashboard_api import get_current_raw
+    from companion.equipment.loadout import EquippedLoadout
+    from companion.equipment.loadout_cli import save_loadout
+    from companion.equipment.parser import parse_item_text
+    from companion.equipment.schema import SlotType
+
+    lo = EquippedLoadout.create_draft(character_id="T")
+    lo.transition_slot(SlotType.HELMET, parse_item_text(SAMPLE_BOOTS_TEXT.replace("Boots", "Helmets"), target_slot=SlotType.HELMET))
+    lo.finalize(loadout_id="x")
+    save_loadout(tmp_path, lo)
+    sess = MagicMock()
+    sess.get_equipped_item.return_value = {"equipped": True, "raw": "garbage"}
+    assert "Brimstone Greaves" in get_current_raw(tmp_path, "T", "helmet", sess)

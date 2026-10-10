@@ -97,10 +97,11 @@ def get_current_raw(
         for p_slot in pob_slot_candidates:
             try:
                 eq = pob_session.get_equipped_item(p_slot)
-                if isinstance(eq, dict) and "raw" in eq and eq["raw"]:
-                    return eq["raw"]
+                if isinstance(eq, dict) and eq.get("raw"):
+                    from companion.equipment.pob_item_text import pob_item_to_clipboard
+                    return pob_item_to_clipboard(eq["raw"])
             except Exception:
-                pass
+                pass  # includes PobItemTextError: fall back to the loadout text
 
     try:
         from companion.equipment.loadout_cli import load_loadout
@@ -1018,6 +1019,13 @@ def _import_character_payload_locked(payload: dict[str, Any], runtime_dir: Path)
     save_loadout(runtime_dir, loadout)
     if baseline is not None:
         if current_baseline is not None:
+            same_gear = (
+                current_loadout is not None and current_loadout.is_finalized
+                and current_loadout.compute_fingerprint() == loadout.compute_fingerprint()
+            )
+            if same_gear:
+                # Same gear: keep the previous anchor so the following apply does not stale every fact.
+                baseline.anchored_loadout_fingerprint = current_baseline.anchored_loadout_fingerprint
             for attr_name in (
                 "life", "armour", "evasion", "energy_shield", "mana", "spirit", "deflection",
                 "raw_fire_res", "effective_fire_res", "max_fire_res", "fire_overcap_buffer",
@@ -1029,7 +1037,7 @@ def _import_character_payload_locked(payload: dict[str, Any], runtime_dir: Path)
                 old = getattr(current_baseline, attr_name, None)
                 new = getattr(baseline, attr_name, None)
                 if old is not None and getattr(old, "source", None) == BaselineSource.MANUAL_USER_INPUT:
-                    setattr(baseline, attr_name, old)
+                    setattr(baseline, attr_name, old if same_gear else old.mark_stale())
                 elif new is not None and getattr(new, "is_known", False):
                     continue
                 elif old is not None and getattr(old, "value", None) is not None:

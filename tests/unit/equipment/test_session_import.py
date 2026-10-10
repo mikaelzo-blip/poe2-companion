@@ -164,3 +164,20 @@ def test_apply_waits_for_character_runtime_lock(tmp_path):
     lock.release()
     t.join(5)
     assert load_baseline(tmp_path, "T") is not None
+
+
+def test_different_item_with_fewer_known_mods_is_a_real_swap(tmp_path):
+    from companion.state.provenance import VerificationState
+    apply_session_to_runtime(tmp_path, "T", _sess())
+    stored = load_loadout(tmp_path, "T").get_slot(SlotType.HELMET).item
+    base = load_baseline(tmp_path, "T")
+    base.life = CharacterFact[int].create(500, source=BaselineSource.MANUAL_USER_INPUT)
+    save_baseline(tmp_path, base)
+    head, _, mods = HELM_RAW.partition("Implicits: 0\n")
+    swapped = head.replace("Plague Crest", "Other Crest") + "Implicits: 0\n" + mods.splitlines()[1]  # +74 life only
+    apply_session_to_runtime(tmp_path, "T", _sess(swapped))
+    lo = load_loadout(tmp_path, "T")
+    assert lo.get_slot(SlotType.HELMET).item.name == "Other Crest" != stored.name
+    assert lo.revision == 2
+    b = load_baseline(tmp_path, "T")
+    assert b.life.value == 500 and b.life.verification == VerificationState.STALE

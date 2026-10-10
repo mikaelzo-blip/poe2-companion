@@ -79,13 +79,14 @@ def _apply_items(loadout: EquippedLoadout, parsed: list, cleared: list = ()) -> 
         entry = loadout.get_slot(slot, weapon_set=wset)
         stored = entry.item if entry else None
         if stored is not None:
-            if _known_mods(item) < _known_mods(stored):
-                # PoB text parsed worse than what we already hold: keep the stored item.
+            same_item = (stored.name, stored.base_type) == (item.name, item.base_type)
+            if same_item and _known_mods(item) < _known_mods(stored):
+                # Same item, PoB text parsed worse than what we hold: keep the stored item.
                 if (key := (stored.item_id, item.item_id)) not in _LOGGED_KEEPS:
                     _LOGGED_KEEPS.add(key)
                     logger.warning("PoB2 item for %s has fewer known mods than stored item; keeping stored", slot.value)
                 continue
-            if (stored.name, stored.base_type) == (item.name, item.base_type):
+            if same_item:
                 # PoB text carries no attribute requirements; they come from the base, so keep them.
                 item = item.model_copy(update={
                     "required_str": stored.required_str, "required_dex": stored.required_dex,

@@ -282,3 +282,12 @@ Some search forever for their path.
     unknown_mods = [m for m in item.modifiers if m.modifier_type == NormalizedModifierType.UNKNOWN_MODIFIER]
     assert len(unknown_mods) == 1
     assert unknown_mods[0].raw_text == "10% increased Light Radius"
+
+
+def test_parse_talisman_is_two_handed():
+    text = "Item Class: Talismans\nRarity: Rare\nGuide Weapon 1 Swap\nNettle Talisman\n--------\nPhysical Damage: 12-20"
+    item = parse_item_text(text)
+    assert item.slot == SlotType.MAIN_HAND
+    assert item.slot_occupancy == SlotOccupancy.TWO_HAND
+    assert item.slot_conflict_topology.occupied_slots == [SlotType.MAIN_HAND, SlotType.OFF_HAND]
+    assert item.slot_conflict_topology.is_known is True

@@ -11,6 +11,14 @@ GUIDES = Path(__file__).resolve().parents[2] / "fixtures" / "guides"
 NAMES = [p.stem for p in GUIDES.glob("*.json")]
 
 
+def _family(slot):
+    if slot.startswith("Weapon"):
+        return {SlotType.MAIN_HAND, SlotType.OFF_HAND}
+    if slot.startswith("Ring"):
+        return {SlotType.RING_1, SlotType.RING_2}
+    return {SlotType(slot.lower().replace(" ", "_"))}
+
+
 def _parse(name):
     return parse_mobalytics_guide(json.loads((GUIDES / f"{name}.json").read_text(encoding="utf-8")))
 
@@ -48,9 +56,37 @@ def test_all_non_unique_items_parse(name):
         for it in st.items.values():
             assert it.item_class in ITEM_CLASS_SLUG_LABELS.values()
             if not it.is_unique:
-                parse_item_text(it.raw_text)
+                c = parse_item_text(it.raw_text)
+                assert c.slot_conflict_topology.is_known, (it.slot, it.name)
+                assert c.slot in _family(it.slot), (it.slot, it.name, c.slot)
 
 
 def test_bad_format():
     with pytest.raises(ValueError):
         parse_mobalytics_guide({"format": "x"})
+
+
+def _synth(items):
+    return {"format": "poe2-companion-guide/1", "slug": "s", "name": "S",
+            "variants": [{"id": "a", "title": "A", "items": items, "skills": []}]}
+
+
+def test_synthetic_edge_cases():
+    rare = {"name": "Iron Ring", "item_class": "ring", "is_unique": False, "stats": [], "mods": []}
+    data = _synth({
+        "leftRing": rare,
+        "helmet": None,
+        "belt": {"name": "Mageblood", "item_class": "belt", "is_unique": True},
+        "charm1": rare,
+        "flask1": rare,
+        "mainHand.set1": {"name": "Odd Thing", "item_class": "war-fan", "is_unique": False,
+                          "stats": [], "mods": []},
+    })
+    prof, pob, warnings = parse_mobalytics_guide(data)
+    items = prof.stages[0].items
+    assert set(items) == {"Ring 1", "Belt", "Weapon 1"}
+    assert items["Belt"].is_unique and items["Belt"].raw_text is None
+    assert items["Weapon 1"].item_class == "War Fan"
+    assert pob is None and not prof.has_pob
+    assert sum("charm1" in w or "flask1" in w for w in warnings) == 2
+    assert any("war-fan" in w for w in warnings)

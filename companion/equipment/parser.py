@@ -156,8 +156,8 @@ def parse_slot_topology_for_base(
             is_known=True,
         )
 
-    # Two Hand Staves (Fubgun Set 1)
-    if "staff" in cls_lower or "staves" in cls_lower or "staff" in base_lower:
+    # Two Hand Staves and Talismans (PoB base data: talisman = two_hand_weapon) (Fubgun Set 1)
+    if "staff" in cls_lower or "staves" in cls_lower or "staff" in base_lower or "talisman" in cls_lower or "talisman" in base_lower:
         slot = SlotType.MAIN_HAND
         return slot, SlotOccupancy.TWO_HAND, SlotConflictTopology(
             occupied_slots=[SlotType.MAIN_HAND, SlotType.OFF_HAND],

@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import sys
 import threading
+import time
 from typing import Any, Callable
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -326,6 +327,8 @@ class Pob2EquipmentSession:
         self.xml: str | None = None
         self.class_name: str | None = None
         self.level: int | None = None
+        self.last_synced_at: float = 0.0
+        self._last_zone: str | None = None
         self.equipped_items: dict[str, dict[str, Any]] = {}
         self.defenses_before: dict[str, Any] = {}
         self.stats_before: dict[str, Any] = {}
@@ -377,6 +380,7 @@ class Pob2EquipmentSession:
                 self.is_available = True
                 self.is_healthy = True
                 self.unhealthy_reason = None
+                self.last_synced_at = time.monotonic()
                 return True
             except Exception as exc:
                 self.is_available = False
@@ -467,6 +471,7 @@ class Pob2EquipmentSession:
             self.is_available = True
             self.is_healthy = True
             self.unhealthy_reason = None
+            self.last_synced_at = time.monotonic()
             return True
         except Exception as exc:
             self.is_available = False
@@ -601,10 +606,26 @@ class Pob2EquipmentSession:
 
                 self.defenses_before = self.engine.call("get_defenses")
                 self.stats_before = self.engine.call("calc_stats")
+                self.last_synced_at = time.monotonic()
                 return True
             except Exception as exc:
                 logging.getLogger(__name__).warning("Failed to sync character in PoB2 session: %s", exc)
                 return False
+
+    def needs_refresh(
+        self,
+        level: int | None,
+        zone: str | None,
+        max_age_s: float = 600.0,
+        now: float | None = None,
+    ) -> bool:
+        """True when the character leveled up, changed zone, or the last sync is stale."""
+        now = time.monotonic() if now is None else now
+        zone_changed = zone is not None and self._last_zone is not None and zone != self._last_zone
+        if zone is not None:
+            self._last_zone = zone
+        leveled = level is not None and (self.level is None or level > self.level)
+        return leveled or zone_changed or (now - self.last_synced_at) > max_age_s
 
     def get_current_item_name(self, slot: str) -> str | None:
         """Get the current equipped item name for a given slot."""

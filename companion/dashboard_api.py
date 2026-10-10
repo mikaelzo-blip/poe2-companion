@@ -274,6 +274,15 @@ class _EvalContext:
         }
 
 
+def character_level_and_zone(char_data: dict[str, Any]) -> tuple[int | None, str | None]:
+    """Read level and current_zone from character JSON (each either {"value": x} or plain)."""
+    def plain(v: Any) -> Any:
+        return v.get("value") if isinstance(v, dict) else v
+
+    lvl, zone = plain(char_data.get("level")), plain(char_data.get("current_zone"))
+    return (lvl if isinstance(lvl, int) else None), (zone if isinstance(zone, str) else None)
+
+
 def _build_eval_context(
     payload: dict[str, Any], raw_text: str, runtime_dir: Path, pob_session: Any | None
 ) -> _EvalContext | dict[str, Any]:
@@ -281,7 +290,8 @@ def _build_eval_context(
     from companion.equipment.zone_threats import get_zone_threat_profile
 
     char_id = resolve_char_id(payload.get("character_id"), runtime_dir)
-    char_level = getattr(pob_session, "level", None) if pob_session is not None else None
+    session_level = getattr(pob_session, "level", None) if pob_session is not None else None
+    file_level = None
     zone_id = payload.get("zone")
     char_class = None
     char_stats: dict[str, Any] = {}
@@ -291,20 +301,11 @@ def _build_eval_context(
             c_data = json.loads(char_file.read_text(encoding="utf-8"))
             char_class = c_data.get("character_class")
             char_stats.update(c_data)
-            if not char_level:
-                lvl = c_data.get("level")
-                if isinstance(lvl, dict):
-                    char_level = lvl.get("value")
-                elif isinstance(lvl, int):
-                    char_level = lvl
-            if not zone_id:
-                cz = c_data.get("current_zone")
-                if isinstance(cz, dict):
-                    zone_id = cz.get("value")
-                elif isinstance(cz, str):
-                    zone_id = cz
+            file_level, file_zone = character_level_and_zone(c_data)
+            zone_id = zone_id or file_zone
     except Exception:
-        pass
+        logging.getLogger(__name__).warning("Failed to read character file %s", char_id, exc_info=True)
+    char_level = max((v for v in (session_level, file_level) if v is not None), default=None)
 
     try:
         from companion.equipment.baseline_cli import load_baseline

@@ -72,6 +72,47 @@ def get_or_create_pob_session(character_id: str = "BOMSHAK", force_retry: bool =
     return None
 
 
+_REFRESHING: set[str] = set()
+_REFRESH_LOCK = threading.Lock()
+
+
+def _spawn_daemon(fn: Callable[[], None]) -> None:
+    threading.Thread(target=fn, daemon=True).start()
+
+
+def maybe_refresh_pob_session(
+    character_id: str,
+    level: int | None,
+    zone: str | None,
+    spawn: Callable[[Callable[[], None]], None] = _spawn_daemon,
+) -> bool:
+    """Re-sync a cached session in the background when stale; True if a refresh was started."""
+    sess = _GLOBAL_POB_SESSIONS.get(character_id)
+    if sess is None or not sess.needs_refresh(level, zone):
+        return False
+    with _REFRESH_LOCK:
+        if character_id in _REFRESHING:
+            return False
+        _REFRESHING.add(character_id)
+
+    def run() -> None:
+        try:
+            sess.sync_character()
+        except Exception:
+            logger.warning("PoB2 refresh failed for %s", character_id, exc_info=True)
+        finally:
+            with _REFRESH_LOCK:
+                _REFRESHING.discard(character_id)
+
+    try:
+        spawn(run)
+    except Exception:
+        with _REFRESH_LOCK:
+            _REFRESHING.discard(character_id)
+        raise
+    return True
+
+
 def sync_equipped_item_to_pob_session(character_id: str, slot: str, raw_text: str) -> bool:
     """Synchronize an equipped item directly into the active PoB2 session."""
     global _GLOBAL_POB_SESSIONS
@@ -206,7 +247,12 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
 def _api_status(q: dict[str, str]) -> Any:
     from companion.dashboard_api import get_dashboard_status
     char_id = normalize_char_id(q.get("char_id"))
-    return get_dashboard_status(RUNTIME_DIR, char_id=char_id, pob_session=get_or_create_pob_session(char_id))
+    data = get_dashboard_status(RUNTIME_DIR, char_id=char_id, pob_session=get_or_create_pob_session(char_id))
+    character = data.get("character") if isinstance(data, dict) else None
+    if isinstance(character, dict):
+        from companion.dashboard_api import character_level_and_zone
+        maybe_refresh_pob_session(char_id, *character_level_and_zone(character))
+    return data
 
 
 def _api_clipboard_poll(q: dict[str, str]) -> Any:

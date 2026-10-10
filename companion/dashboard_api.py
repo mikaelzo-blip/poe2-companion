@@ -1018,7 +1018,7 @@ def import_character_payload(payload: dict[str, Any], runtime_dir: Path) -> dict
                     setattr(baseline, attr_name, old)
                 elif new is not None and getattr(new, "is_known", False):
                     continue
-                elif old is not None and getattr(old, "is_known", False):
+                elif old is not None and getattr(old, "value", None) is not None:
                     setattr(baseline, attr_name, old.mark_stale())
         save_baseline(runtime_dir, baseline)
 

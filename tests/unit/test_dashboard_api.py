@@ -1481,3 +1481,21 @@ def test_import_keeps_manual_facts_and_marks_others_stale(tmp_path: Path) -> Non
     after = load_baseline(tmp_path, "T")
     assert after.life.value == 500 and after.life.source == BaselineSource.MANUAL_USER_INPUT
     assert after.raw_fire_res.value == 30 and after.raw_fire_res.verification == VerificationState.STALE
+
+
+def test_second_import_keeps_stale_facts_and_manual_facts(tmp_path: Path) -> None:
+    from companion.dashboard_api import import_character_payload
+    from companion.equipment.baseline import BaselineSource, CharacterFact, CharacterStatBaseline
+    from companion.equipment.baseline_cli import load_baseline, save_baseline
+    from companion.state.provenance import VerificationState
+
+    base = CharacterStatBaseline.create_empty(character_id="T", anchored_loadout_revision=1)
+    base.life = CharacterFact[int].create(500, source=BaselineSource.MANUAL_USER_INPUT)
+    base.raw_fire_res = CharacterFact[int].create(30, source=BaselineSource.GGG_OFFICIAL_API)
+    save_baseline(tmp_path, base)
+    req = {"character_id": "T", "character_data": {"items": [boots_item()]}}
+    import_character_payload(req, tmp_path)
+    import_character_payload(req, tmp_path)
+    after = load_baseline(tmp_path, "T")
+    assert after.life.value == 500 and after.life.source == BaselineSource.MANUAL_USER_INPUT
+    assert after.raw_fire_res.value == 30 and after.raw_fire_res.verification == VerificationState.STALE

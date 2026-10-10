@@ -91,7 +91,9 @@ def pob_item_to_clipboard(raw: str) -> str:
             quality = m.group(1) if int(m.group(1)) else None
         elif (m := re.match(r"^LevelReq:\s*(\d+)", line)):
             level = m.group(1)
-        elif not _META.match(line):
+        elif _META.match(line) or re.match(r"^[A-Za-z][\w' ]*:\s*\S", line):
+            continue  # known metadata or an unknown "Name: value" property (e.g. Runic Ward): ignored
+        else:
             raise PobItemTextError(f"unrecognised header line: {line!r}")
     if implicits is None:
         raise PobItemTextError("missing 'Implicits:' line")

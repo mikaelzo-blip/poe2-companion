@@ -575,6 +575,7 @@ Requirements: Level 12
       <div class="modal-subtabs">
         <button class="modal-tab-btn active" id="mtab-public-profile">Opsi A: Tarik Profil Publik</button>
         <button class="modal-tab-btn" id="mtab-paste-json">Opsi B: Paste Character JSON</button>
+        <button class="modal-tab-btn" id="mtab-guides">📚 Tambah Guide</button>
       </div>
 
       <!-- Tab 1: Tarik Profil Publik -->
@@ -617,6 +618,18 @@ Requirements: Level 12
           📥 Terapkan Seluruh Equipment ke Loadout
         </button>
         <div id="sync-json-msg" style="margin-top: 10px; font-size: 11px; line-height: 1.4; display: none;"></div>
+      </div>
+
+      <!-- Tab 3: Tambah Guide -->
+      <div class="modal-tab-content" id="mcontent-guides" style="display: none;">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.4;">
+          <a id="guide-bookmarklet" href="#" class="btn" style="display:inline-block; padding:4px 10px; border:1px solid var(--accent-gold); border-radius:4px; color:var(--accent-gold); text-decoration:none;">Salin Guide PoE2</a><br>
+          Seret tombol ini ke bookmark bar, buka halaman guide mobalytics, lalu klik bookmark-nya.
+        </p>
+        <textarea id="guide-import-textarea" class="modal-textarea" rows="6" placeholder="Paste teks guide di sini (Ctrl+V)..."></textarea>
+        <button class="btn btn-primary btn-block" id="btn-do-import-guide" style="margin-top: 10px; background: var(--accent-gold); color: #000; font-weight: 700;">Impor Guide</button>
+        <div id="guide-import-msg" style="margin-top: 10px; font-size: 11px; line-height: 1.4; display: none;"></div>
+        <div id="guide-list" style="margin-top: 12px; font-size: 12px;"></div>
       </div>
     </div>
   </div>

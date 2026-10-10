@@ -284,8 +284,9 @@ Some search forever for their path.
     assert unknown_mods[0].raw_text == "10% increased Light Radius"
 
 
-def test_parse_talisman_is_two_handed():
-    text = "Item Class: Talismans\nRarity: Rare\nGuide Weapon 1 Swap\nNettle Talisman\n--------\nPhysical Damage: 12-20"
+@pytest.mark.parametrize("base", ["Nettle Talisman", "Roaring Talisman", "Lumbering Talisman"])
+def test_parse_talisman_is_two_handed(base):
+    text = f"Item Class: Talismans\nRarity: Rare\nGuide Weapon 1 Swap\n{base}\n--------\nPhysical Damage: 12-20"
     item = parse_item_text(text)
     assert item.slot == SlotType.MAIN_HAND
     assert item.slot_occupancy == SlotOccupancy.TWO_HAND

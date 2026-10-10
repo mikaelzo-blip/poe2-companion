@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import logging
@@ -11,12 +12,18 @@ from typing import Any
 from companion.equipment.clipboard import get_clipboard_text
 from companion.equipment.engine import EquipmentIntelligenceEngine
 from companion.equipment.fubgun_priorities import evaluate_fubgun_weapon_policy, evaluate_fubgun_equipment_policy
-from companion.equipment.tactical_advisor import generate_tactical_advice, merge_verdicts
+from companion.equipment.recommendation import Verdict
+from companion.equipment.tactical_advisor import TacticalAdvice, generate_tactical_advice, merge_verdicts
 from companion.equipment.live_watcher import evaluate_live_candidate
 from companion.equipment.parser import parse_item_text
-from companion.equipment.pob2_equipment_advisor import Pob2EquipmentSession, resolve_pob2_backend_path
+from companion.equipment.pob2_equipment_advisor import (
+    Pob2EquipmentSession,
+    PobEquipmentDelta,
+    normalize_and_validate_pob_slot,
+    resolve_pob2_backend_path,
+)
 from companion.equipment.rules import BuildProgressionStage
-from companion.equipment.schema import SlotType
+from companion.equipment.schema import SlotType, WeaponSetContext
 from companion.state.schema import CharacterState
 from companion.state.store import CharacterStateStore
 
@@ -205,30 +212,85 @@ def _stamp_evaluated(res: dict[str, Any]) -> dict[str, Any]:
     return res
 
 
-def _evaluate_item_payload_impl(
-    payload: dict[str, Any],
-    runtime_dir: Path,
-    pob_session: Any | None = None,
-) -> dict[str, Any]:
-    """Execute real PoB2 and Fubgun equipment policy evaluation on submitted item text."""
-    raw_text = payload.get("raw_text", "").strip()
-    if not raw_text:
-        return {"error": "Item raw text is empty."}
+_SLOT_DISPLAY = {
+    "ring1": "Ring 1",
+    "ring2": "Ring 2",
+    "main_hand": "Main Hand",
+    "off_hand": "Off Hand",
+    "body_armour": "Body Armour",
+    "weapon1": "Weapon 1",
+    "weapon2": "Weapon 2",
+    "weapon1_swap": "Weapon 1 Swap",
+    "weapon2_swap": "Weapon 2 Swap",
+}
+
+
+@dataclass
+class _EvalContext:
+    """Everything an evaluation branch needs about the candidate, character and zone."""
+
+    raw_text: str
+    runtime_dir: Path
+    char_id: str
+    pob_session: Any
+    candidate: Any
+    requested_slot: str | None
+    guide: str
+    stage: BuildProgressionStage
+    zone_id: str | None
+    zone_profile: Any
+    char_level: int | None
+    char_stats: dict[str, Any]
+    is_weapon: bool
+
+    @property
+    def name(self) -> str:
+        return self.candidate.name or self.candidate.base_type
+
+    def slot_key(self, default: str) -> str:
+        return self.requested_slot or (self.candidate.slot.value if self.candidate.slot else default)
+
+    def current_info(self, slot: str) -> tuple[str, str]:
+        return get_current_item_info(self.runtime_dir, self.char_id, slot, self.pob_session)
+
+    def tactical(self, delta: Any, slot: str) -> TacticalAdvice:
+        return generate_tactical_advice(
+            delta=delta,
+            candidate_raw=self.raw_text,
+            current_raw=get_current_raw(self.runtime_dir, self.char_id, slot, self.pob_session),
+            zone_id=self.zone_id,
+            character_level=self.char_level,
+            stage=self.stage,
+            character_stats=self.char_stats,
+        )
+
+    def result(self, engine: str, **fields: Any) -> dict[str, Any]:
+        return {
+            "success": True,
+            "engine": engine,
+            "item_name": self.name,
+            "base_type": self.candidate.base_type,
+            **fields,
+        }
+
+
+def _build_eval_context(
+    payload: dict[str, Any], raw_text: str, runtime_dir: Path, pob_session: Any | None
+) -> _EvalContext | dict[str, Any]:
+    """Load character/zone/stage context and parse the candidate (error dict on parse failure)."""
+    from companion.equipment.zone_threats import get_zone_threat_profile
 
     char_id = resolve_char_id(payload.get("character_id"), runtime_dir)
-    stage_str = payload.get("stage", "lvl 1-14")
-    requested_slot = payload.get("slot")
-
     char_level = getattr(pob_session, "level", None) if pob_session is not None else None
     zone_id = payload.get("zone")
     char_class = None
-    char_stats_context: dict[str, Any] = {}
+    char_stats: dict[str, Any] = {}
     try:
         char_file = runtime_dir / "characters" / f"{char_id}.json"
         if char_file.is_file():
             c_data = json.loads(char_file.read_text(encoding="utf-8"))
             char_class = c_data.get("character_class")
-            char_stats_context.update(c_data)
+            char_stats.update(c_data)
             if not char_level:
                 lvl = c_data.get("level")
                 if isinstance(lvl, dict):
@@ -248,638 +310,552 @@ def _evaluate_item_payload_impl(
         from companion.equipment.baseline_cli import load_baseline
         b_data = load_baseline(runtime_dir, char_id)
         if b_data:
-            char_stats_context.update(b_data.model_dump())
+            char_stats.update(b_data.model_dump())
     except Exception:
         pass
 
     guide = payload.get("guide")
-    if not guide:
-        if char_class and "sorceress" in char_class.lower():
-            guide = "navira_varashta"
-        elif char_class and "mercenary" not in char_class.lower():
-            guide = "generic_pob2"
-        else:
-            guide = "fubgun_flameblast"
-    else:
+    if guide:
         guide = guide.lower().strip()
-
-    from companion.equipment.zone_threats import get_zone_threat_profile
-    zone_profile = get_zone_threat_profile(zone_id, character_level=char_level)
-
-    stage = _resolve_stage(stage_str, char_level)
-
-    def _get_current_raw(slot_name: str) -> str:
-        return get_current_raw(runtime_dir, char_id, slot_name, pob_session)
-
-    def _get_current_info(slot_name: str) -> tuple[str, str]:
-        return get_current_item_info(runtime_dir, char_id, slot_name, pob_session)
+    elif char_class and "sorceress" in char_class.lower():
+        guide = "navira_varashta"
+    elif char_class and "mercenary" not in char_class.lower():
+        guide = "generic_pob2"
+    else:
+        guide = "fubgun_flameblast"
 
     try:
         candidate = parse_item_text(raw_text)
     except Exception as exc:
         return {"error": f"Failed to parse item: {exc}"}
 
-    is_weapon = (
-        candidate.slot in (SlotType.MAIN_HAND, SlotType.OFF_HAND)
-        or "Crossbow" in candidate.base_type
-        or "Staff" in candidate.base_type
-        or "Bow" in candidate.base_type
-        or "Wand" in candidate.base_type
-        or "Sceptre" in candidate.base_type
+    is_weapon = candidate.slot in (SlotType.MAIN_HAND, SlotType.OFF_HAND) or any(
+        w in candidate.base_type for w in ("Crossbow", "Staff", "Bow", "Wand", "Sceptre")
+    )
+    return _EvalContext(
+        raw_text=raw_text,
+        runtime_dir=runtime_dir,
+        char_id=char_id,
+        pob_session=pob_session,
+        candidate=candidate,
+        requested_slot=payload.get("slot"),
+        guide=guide,
+        stage=_resolve_stage(payload.get("stage", "lvl 1-14"), char_level),
+        zone_id=zone_id,
+        zone_profile=get_zone_threat_profile(zone_id, character_level=char_level),
+        char_level=char_level,
+        char_stats=char_stats,
+        is_weapon=is_weapon,
     )
 
-    if is_weapon and guide == "navira_varashta":
-        cand_base = (candidate.base_type or "").lower()
-        if "crossbow" in cand_base or "bow" in cand_base:
-            from companion.equipment.recommendation import Verdict
-            from companion.equipment.tactical_advisor import TacticalAdvice
-            reason = "Crossbow / Bow tidak cocok untuk Sorceress Navira's Fracturing Varashta! Gunakan Staff atau Wand/Focus yang memberikan Spell / Lightning Damage."
-            tactical = TacticalAdvice(
-                verdict=Verdict.REJECT,
-                verdict_badge="🛑 SENJATA INKOMPATIBEL",
-                tactical_headline=f"Senjata ini ({candidate.name or candidate.base_type}) tidak kompatibel dengan build aktif Sorceress!",
-                zone_name=zone_profile.friendly_name,
-                zone_threat_warning=zone_profile.survival_notes,
-                actionable_recommendation=f"Jangan pasang! {reason} Tetap gunakan senjata yang sesuai dengan skill Sorceress.",
-                trade_off_bullets=[reason],
-            )
-            return {
-                "success": True,
-                "engine": "heuristic",
-                "item_name": candidate.name or candidate.base_type,
-                "base_type": candidate.base_type,
-                "slot": requested_slot or (candidate.slot.value if candidate.slot else "main_hand"),
-                "verdict": Verdict.REJECT.value,
-                "reason": reason,
-                "gains": [],
-                "trade_offs": [reason],
-                "formatted_report": f"🛑 REJECT / SENJATA INKOMPATIBEL\n\n{candidate.name or candidate.base_type}\n\nReason:\n{reason}",
-                "dps_delta": 0.0,
-                "life_delta": 0,
-                "is_weapon": True,
-                "tactical_advice": tactical.model_dump(),
-            }
+
+def _zone_reject_report(ctx: _EvalContext, slot: str, fallback_display: str, tactical: TacticalAdvice) -> str:
+    """Report text used when zone-aware tactical advice overrides a non-REJECT policy verdict."""
+    disp_slot = _SLOT_DISPLAY.get(slot.lower().replace(" ", ""), fallback_display)
+    return (
+        f"=== Zone-Aware Equipment Recommendation ===\n"
+        f"Candidate : {ctx.name}\n"
+        f"Slot      : {disp_slot}\n"
+        f"Verdict   : REJECT (HOLD CURRENT GEAR)\n"
+        f"Reason    : {tactical.tactical_headline}\n"
+        f"Action    : {tactical.actionable_recommendation}\n"
+    )
+
+
+def _incompatible_weapon(
+    ctx: _EvalContext, engine: str, reason: str, headline: str, action: str, formatted: str
+) -> dict[str, Any]:
+    tactical = TacticalAdvice(
+        verdict=Verdict.REJECT,
+        verdict_badge="🛑 SENJATA INKOMPATIBEL",
+        tactical_headline=headline,
+        zone_name=ctx.zone_profile.friendly_name,
+        zone_threat_warning=ctx.zone_profile.survival_notes,
+        actionable_recommendation=action,
+        trade_off_bullets=[reason],
+    )
+    return ctx.result(
+        engine,
+        slot=ctx.slot_key("main_hand"),
+        verdict=Verdict.REJECT.value,
+        reason=reason,
+        gains=[],
+        trade_offs=[reason],
+        formatted_report=formatted,
+        dps_delta=0.0,
+        life_delta=0,
+        is_weapon=True,
+        tactical_advice=tactical.model_dump(),
+    )
+
+
+def _pob2_generic_weapon(ctx: _EvalContext, delta: Any) -> dict[str, Any]:
+    """Generic / Navira weapon verdict straight from PoB2 DPS, Life and EHP deltas."""
+    dps = getattr(delta, "dps_delta", 0.0) or 0.0
+    life = getattr(delta, "life_delta", 0.0) or 0.0
+    ehp = getattr(delta, "ehp_delta", 0.0) or 0.0
+
+    gains: list[str] = []
+    trade_offs: list[str] = []
+    for value, text in ((dps, f"{dps:.1f}% DPS"), (life, f"{life:.0f} Life"), (ehp, f"{ehp:.1f} EHP")):
+        if value > 0:
+            gains.append(f"+{text}")
+        elif value < 0:
+            trade_offs.append(text)
+
+    prefix = "⚡ UPGRADE SORCERESS" if ctx.guide == "navira_varashta" else "⚔️ UPGRADE SENJATA"
+    if dps > 0 and ehp >= -5.0:
+        verdict = Verdict.EQUIP_NOW
+        badge = f"{prefix} (PoB2)"
+        headline = f"Senjata ini memberikan kenaikan {dps:+.1f}% DPS!"
+        action = "Pasang sekarang ke slot senjata aktif Anda."
+    elif dps > 0:
+        verdict = Verdict.CONDITIONAL_UPGRADE
+        badge = "⚖️ UPGRADE BERSYARAT (DPS NAIK)"
+        headline = f"DPS naik {dps:+.1f}%, namun ada penurunan pertahanan."
+        action = "Pertimbangkan jika Anda membutuhkan damage ekstra dan pertahanan masih cukup."
+    elif dps < 0:
+        verdict = Verdict.REJECT
+        badge = "🛑 REJECT / DPS TURUN"
+        headline = f"DPS turun {dps:.1f}% dibandingkan senjata saat ini."
+        action = "Jangan pasang. Senjata saat ini memberikan output damage lebih tinggi."
+    else:
+        verdict = Verdict.CONDITIONAL_UPGRADE
+        badge = "⚖️ STATS IDENTIK"
+        headline = "DPS identik dengan senjata saat ini."
+        action = "Bandingkan affix pendukung lainnya."
+
+    tactical = TacticalAdvice(
+        verdict=verdict,
+        verdict_badge=badge,
+        tactical_headline=headline,
+        zone_name=ctx.zone_profile.friendly_name,
+        zone_threat_warning=ctx.zone_profile.survival_notes,
+        actionable_recommendation=action,
+        gains_bullets=gains,
+        trade_off_bullets=trade_offs,
+    )
+    policy_label = "Navira Varashta Optimizer" if ctx.guide == "navira_varashta" else "PoB2 Generic Optimizer"
+    return ctx.result(
+        "pob2",
+        slot=ctx.slot_key("main_hand"),
+        verdict=verdict.value,
+        reason=headline,
+        gains=gains,
+        trade_offs=trade_offs,
+        formatted_report=f"{badge}\n\n{ctx.name}\n\n{headline}\n{action}",
+        policy_verdict=f"{policy_label}: {badge}",
+        dps_delta=dps,
+        life_delta=life,
+        is_weapon=True,
+        tactical_advice=tactical.model_dump(),
+    )
+
+
+def _pob2_ambiguous_1h(ctx: _EvalContext, route_res: Any, cid: Any) -> dict[str, Any] | None:
+    """Simulate a 1H weapon in both hands of the target set and let the dual policy pick."""
+    from companion.equipment.fubgun_priorities import evaluate_dual_weapon_policy
+
+    dual_wep = ctx.pob_session.simulate_ambiguous_1h_weapon(
+        raw_candidate=ctx.raw_text,
+        candidate_id=cid,
+        candidate_name=ctx.name,
+        target_set=route_res.target_set,
+        build_stage=ctx.stage,
+    )
+    if dual_wep is None or not dual_wep.slot1_delta or not dual_wep.slot2_delta:
+        return None
+    swap = route_res.target_set == WeaponSetContext.WEAPON_SET_2
+    advice = evaluate_dual_weapon_policy(
+        dual_wep.slot1_delta,
+        dual_wep.slot2_delta,
+        stage=ctx.stage,
+        slot1_name="Weapon 1 Swap" if swap else "Weapon 1",
+        slot2_name="Weapon 2 Swap" if swap else "Weapon 2",
+    )
+    if not advice:
+        return None
+    rec_slot = advice.recommended_slot or (
+        "Weapon 1" if route_res.target_set == WeaponSetContext.WEAPON_SET_1 else "Weapon 1 Swap"
+    )
+    return ctx.result(
+        "pob2",
+        slot=rec_slot.lower().replace(" ", "_"),
+        recommended_slot=advice.recommended_slot,
+        verdict=advice.summary_verdict,
+        reason=advice.summary_verdict,
+        gains=advice.rec1.gains + advice.rec2.gains,
+        trade_offs=advice.trade_off_notes,
+        formatted_report=advice.formatted_output,
+        is_weapon=True,
+    )
+
+
+def _pob2_fubgun_weapon(ctx: _EvalContext, pob_slot: str, cid: Any) -> dict[str, Any] | None:
+    """Fubgun weapon routing (compatibility, target set, 1H ambiguity) plus PoB2 simulation."""
+    from companion.equipment.fubgun_weapon_router import FubgunWeaponProfileRouter
+
+    sess = ctx.pob_session
+    req = ctx.requested_slot
+    current_name = getattr(sess, "get_current_item_name", lambda s: None)
+    route_res = FubgunWeaponProfileRouter().route_candidate(
+        candidate=ctx.candidate,
+        stage=ctx.stage,
+        raw_text=ctx.raw_text,
+        candidate_id=cid,
+        currently_equipped={s: current_name(s) for s in ("Weapon 1", "Weapon 2", "Weapon 1 Swap", "Weapon 2 Swap")},
+    )
+    if not route_res.is_valid:
+        reason = route_res.rejection_reason
+        header = "🔴 REJECT / INCOMPATIBLE" if "breaker" not in reason.lower() else "🔴 REJECT / BUILD BREAKER"
+        return _incompatible_weapon(
+            ctx,
+            "pob2",
+            reason,
+            headline=f"Senjata ini ({ctx.name}) tidak kompatibel dengan build aktif!",
+            action=f"Jangan pasang! {reason}. Tetap gunakan senjata yang sesuai dengan skill build Anda.",
+            formatted=f"{header}\n\n{ctx.name}\n\nReason:\n{reason}",
+        )
+
+    if not req:
+        pob_slot = route_res.target_slot or pob_slot
+
+    current_in_target = current_name(pob_slot)
+    if current_in_target and ctx.candidate.name == current_in_target:
+        return ctx.result(
+            "pob2",
+            slot=req or pob_slot.lower().replace(" ", "_"),
+            verdict="ALREADY_EQUIPPED",
+            reason=f"{pob_slot} is already recorded as Current Weapon ({ctx.candidate.name}).",
+            gains=[],
+            trade_offs=[],
+            formatted_report=f"⚪ ALREADY EQUIPPED\n\n{ctx.candidate.name} is already equipped in {pob_slot}.",
+            is_weapon=True,
+        )
+
+    if (
+        not req
+        and route_res.topology_plan
+        and route_res.topology_plan.is_ambiguous_placement
+        and hasattr(sess, "simulate_ambiguous_1h_weapon")
+    ):
+        res = _pob2_ambiguous_1h(ctx, route_res, cid)
+        if res is not None:
+            return res
+
+    if not req and route_res.context and hasattr(sess, "simulate_weapon_plan"):
+        delta = sess.simulate_weapon_plan(route_res.context)
+    else:
+        delta = sess.simulate_item(slot=pob_slot, raw_candidate=ctx.raw_text, candidate_id=cid, candidate_name=ctx.name)
+    if delta is None:
+        return None
+
+    rec = evaluate_fubgun_weapon_policy(
+        delta,
+        skill_context=route_res.skill_context if not req else None,
+        stage=ctx.stage,
+        use_color=False,
+    )
+    tactical = ctx.tactical(delta, pob_slot)
+    final_verdict = merge_verdicts(rec.verdict, tactical.verdict)
+    zone_override = final_verdict == "REJECT" and getattr(rec.verdict, "value", str(rec.verdict)) != "REJECT"
+    slot_key = ctx.slot_key("main_hand")
+    cur_name, cur_base = ctx.current_info(slot_key)
+    return ctx.result(
+        "pob2",
+        current_item_name=getattr(delta, "current_item_name", None) or cur_name,
+        current_item_base_type=cur_base,
+        slot=slot_key,
+        verdict=final_verdict,
+        reason=tactical.tactical_headline if zone_override else rec.reason,
+        gains=rec.gains,
+        trade_offs=rec.trade_offs,
+        formatted_report=rec.formatted_output,
+        dps_delta=getattr(delta, "dps_delta", 0.0),
+        life_delta=getattr(delta, "life_delta", 0),
+        is_weapon=True,
+        tactical_advice=tactical.model_dump(),
+    )
+
+
+def _pob2_weapon(ctx: _EvalContext) -> dict[str, Any] | None:
+    req = ctx.requested_slot
+    if req in ("set2_main_hand", "Weapon 1 Swap"):
+        pob_slot = "Weapon 1 Swap"
+    elif req in ("set2_off_hand", "Weapon 2 Swap"):
+        pob_slot = "Weapon 2 Swap"
+    elif req in ("off_hand", "Weapon 2") or ctx.candidate.slot == SlotType.OFF_HAND:
+        pob_slot = "Weapon 2"
+    else:
+        pob_slot = "Weapon 1"
+
+    cid = ctx.pob_session.submit_candidate(ctx.raw_text, candidate_name=ctx.name, slot=pob_slot)
+    if ctx.guide in ("generic_pob2", "navira_varashta"):
+        delta = ctx.pob_session.simulate_item(
+            slot=pob_slot, raw_candidate=ctx.raw_text, candidate_id=cid, candidate_name=ctx.name
+        )
+        if delta is not None:
+            return _pob2_generic_weapon(ctx, delta)
+    return _pob2_fubgun_weapon(ctx, pob_slot, cid)
+
+
+def _pob2_ring(ctx: _EvalContext) -> dict[str, Any] | None:
+    """Simulate the ring in both ring slots and pick the better one."""
+    from companion.equipment.fubgun_priorities import evaluate_dual_ring_policy
+
+    sess = ctx.pob_session
+    cid = sess.submit_candidate(ctx.raw_text, candidate_name=ctx.name, slot="Ring 1")
+    dual_res = sess.simulate_ring_candidate(raw_candidate=ctx.raw_text, candidate_id=cid, candidate_name=ctx.name)
+    if dual_res is None:
+        return None
+    advice = evaluate_dual_ring_policy(
+        dual_res.ring1_delta,
+        dual_res.ring2_delta,
+        stage=ctx.stage,
+        empty_ring1=sess.is_slot_empty("Ring 1"),
+        empty_ring2=sess.is_slot_empty("Ring 2"),
+    )
+    if not advice:
+        return None
+
+    r1, r2 = advice.ring1_recommendation, advice.ring2_recommendation
+    if advice.recommended_slot == "Ring 1":
+        ring_verdict, gains, chosen_delta = r1.verdict.value, r1.gains, dual_res.ring1_delta
+        trade_offs = r1.trade_offs + advice.trade_off_notes
+    elif advice.recommended_slot == "Ring 2":
+        ring_verdict, gains, chosen_delta = r2.verdict.value, r2.gains, dual_res.ring2_delta
+        trade_offs = r2.trade_offs + advice.trade_off_notes
+    else:
+        both_reject = r1.verdict == Verdict.REJECT and r2.verdict == Verdict.REJECT
+        ring_verdict = Verdict.REJECT.value if both_reject else Verdict.CONDITIONAL_UPGRADE.value
+        gains = list(dict.fromkeys(r1.gains + r2.gains))
+        trade_offs = advice.trade_off_notes or list(dict.fromkeys(r1.trade_offs + r2.trade_offs))
+        chosen_delta = dual_res.ring1_delta
+
+    tactical = ctx.tactical(chosen_delta, advice.recommended_slot or "Ring 1")
+    final_verdict = merge_verdicts(ring_verdict, tactical.verdict)
+    target_slot = (
+        advice.recommended_slot.lower().replace(" ", "")
+        if advice.recommended_slot
+        else (ctx.requested_slot or "ring1")
+    )
+    cur_name, cur_base = ctx.current_info(target_slot)
+    zone_override = final_verdict == "REJECT" and ring_verdict != "REJECT"
+    return ctx.result(
+        "pob2",
+        current_item_name=getattr(chosen_delta, "current_item_name", None) or cur_name,
+        current_item_base_type=cur_base,
+        slot=target_slot,
+        recommended_slot=advice.recommended_slot,
+        verdict=final_verdict,
+        reason=tactical.tactical_headline if zone_override else advice.summary_verdict,
+        gains=gains,
+        trade_offs=trade_offs,
+        formatted_report=advice.formatted_output,
+        is_weapon=False,
+        tactical_advice=tactical.model_dump(),
+    )
+
+
+def _pob2_other(ctx: _EvalContext) -> dict[str, Any] | None:
+    """Armour / jewellery slots: one PoB2 simulation against the Fubgun equipment policy."""
+    pob_slot = normalize_and_validate_pob_slot(ctx.candidate.slot)
+    cid = ctx.pob_session.submit_candidate(ctx.raw_text, candidate_name=ctx.name, slot=pob_slot)
+    delta = ctx.pob_session.simulate_item(
+        slot=pob_slot, raw_candidate=ctx.raw_text, candidate_id=cid, candidate_name=ctx.name
+    )
+    if delta is None:
+        return None
+    rec = evaluate_fubgun_equipment_policy(delta, stage=ctx.stage, use_color=False)
+    tactical = ctx.tactical(delta, pob_slot)
+    final_verdict = merge_verdicts(rec.verdict, tactical.verdict)
+    zone_override = final_verdict == "REJECT" and "REJECT" not in str(getattr(rec, "verdict", ""))
+    slot_key = ctx.slot_key(pob_slot.lower())
+    cur_name, cur_base = ctx.current_info(slot_key)
+    return ctx.result(
+        "pob2",
+        current_item_name=getattr(delta, "current_item_name", None) or cur_name,
+        current_item_base_type=cur_base,
+        slot=slot_key,
+        verdict=final_verdict,
+        reason=tactical.tactical_headline if zone_override else rec.reason,
+        gains=rec.gains,
+        trade_offs=rec.trade_offs,
+        formatted_report=_zone_reject_report(ctx, pob_slot, pob_slot, tactical) if zone_override else rec.formatted_output,
+        dps_delta=getattr(delta, "dps_delta", 0.0),
+        life_delta=getattr(delta, "life_delta", 0),
+        is_weapon=False,
+        tactical_advice=tactical.model_dump(),
+    )
+
+
+def _known_delta(stat: Any) -> int:
+    return int(stat.delta) if getattr(stat, "is_delta_known", False) else 0
+
+
+def _evaluate_heuristic(ctx: _EvalContext) -> dict[str, Any]:
+    """Local stat-projection engine; always available, used when PoB2 is absent or fails."""
+    engine = EquipmentIntelligenceEngine(runtime_dir=ctx.runtime_dir)
+
+    target_wset = None
+    target_slot_param = ctx.requested_slot
+    if ctx.requested_slot:
+        req_clean = ctx.requested_slot.lower().strip()
+        if req_clean.startswith("set2_") or req_clean.startswith("swap_"):
+            target_wset = WeaponSetContext.WEAPON_SET_2
+            target_slot_param = req_clean.replace("set2_", "").replace("swap_", "")
+        elif req_clean in ("weapon_1_swap", "weapon 1 swap"):
+            target_wset = WeaponSetContext.WEAPON_SET_2
+            target_slot_param = "main_hand"
+        elif req_clean in ("weapon_2_swap", "weapon 2 swap"):
+            target_wset = WeaponSetContext.WEAPON_SET_2
+            target_slot_param = "off_hand"
+        elif ctx.is_weapon:
+            target_wset = WeaponSetContext.WEAPON_SET_1
+
+    formatted_report = evaluate_live_candidate(
+        candidate_text=ctx.raw_text,
+        engine=engine,
+        runtime_dir=ctx.runtime_dir,
+        character_id=ctx.char_id,
+        stage=ctx.stage,
+        target_weapon_set="set_2" if target_wset == WeaponSetContext.WEAPON_SET_2 else None,
+    )
+    rec = engine.evaluate_candidate(
+        item_text=ctx.raw_text,
+        character_id=ctx.char_id,
+        stage=ctx.stage,
+        target_slot=target_slot_param,
+        target_weapon_set=target_wset,
+    )
+
+    proj = rec.projection
+    gains: list[str] = []
+    trade_offs: list[str] = []
+    stat_specs = [
+        (proj.life, "Life"),
+        (proj.fire_res, "% Fire Res"),
+        (proj.cold_res, "% Cold Res"),
+        (proj.lightning_res, "% Lightning Res"),
+        (proj.chaos_res, "% Chaos Res"),
+        (proj.armour, "Armour"),
+        (proj.evasion, "Evasion"),
+        (proj.energy_shield, "Energy Shield"),
+        (proj.movement_speed, "% Movement Speed"),
+        (proj.strength, "Strength"),
+        (proj.dexterity, "Dexterity"),
+        (proj.intelligence, "Intelligence"),
+    ]
+    for sp, label in stat_specs:
+        if getattr(sp, "is_delta_known", False) and sp.delta != 0:
+            val = int(sp.delta)
+            if val > 0:
+                gains.append(f"+{val} {label}" if not label.startswith("%") else f"+{val}{label}")
+            elif val < 0:
+                trade_offs.append(f"{val} {label}" if not label.startswith("%") else f"{val}{label}")
+
+    slot_value = ctx.slot_key("equipment")
+    cur_name, cur_base = ctx.current_info(slot_value)
+    out = ctx.result(
+        "heuristic",
+        current_item_name=cur_name,
+        current_item_base_type=cur_base,
+        slot=slot_value,
+        verdict=rec.verdict.value if hasattr(rec.verdict, "value") else str(rec.verdict),
+        reason=getattr(rec, "verdict_reason", None) or getattr(rec, "reason", "Evaluated by Equipment Intelligence Engine"),
+        gains=gains,
+        trade_offs=trade_offs,
+        formatted_report=formatted_report,
+        is_weapon=ctx.is_weapon,
+    )
+
+    try:
+        delta_fb = PobEquipmentDelta(
+            slot=ctx.candidate.slot.value if ctx.candidate.slot else "equipment",
+            candidate_id=0,
+            candidate_name=ctx.name,
+            current_item_name=cur_name,
+            life_delta=_known_delta(proj.life),
+            fire_res_delta=_known_delta(proj.fire_res),
+            cold_res_delta=_known_delta(proj.cold_res),
+            lightning_res_delta=_known_delta(proj.lightning_res),
+            chaos_res_delta=_known_delta(proj.chaos_res),
+            armour_delta=_known_delta(proj.armour),
+            evasion_delta=_known_delta(proj.evasion),
+            es_delta=_known_delta(proj.energy_shield),
+            ehp_delta=float(proj.life.delta) if getattr(proj.life, "is_delta_known", False) else 0.0,
+            strength_delta=_known_delta(proj.strength),
+            dexterity_delta=_known_delta(proj.dexterity),
+            intelligence_delta=_known_delta(proj.intelligence),
+        )
+        tactical = ctx.tactical(delta_fb, slot_value)
+    except Exception:
+        return out
+
+    out["tactical_advice"] = tactical.model_dump()
+    tac_v = getattr(tactical.verdict, "value", str(tactical.verdict))
+    if tac_v == "REJECT":
+        out["verdict"] = "REJECT"
+        if "REJECT" not in str(getattr(rec, "verdict", "")):
+            out["reason"] = tactical.tactical_headline
+            out["formatted_report"] = _zone_reject_report(ctx, slot_value, slot_value.capitalize(), tactical)
+    elif tac_v == "EQUIP_NOW":
+        out["verdict"] = "EQUIP_NOW"
+        out["reason"] = tactical.tactical_headline
+    elif tac_v == "CONDITIONAL_UPGRADE" and "INSUFFICIENT_DATA" in str(getattr(rec, "verdict", "")):
+        out["verdict"] = "CONDITIONAL_UPGRADE"
+        out["reason"] = tactical.tactical_headline
+    return out
+
+
+def _evaluate_item_payload_impl(
+    payload: dict[str, Any],
+    runtime_dir: Path,
+    pob_session: Any | None = None,
+) -> dict[str, Any]:
+    """Execute real PoB2 and Fubgun equipment policy evaluation on submitted item text."""
+    raw_text = payload.get("raw_text", "").strip()
+    if not raw_text:
+        return {"error": "Item raw text is empty."}
+
+    ctx = _build_eval_context(payload, raw_text, runtime_dir, pob_session)
+    if isinstance(ctx, dict):
+        return ctx
+
+    if ctx.is_weapon and ctx.guide == "navira_varashta" and "bow" in (ctx.candidate.base_type or "").lower():
+        reason = (
+            "Crossbow / Bow tidak cocok untuk Sorceress Navira's Fracturing Varashta! "
+            "Gunakan Staff atau Wand/Focus yang memberikan Spell / Lightning Damage."
+        )
+        return _incompatible_weapon(
+            ctx,
+            "heuristic",
+            reason,
+            headline=f"Senjata ini ({ctx.name}) tidak kompatibel dengan build aktif Sorceress!",
+            action=f"Jangan pasang! {reason} Tetap gunakan senjata yang sesuai dengan skill Sorceress.",
+            formatted=f"🛑 REJECT / SENJATA INKOMPATIBEL\n\n{ctx.name}\n\nReason:\n{reason}",
+        )
 
     # 1. PoB2 live simulation if session provided and available
     if pob_session is not None and getattr(pob_session, "is_available", False):
-        try:
-            if is_weapon:
-                from companion.equipment.recommendation import Verdict
-                from companion.equipment.tactical_advisor import TacticalAdvice
-
-                if requested_slot in ("set2_main_hand", "Weapon 1 Swap"):
-                    pob_slot = "Weapon 1 Swap"
-                elif requested_slot in ("set2_off_hand", "Weapon 2 Swap"):
-                    pob_slot = "Weapon 2 Swap"
-                elif requested_slot in ("off_hand", "Weapon 2") or candidate.slot == SlotType.OFF_HAND:
-                    pob_slot = "Weapon 2"
-                else:
-                    pob_slot = "Weapon 1"
-
-                cid = pob_session.submit_candidate(
-                    raw_text,
-                    candidate_name=candidate.name or candidate.base_type,
-                    slot=pob_slot,
-                )
-
-                if guide in ("generic_pob2", "navira_varashta"):
-                    delta = pob_session.simulate_item(
-                        slot=pob_slot,
-                        raw_candidate=raw_text,
-                        candidate_id=cid,
-                        candidate_name=candidate.name or candidate.base_type,
-                    )
-                    if delta is not None:
-                        dps = getattr(delta, "dps_delta", 0.0) or 0.0
-                        life = getattr(delta, "life_delta", 0.0) or 0.0
-                        ehp = getattr(delta, "ehp_delta", 0.0) or 0.0
-
-                        gains = []
-                        trade_offs = []
-                        if dps > 0:
-                            gains.append(f"+{dps:.1f}% DPS")
-                        elif dps < 0:
-                            trade_offs.append(f"{dps:.1f}% DPS")
-                        if life > 0:
-                            gains.append(f"+{life:.0f} Life")
-                        elif life < 0:
-                            trade_offs.append(f"{life:.0f} Life")
-                        if ehp > 0:
-                            gains.append(f"+{ehp:.1f} EHP")
-                        elif ehp < 0:
-                            trade_offs.append(f"{ehp:.1f} EHP")
-
-                        prefix = "⚡ UPGRADE SORCERESS" if guide == "navira_varashta" else "⚔️ UPGRADE SENJATA"
-                        if dps > 0 and ehp >= -5.0:
-                            verdict = Verdict.EQUIP_NOW
-                            badge = f"{prefix} (PoB2)"
-                            headline = f"Senjata ini memberikan kenaikan {dps:+.1f}% DPS!"
-                            action = "Pasang sekarang ke slot senjata aktif Anda."
-                        elif dps > 0:
-                            verdict = Verdict.CONDITIONAL_UPGRADE
-                            badge = "⚖️ UPGRADE BERSYARAT (DPS NAIK)"
-                            headline = f"DPS naik {dps:+.1f}%, namun ada penurunan pertahanan."
-                            action = "Pertimbangkan jika Anda membutuhkan damage ekstra dan pertahanan masih cukup."
-                        elif dps < 0:
-                            verdict = Verdict.REJECT
-                            badge = "🛑 REJECT / DPS TURUN"
-                            headline = f"DPS turun {dps:.1f}% dibandingkan senjata saat ini."
-                            action = "Jangan pasang. Senjata saat ini memberikan output damage lebih tinggi."
-                        else:
-                            verdict = Verdict.CONDITIONAL_UPGRADE
-                            badge = "⚖️ STATS IDENTIK"
-                            headline = "DPS identik dengan senjata saat ini."
-                            action = "Bandingkan affix pendukung lainnya."
-
-                        tactical = TacticalAdvice(
-                            verdict=verdict,
-                            verdict_badge=badge,
-                            tactical_headline=headline,
-                            zone_name=zone_profile.friendly_name,
-                            zone_threat_warning=zone_profile.survival_notes,
-                            actionable_recommendation=action,
-                            gains_bullets=gains,
-                            trade_off_bullets=trade_offs,
-                        )
-                        formatted = f"{badge}\n\n{candidate.name or candidate.base_type}\n\n{headline}\n{action}"
-                        policy_label = "Navira Varashta Optimizer" if guide == "navira_varashta" else "PoB2 Generic Optimizer"
-                        return {
-                            "success": True,
-                            "engine": "pob2",
-                            "item_name": candidate.name or candidate.base_type,
-                            "base_type": candidate.base_type,
-                            "slot": requested_slot or (candidate.slot.value if candidate.slot else "main_hand"),
-                            "verdict": verdict.value,
-                            "reason": headline,
-                            "gains": gains,
-                            "trade_offs": trade_offs,
-                            "formatted_report": formatted,
-                            "policy_verdict": f"{policy_label}: {badge}",
-                            "dps_delta": dps,
-                            "life_delta": life,
-                            "is_weapon": True,
-                            "tactical_advice": tactical.model_dump(),
-                        }
-
-                from companion.equipment.fubgun_weapon_router import FubgunWeaponProfileRouter
-                from companion.equipment.schema import WeaponSetContext
-
-                router = FubgunWeaponProfileRouter()
-                currently_equipped_weapons = {
-                    "Weapon 1": getattr(pob_session, "get_current_item_name", lambda s: None)("Weapon 1"),
-                    "Weapon 2": getattr(pob_session, "get_current_item_name", lambda s: None)("Weapon 2"),
-                    "Weapon 1 Swap": getattr(pob_session, "get_current_item_name", lambda s: None)("Weapon 1 Swap"),
-                    "Weapon 2 Swap": getattr(pob_session, "get_current_item_name", lambda s: None)("Weapon 2 Swap"),
-                }
-                route_res = router.route_candidate(
-                    candidate=candidate,
-                    stage=stage,
-                    raw_text=raw_text,
-                    candidate_id=cid,
-                    currently_equipped=currently_equipped_weapons,
-                )
-                if not route_res.is_valid:
-                    header = "🔴 REJECT / INCOMPATIBLE" if "breaker" not in route_res.rejection_reason.lower() else "🔴 REJECT / BUILD BREAKER"
-                    formatted = f"{header}\n\n{candidate.name or candidate.base_type}\n\nReason:\n{route_res.rejection_reason}"
-                    from companion.equipment.tactical_advisor import TacticalAdvice
-                    tactical = TacticalAdvice(
-                        verdict=Verdict.REJECT,
-                        verdict_badge="🛑 SENJATA INKOMPATIBEL",
-                        tactical_headline=f"Senjata ini ({candidate.name or candidate.base_type}) tidak kompatibel dengan build aktif!",
-                        zone_name=zone_profile.friendly_name,
-                        zone_threat_warning=zone_profile.survival_notes,
-                        actionable_recommendation=f"Jangan pasang! {route_res.rejection_reason}. Tetap gunakan senjata yang sesuai dengan skill build Anda.",
-                        trade_off_bullets=[route_res.rejection_reason],
-                    )
-                    return {
-                        "success": True,
-                        "engine": "pob2",
-                        "item_name": candidate.name or candidate.base_type,
-                        "base_type": candidate.base_type,
-                        "slot": requested_slot or (candidate.slot.value if candidate.slot else "main_hand"),
-                        "verdict": Verdict.REJECT.value,
-                        "reason": route_res.rejection_reason,
-                        "gains": [],
-                        "trade_offs": [route_res.rejection_reason],
-                        "formatted_report": formatted,
-                        "dps_delta": 0.0,
-                        "life_delta": 0,
-                        "is_weapon": True,
-                        "tactical_advice": tactical.model_dump(),
-                    }
-
-                # If caller didn't explicitly request a specific slot, use router's target slot
-                if not requested_slot:
-                    pob_slot = route_res.target_slot or pob_slot
-
-                # Check if matches current
-                current_in_target = getattr(pob_session, "get_current_item_name", lambda s: None)(pob_slot)
-                if current_in_target and candidate.name == current_in_target:
-                    return {
-                        "success": True,
-                        "engine": "pob2",
-                        "item_name": candidate.name or candidate.base_type,
-                        "base_type": candidate.base_type,
-                        "slot": requested_slot or pob_slot.lower().replace(" ", "_"),
-                        "verdict": "ALREADY_EQUIPPED",
-                        "reason": f"{pob_slot} is already recorded as Current Weapon ({candidate.name}).",
-                        "gains": [],
-                        "trade_offs": [],
-                        "formatted_report": f"⚪ ALREADY EQUIPPED\n\n{candidate.name} is already equipped in {pob_slot}.",
-                        "is_weapon": True,
-                    }
-
-                # Ambiguous placement (e.g. 1H weapon) when no specific slot requested
-                if not requested_slot and route_res.topology_plan and route_res.topology_plan.is_ambiguous_placement and hasattr(pob_session, "simulate_ambiguous_1h_weapon"):
-                    dual_wep = pob_session.simulate_ambiguous_1h_weapon(
-                        raw_candidate=raw_text,
-                        candidate_id=cid,
-                        candidate_name=candidate.name or candidate.base_type,
-                        target_set=route_res.target_set,
-                        build_stage=stage,
-                    )
-                    if dual_wep is not None and dual_wep.slot1_delta and dual_wep.slot2_delta:
-                        from companion.equipment.fubgun_priorities import evaluate_dual_weapon_policy
-                        advice_dual = evaluate_dual_weapon_policy(
-                            dual_wep.slot1_delta,
-                            dual_wep.slot2_delta,
-                            stage=stage,
-                            slot1_name="Weapon 1 Swap" if route_res.target_set == WeaponSetContext.WEAPON_SET_2 else "Weapon 1",
-                            slot2_name="Weapon 2 Swap" if route_res.target_set == WeaponSetContext.WEAPON_SET_2 else "Weapon 2",
-                        )
-                        if advice_dual:
-                            rec_slot = advice_dual.recommended_slot or ("Weapon 1" if route_res.target_set == WeaponSetContext.WEAPON_SET_1 else "Weapon 1 Swap")
-                            return {
-                                "success": True,
-                                "engine": "pob2",
-                                "item_name": candidate.name or candidate.base_type,
-                                "base_type": candidate.base_type,
-                                "slot": rec_slot.lower().replace(" ", "_"),
-                                "recommended_slot": advice_dual.recommended_slot,
-                                "verdict": advice_dual.summary_verdict,
-                                "reason": advice_dual.summary_verdict,
-                                "gains": advice_dual.rec1.gains + advice_dual.rec2.gains,
-                                "trade_offs": advice_dual.trade_off_notes,
-                                "formatted_report": advice_dual.formatted_output,
-                                "is_weapon": True,
-                            }
-
-                # Specific weapon simulation plan
-                if not requested_slot and route_res.context and hasattr(pob_session, "simulate_weapon_plan"):
-                    delta = pob_session.simulate_weapon_plan(route_res.context)
-                else:
-                    delta = pob_session.simulate_item(
-                        slot=pob_slot,
-                        raw_candidate=raw_text,
-                        candidate_id=cid,
-                        candidate_name=candidate.name or candidate.base_type,
-                    )
-
-                if delta is not None:
-                    rec = evaluate_fubgun_weapon_policy(
-                        delta,
-                        skill_context=route_res.skill_context if not requested_slot else None,
-                        stage=stage,
-                        use_color=False,
-                    )
-                    from companion.equipment.recommendation import Verdict
-                    tactical = generate_tactical_advice(
-                        delta=delta,
-                        candidate_raw=raw_text,
-                        current_raw=_get_current_raw(pob_slot),
-                        zone_id=zone_id,
-                        character_level=char_level,
-                        stage=stage,
-                        character_stats=char_stats_context,
-                    )
-                    final_verdict = merge_verdicts(rec.verdict, tactical.verdict)
-                    slot_key = requested_slot or (candidate.slot.value if candidate.slot else "main_hand")
-                    cur_name, cur_base = _get_current_info(slot_key)
-                    return {
-                        "success": True,
-                        "engine": "pob2",
-                        "item_name": candidate.name or candidate.base_type,
-                        "base_type": candidate.base_type,
-                        "current_item_name": getattr(delta, "current_item_name", None) or cur_name,
-                        "current_item_base_type": cur_base,
-                        "slot": slot_key,
-                        "verdict": final_verdict,
-                        "reason": tactical.tactical_headline if final_verdict == "REJECT" and getattr(rec.verdict, "value", str(rec.verdict)) != "REJECT" else rec.reason,
-                        "gains": rec.gains,
-                        "trade_offs": rec.trade_offs,
-                        "formatted_report": rec.formatted_output,
-                        "dps_delta": getattr(delta, "dps_delta", 0.0),
-                        "life_delta": getattr(delta, "life_delta", 0),
-                        "is_weapon": True,
-                        "tactical_advice": tactical.model_dump(),
-                    }
-            elif candidate.slot in (SlotType.RING_1, SlotType.RING_2) or "ring" in candidate.base_type.lower():
-                cid = pob_session.submit_candidate(
-                    raw_text,
-                    candidate_name=candidate.name or candidate.base_type,
-                    slot="Ring 1",
-                )
-                dual_res = pob_session.simulate_ring_candidate(
-                    raw_candidate=raw_text,
-                    candidate_id=cid,
-                    candidate_name=candidate.name or candidate.base_type,
-                )
-                if dual_res is not None:
-                    from companion.equipment.fubgun_priorities import evaluate_dual_ring_policy
-                    advice = evaluate_dual_ring_policy(
-                        dual_res.ring1_delta,
-                        dual_res.ring2_delta,
-                        stage=stage,
-                        empty_ring1=pob_session.is_slot_empty("Ring 1"),
-                        empty_ring2=pob_session.is_slot_empty("Ring 2"),
-                    )
-                    if advice:
-                        from companion.equipment.recommendation import Verdict
-
-                        if advice.recommended_slot == "Ring 1":
-                            ring_verdict = advice.ring1_recommendation.verdict.value
-                            gains = advice.ring1_recommendation.gains
-                            trade_offs = advice.ring1_recommendation.trade_offs + advice.trade_off_notes
-                            chosen_delta = dual_res.ring1_delta
-                        elif advice.recommended_slot == "Ring 2":
-                            ring_verdict = advice.ring2_recommendation.verdict.value
-                            gains = advice.ring2_recommendation.gains
-                            trade_offs = advice.ring2_recommendation.trade_offs + advice.trade_off_notes
-                            chosen_delta = dual_res.ring2_delta
-                        else:
-                            if (
-                                advice.ring1_recommendation.verdict == Verdict.REJECT
-                                and advice.ring2_recommendation.verdict == Verdict.REJECT
-                            ):
-                                ring_verdict = Verdict.REJECT.value
-                            else:
-                                ring_verdict = Verdict.CONDITIONAL_UPGRADE.value
-                            gains = list(dict.fromkeys(advice.ring1_recommendation.gains + advice.ring2_recommendation.gains))
-                            trade_offs = advice.trade_off_notes or list(
-                                dict.fromkeys(advice.ring1_recommendation.trade_offs + advice.ring2_recommendation.trade_offs)
-                            )
-                            chosen_delta = dual_res.ring1_delta
-
-                        tactical = generate_tactical_advice(
-                            delta=chosen_delta,
-                            candidate_raw=raw_text,
-                            current_raw=_get_current_raw(advice.recommended_slot or "Ring 1"),
-                            zone_id=zone_id,
-                            character_level=char_level,
-                            stage=stage,
-                            character_stats=char_stats_context,
-                        )
-                        final_verdict = merge_verdicts(ring_verdict, tactical.verdict)
-
-                        target_slot = (
-                            advice.recommended_slot.lower().replace(" ", "")
-                            if advice.recommended_slot
-                            else (requested_slot or "ring1")
-                        )
-                        cur_name, cur_base = _get_current_info(target_slot)
-
-                        return {
-                            "success": True,
-                            "engine": "pob2",
-                            "item_name": candidate.name or candidate.base_type,
-                            "base_type": candidate.base_type,
-                            "current_item_name": getattr(chosen_delta, "current_item_name", None) or cur_name,
-                            "current_item_base_type": cur_base,
-                            "slot": target_slot,
-                            "recommended_slot": advice.recommended_slot,
-                            "verdict": final_verdict,
-                            "reason": tactical.tactical_headline if final_verdict == "REJECT" and ring_verdict != "REJECT" else advice.summary_verdict,
-                            "gains": gains,
-                            "trade_offs": trade_offs,
-                            "formatted_report": advice.formatted_output,
-                            "is_weapon": False,
-                            "tactical_advice": tactical.model_dump(),
-                        }
-            else:
-                from companion.equipment.pob2_equipment_advisor import normalize_and_validate_pob_slot
-                pob_slot = normalize_and_validate_pob_slot(candidate.slot)
-                cid = pob_session.submit_candidate(
-                    raw_text,
-                    candidate_name=candidate.name or candidate.base_type,
-                    slot=pob_slot,
-                )
-                delta = pob_session.simulate_item(
-                    slot=pob_slot,
-                    raw_candidate=raw_text,
-                    candidate_id=cid,
-                    candidate_name=candidate.name or candidate.base_type,
-                )
-                if delta is not None:
-                    rec = evaluate_fubgun_equipment_policy(delta, stage=stage, use_color=False)
-                    tactical = generate_tactical_advice(
-                        delta=delta,
-                        candidate_raw=raw_text,
-                        current_raw=_get_current_raw(pob_slot),
-                        zone_id=zone_id,
-                        character_level=char_level,
-                        stage=stage,
-                        character_stats=char_stats_context,
-                    )
-                    final_verdict = merge_verdicts(rec.verdict, tactical.verdict)
-                    report = rec.formatted_output
-                    if final_verdict == "REJECT" and "REJECT" not in str(getattr(rec, "verdict", "")):
-                        slot_display_map = {
-                            "ring1": "Ring 1",
-                            "ring2": "Ring 2",
-                            "main_hand": "Main Hand",
-                            "off_hand": "Off Hand",
-                            "body_armour": "Body Armour",
-                            "weapon1": "Weapon 1",
-                            "weapon2": "Weapon 2",
-                            "weapon1_swap": "Weapon 1 Swap",
-                            "weapon2_swap": "Weapon 2 Swap",
-                        }
-                        disp_slot = slot_display_map.get(pob_slot.lower().replace(" ", ""), pob_slot)
-                        report = (
-                            f"=== Zone-Aware Equipment Recommendation ===\n"
-                            f"Candidate : {candidate.name or candidate.base_type}\n"
-                            f"Slot      : {disp_slot}\n"
-                            f"Verdict   : REJECT (HOLD CURRENT GEAR)\n"
-                            f"Reason    : {tactical.tactical_headline}\n"
-                            f"Action    : {tactical.actionable_recommendation}\n"
-                        )
-                    slot_key = requested_slot or (candidate.slot.value if candidate.slot else pob_slot.lower())
-                    cur_name, cur_base = _get_current_info(slot_key)
-                    return {
-                        "success": True,
-                        "engine": "pob2",
-                        "item_name": candidate.name or candidate.base_type,
-                        "base_type": candidate.base_type,
-                        "current_item_name": getattr(delta, "current_item_name", None) or cur_name,
-                        "current_item_base_type": cur_base,
-                        "slot": slot_key,
-                        "verdict": final_verdict,
-                        "reason": tactical.tactical_headline if final_verdict == "REJECT" and "REJECT" not in str(getattr(rec, "verdict", "")) else rec.reason,
-                        "gains": rec.gains,
-                        "trade_offs": rec.trade_offs,
-                        "formatted_report": report,
-                        "dps_delta": getattr(delta, "dps_delta", 0.0),
-                        "life_delta": getattr(delta, "life_delta", 0),
-                        "is_weapon": False,
-                        "tactical_advice": tactical.model_dump(),
-                    }
-        except Exception:
-            logger.exception("PoB2 evaluation failed for %r; falling back to heuristic engine", candidate.name or candidate.base_type)
+        if ctx.is_weapon:
+            branch = _pob2_weapon
+        elif ctx.candidate.slot in (SlotType.RING_1, SlotType.RING_2) or "ring" in ctx.candidate.base_type.lower():
+            branch = _pob2_ring
         else:
-            logger.warning("PoB2 returned no delta for %r; falling back to heuristic engine", candidate.name or candidate.base_type)
+            branch = _pob2_other
+        try:
+            res = branch(ctx)
+        except Exception:
+            logger.exception("PoB2 evaluation failed for %r; falling back to heuristic engine", ctx.name)
+        else:
+            if res is not None:
+                return res
+            logger.warning("PoB2 returned no delta for %r; falling back to heuristic engine", ctx.name)
 
     # 2. Standard Engine live candidate evaluation (always available locally)
     try:
-        from companion.equipment.schema import WeaponSetContext
-        engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)
-
-        target_wset = None
-        target_slot_param = requested_slot
-        if requested_slot:
-            req_clean = requested_slot.lower().strip()
-            if req_clean.startswith("set2_") or req_clean.startswith("swap_"):
-                target_wset = WeaponSetContext.WEAPON_SET_2
-                target_slot_param = req_clean.replace("set2_", "").replace("swap_", "")
-            elif req_clean in ("weapon_1_swap", "weapon 1 swap"):
-                target_wset = WeaponSetContext.WEAPON_SET_2
-                target_slot_param = "main_hand"
-            elif req_clean in ("weapon_2_swap", "weapon 2 swap"):
-                target_wset = WeaponSetContext.WEAPON_SET_2
-                target_slot_param = "off_hand"
-            elif is_weapon:
-                target_wset = WeaponSetContext.WEAPON_SET_1
-
-        formatted_report = evaluate_live_candidate(
-            candidate_text=raw_text,
-            engine=engine,
-            runtime_dir=runtime_dir,
-            character_id=char_id,
-            stage=stage,
-            target_weapon_set="set_2" if target_wset == WeaponSetContext.WEAPON_SET_2 else None,
-        )
-
-        rec = engine.evaluate_candidate(
-            item_text=raw_text,
-            character_id=char_id,
-            stage=stage,
-            target_slot=target_slot_param,
-            target_weapon_set=target_wset,
-        )
-
-        proj = rec.projection
-        gains: list[str] = []
-        trade_offs: list[str] = []
-        stat_specs = [
-            (proj.life, "Life"),
-            (proj.fire_res, "% Fire Res"),
-            (proj.cold_res, "% Cold Res"),
-            (proj.lightning_res, "% Lightning Res"),
-            (proj.chaos_res, "% Chaos Res"),
-            (proj.armour, "Armour"),
-            (proj.evasion, "Evasion"),
-            (proj.energy_shield, "Energy Shield"),
-            (proj.movement_speed, "% Movement Speed"),
-            (proj.strength, "Strength"),
-            (proj.dexterity, "Dexterity"),
-            (proj.intelligence, "Intelligence"),
-        ]
-        for sp, label in stat_specs:
-            if getattr(sp, "is_delta_known", False) and sp.delta != 0:
-                val = int(sp.delta)
-                if val > 0:
-                    gains.append(f"+{val} {label}" if not label.startswith("%") else f"+{val}{label}")
-                elif val < 0:
-                    trade_offs.append(f"{val} {label}" if not label.startswith("%") else f"{val}{label}")
-
-        reason = getattr(rec, "verdict_reason", None) or getattr(rec, "reason", "Evaluated by Equipment Intelligence Engine")
-        verdict = rec.verdict.value if hasattr(rec.verdict, "value") else str(rec.verdict)
-        slot_value = requested_slot or (candidate.slot.value if candidate.slot else "equipment")
-        cur_name, cur_base = _get_current_info(slot_value)
-
-        tactical_dict = None
-        try:
-            from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-            delta_fb = PobEquipmentDelta(
-                slot=candidate.slot.value if candidate.slot else "equipment",
-                candidate_id=0,
-                candidate_name=candidate.name or candidate.base_type,
-                current_item_name=cur_name,
-                life_delta=int(proj.life.delta) if getattr(proj.life, "is_delta_known", False) else 0,
-                fire_res_delta=int(proj.fire_res.delta) if getattr(proj.fire_res, "is_delta_known", False) else 0,
-                cold_res_delta=int(proj.cold_res.delta) if getattr(proj.cold_res, "is_delta_known", False) else 0,
-                lightning_res_delta=int(proj.lightning_res.delta) if getattr(proj.lightning_res, "is_delta_known", False) else 0,
-                chaos_res_delta=int(proj.chaos_res.delta) if getattr(proj.chaos_res, "is_delta_known", False) else 0,
-                armour_delta=int(proj.armour.delta) if getattr(proj.armour, "is_delta_known", False) else 0,
-                evasion_delta=int(proj.evasion.delta) if getattr(proj.evasion, "is_delta_known", False) else 0,
-                es_delta=int(proj.energy_shield.delta) if getattr(proj.energy_shield, "is_delta_known", False) else 0,
-                ehp_delta=float(proj.life.delta) if getattr(proj.life, "is_delta_known", False) else 0.0,
-                strength_delta=int(proj.strength.delta) if getattr(proj.strength, "is_delta_known", False) else 0,
-                dexterity_delta=int(proj.dexterity.delta) if getattr(proj.dexterity, "is_delta_known", False) else 0,
-                intelligence_delta=int(proj.intelligence.delta) if getattr(proj.intelligence, "is_delta_known", False) else 0,
-            )
-            tactical = generate_tactical_advice(
-                delta=delta_fb,
-                candidate_raw=raw_text,
-                current_raw=_get_current_raw(slot_value),
-                zone_id=zone_id,
-                character_level=char_level,
-                stage=stage,
-                character_stats=char_stats_context,
-            )
-            tactical_dict = tactical.model_dump()
-        except Exception:
-            pass
-
-        out: dict[str, Any] = {
-            "success": True,
-            "engine": "heuristic",
-            "item_name": candidate.name or candidate.base_type,
-            "base_type": candidate.base_type,
-            "current_item_name": cur_name,
-            "current_item_base_type": cur_base,
-            "slot": slot_value,
-            "verdict": verdict,
-            "reason": reason,
-            "gains": gains,
-            "trade_offs": trade_offs,
-            "formatted_report": formatted_report,
-            "is_weapon": is_weapon,
-        }
-        if tactical_dict:
-            out["tactical_advice"] = tactical_dict
-            if tactical:
-                tac_v = getattr(tactical.verdict, "value", str(tactical.verdict))
-                if tac_v == "REJECT":
-                    out["verdict"] = "REJECT"
-                    if "REJECT" not in str(getattr(rec, "verdict", "")):
-                        slot_display_map = {
-                            "ring1": "Ring 1",
-                            "ring2": "Ring 2",
-                            "main_hand": "Main Hand",
-                            "off_hand": "Off Hand",
-                            "body_armour": "Body Armour",
-                            "weapon1": "Weapon 1",
-                            "weapon2": "Weapon 2",
-                            "weapon1_swap": "Weapon 1 Swap",
-                            "weapon2_swap": "Weapon 2 Swap",
-                        }
-                        disp_slot = slot_display_map.get(slot_value.lower().replace(" ", ""), slot_value.capitalize())
-                        out["reason"] = tactical.tactical_headline
-                        out["formatted_report"] = (
-                            f"=== Zone-Aware Equipment Recommendation ===\n"
-                            f"Candidate : {candidate.name or candidate.base_type}\n"
-                            f"Slot      : {disp_slot}\n"
-                            f"Verdict   : REJECT (HOLD CURRENT GEAR)\n"
-                            f"Reason    : {tactical.tactical_headline}\n"
-                            f"Action    : {tactical.actionable_recommendation}\n"
-                        )
-                elif tac_v == "EQUIP_NOW":
-                    out["verdict"] = "EQUIP_NOW"
-                    out["reason"] = tactical.tactical_headline
-                elif tac_v == "CONDITIONAL_UPGRADE" and "INSUFFICIENT_DATA" in str(getattr(rec, "verdict", "")):
-                    out["verdict"] = "CONDITIONAL_UPGRADE"
-                    out["reason"] = tactical.tactical_headline
-        return out
+        return _evaluate_heuristic(ctx)
     except Exception as exc:
         return {"error": f"Evaluation error: {exc}"}
 

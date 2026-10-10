@@ -1408,3 +1408,27 @@ def test_evaluate_item_payload_pob2_failure_falls_back_with_engine_tag(tmp_path:
     assert result.get("success") is True
     assert result.get("engine") == "heuristic"
     assert "PoB2 evaluation failed" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "dps, ehp, verdict, gains, trade_offs",
+    [
+        (4.0, 0.0, "EQUIP_NOW", ["+4.0% DPS"], []),
+        (4.0, -10.0, "CONDITIONAL_UPGRADE", ["+4.0% DPS"], ["-10.0 EHP"]),
+        (-3.0, 0.0, "REJECT", [], ["-3.0% DPS"]),
+        (0.0, 0.0, "CONDITIONAL_UPGRADE", [], []),
+    ],
+)
+def test_generic_pob2_weapon_verdicts(tmp_path: Path, dps, ehp, verdict, gains, trade_offs) -> None:
+    from types import SimpleNamespace
+
+    sess = MagicMock(is_available=True, level=None)
+    sess.simulate_item.return_value = SimpleNamespace(dps_delta=dps, life_delta=0.0, ehp_delta=ehp)
+    payload = {"raw_text": SAMPLE_WEAPON_TEXT, "character_id": "BOMSHAK", "stage": "auto", "guide": "generic_pob2"}
+
+    result = evaluate_item_payload(payload, runtime_dir=tmp_path, pob_session=sess)
+
+    assert result["engine"] == "pob2"
+    assert result["verdict"] == verdict
+    assert result["gains"] == gains
+    assert result["trade_offs"] == trade_offs

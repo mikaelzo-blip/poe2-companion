@@ -42,3 +42,18 @@ def test_text_round_trips_through_parser(items):
 def test_minimal_payload_still_parseable():
     text = ggg_item_to_text({"name": "Doom Bite", "typeLine": "Iron Ring", "frameType": 2})
     assert text.splitlines()[:4] == ["Item Class: Iron Ring", "Rarity: Rare", "Doom Bite", "Iron Ring"]
+
+
+def test_malformed_item_yields_warning_not_exception():
+    from companion.equipment.api_adapter import GGGCharacterAPIAdapter
+
+    payload = {"items": [
+        {"inventoryId": "Boots", "name": "Good Boots", "typeLine": "Furtive Boots", "rarity": "Rare",
+         "explicitMods": ["+50 to maximum Life"]},
+        {"inventoryId": "Helm", "name": "Bad Helm", "typeLine": "Face Mask", "rarity": 5,
+         "properties": [{"name": None, "values": []}], "explicitMods": [None, 3]},
+    ]}
+    loadout, _, warnings = GGGCharacterAPIAdapter.parse_character_payload(payload, "c1")
+    assert loadout.get_slot(SlotType.BOOTS) is not None
+    assert loadout.get_slot(SlotType.HELMET) is None
+    assert any("Bad Helm" in w for w in warnings)

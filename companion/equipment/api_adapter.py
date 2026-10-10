@@ -35,6 +35,8 @@ SEP = "\n--------\n"
 
 def clean_markup(text: str) -> str:
     """Strip GGG markup: ``<tag>{x}`` -> x, ``[a|b]`` -> b, ``[a]`` -> a."""
+    if not isinstance(text, str):
+        return ""
     text = re.sub(r"<[^>]*>\{([^}]*)\}", lambda m: m.group(1), text)
     text = re.sub(r"\[[^\]|]*\|([^\]]*)\]", lambda m: m.group(1), text)
     return re.sub(r"\[([^\]]*)\]", lambda m: m.group(1), text)
@@ -74,7 +76,7 @@ def ggg_item_to_text(item: dict[str, Any]) -> str:
         blocks.append([f"Item Level: {item['ilvl']}"])
 
     for key, suffix in _MOD_GROUPS:
-        mods = [clean_markup(m) + suffix for m in item.get(key) or []]
+        mods = [clean_markup(m) + suffix for m in item.get(key) or [] if isinstance(m, str)]
         if mods:
             blocks.append(mods)
 
@@ -229,9 +231,8 @@ class GGGCharacterAPIAdapter:
             if not name:
                 name = base_type
 
-            item_text = ggg_item_to_text(raw_item)
-
             try:
+                item_text = ggg_item_to_text(raw_item)
                 item_candidate = parse_item_text(
                     item_text,
                     target_slot=slot,

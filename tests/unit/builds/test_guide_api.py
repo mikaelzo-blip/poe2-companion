@@ -173,3 +173,27 @@ def test_stage_override_edge_cases(tmp_path):
     assert set_character_guide_payload(
         {"character_id": "C", "guide": NAMES[0], "stage_override": stage}, tmp_path)["success"]
     assert get_available_guides(tmp_path, "C")["active"] == {"guide": NAMES[0], "stage_override": stage}
+
+
+def test_pob_code_reimport_gets_unique_slug(tmp_path):
+    import base64
+    import zlib
+
+    xml = "<PathOfBuilding2><Items activeItemSet='1'><ItemSet id='1' title='A'/></Items></PathOfBuilding2>"
+    code = base64.urlsafe_b64encode(zlib.compress(xml.encode())).decode()
+    slugs = [import_guide_payload({"text": code}, tmp_path)["slug"] for _ in range(3)]
+    assert len({*slugs}) == 3 and slugs[1] == slugs[0] + "-2" and slugs[2] == slugs[0] + "-3"
+
+
+def test_bad_pob_code_sets_has_pob_false_and_removes_stale_xml(tmp_path):
+    from companion.builds.store import load_guide, load_guide_xml
+
+    d = json.loads(_text(NAMES[0]))
+    import_guide_payload({"text": json.dumps(d)}, tmp_path)
+    slug = d["slug"]
+    assert load_guide_xml(tmp_path, slug) is not None
+    d["pob_code"] = "not-a-code"
+    res = import_guide_payload({"text": json.dumps(d)}, tmp_path)
+    assert res["success"] and any("PoB2 dilewati" in w for w in res["warnings"])
+    assert load_guide(tmp_path, slug).has_pob is False
+    assert load_guide_xml(tmp_path, slug) is None

@@ -1542,6 +1542,7 @@ def import_guide_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str
                     xml = pob_code.decode_share_code(code)
                 except ValueError as exc:
                     warnings.append(f"Kode PoB2 dilewati: {exc}")
+                    profile = profile.model_copy(update={"has_pob": False})
         else:
             if text.startswith("https://pobb.in/"):
                 try:
@@ -1552,6 +1553,10 @@ def import_guide_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str
                 code = text
             xml = pob_code.decode_share_code(code)
             profile = pob_code.parse_pob_xml(xml, f"PoB Guide {date.today().isoformat()}")
+            base, n = profile.slug, 1
+            while load_guide(runtime_dir, profile.slug) is not None:  # never overwrite another import
+                n += 1
+                profile = profile.model_copy(update={"slug": f"{base}-{n}"})
         replaced = load_guide(runtime_dir, profile.slug) is not None
         saved = save_guide(runtime_dir, profile, pob_xml=xml)
         if replaced:

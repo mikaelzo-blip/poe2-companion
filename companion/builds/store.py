@@ -64,6 +64,8 @@ def save_guide(runtime_dir: Path, profile: GuideProfile, pob_xml: str | None = N
     _write(runtime_dir, profile)
     if pob_xml is not None:
         atomic_write_file(_xml(runtime_dir, profile.slug), pob_xml.encode("utf-8"))
+    elif not profile.has_pob:
+        _xml(runtime_dir, profile.slug).unlink(missing_ok=True)  # drop a stale XML from an earlier import
     return profile
 
 

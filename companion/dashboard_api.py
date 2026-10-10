@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,8 @@ from companion.equipment.rules import BuildProgressionStage
 from companion.equipment.schema import SlotType
 from companion.state.schema import CharacterState
 from companion.state.store import CharacterStateStore
+
+logger = logging.getLogger(__name__)
 
 _STAGE_MAP = {
     "lvl 1-14": BuildProgressionStage.LEVELING_1_14,
@@ -297,6 +300,7 @@ def _evaluate_item_payload_impl(
             )
             return {
                 "success": True,
+                "engine": "heuristic",
                 "item_name": candidate.name or candidate.base_type,
                 "base_type": candidate.base_type,
                 "slot": requested_slot or (candidate.slot.value if candidate.slot else "main_hand"),
@@ -396,6 +400,7 @@ def _evaluate_item_payload_impl(
                         policy_label = "Navira Varashta Optimizer" if guide == "navira_varashta" else "PoB2 Generic Optimizer"
                         return {
                             "success": True,
+                            "engine": "pob2",
                             "item_name": candidate.name or candidate.base_type,
                             "base_type": candidate.base_type,
                             "slot": requested_slot or (candidate.slot.value if candidate.slot else "main_hand"),
@@ -443,6 +448,7 @@ def _evaluate_item_payload_impl(
                     )
                     return {
                         "success": True,
+                        "engine": "pob2",
                         "item_name": candidate.name or candidate.base_type,
                         "base_type": candidate.base_type,
                         "slot": requested_slot or (candidate.slot.value if candidate.slot else "main_hand"),
@@ -466,6 +472,7 @@ def _evaluate_item_payload_impl(
                 if current_in_target and candidate.name == current_in_target:
                     return {
                         "success": True,
+                        "engine": "pob2",
                         "item_name": candidate.name or candidate.base_type,
                         "base_type": candidate.base_type,
                         "slot": requested_slot or pob_slot.lower().replace(" ", "_"),
@@ -499,6 +506,7 @@ def _evaluate_item_payload_impl(
                             rec_slot = advice_dual.recommended_slot or ("Weapon 1" if route_res.target_set == WeaponSetContext.WEAPON_SET_1 else "Weapon 1 Swap")
                             return {
                                 "success": True,
+                                "engine": "pob2",
                                 "item_name": candidate.name or candidate.base_type,
                                 "base_type": candidate.base_type,
                                 "slot": rec_slot.lower().replace(" ", "_"),
@@ -544,6 +552,7 @@ def _evaluate_item_payload_impl(
                     cur_name, cur_base = _get_current_info(slot_key)
                     return {
                         "success": True,
+                        "engine": "pob2",
                         "item_name": candidate.name or candidate.base_type,
                         "base_type": candidate.base_type,
                         "current_item_name": getattr(delta, "current_item_name", None) or cur_name,
@@ -626,6 +635,7 @@ def _evaluate_item_payload_impl(
 
                         return {
                             "success": True,
+                            "engine": "pob2",
                             "item_name": candidate.name or candidate.base_type,
                             "base_type": candidate.base_type,
                             "current_item_name": getattr(chosen_delta, "current_item_name", None) or cur_name,
@@ -692,6 +702,7 @@ def _evaluate_item_payload_impl(
                     cur_name, cur_base = _get_current_info(slot_key)
                     return {
                         "success": True,
+                        "engine": "pob2",
                         "item_name": candidate.name or candidate.base_type,
                         "base_type": candidate.base_type,
                         "current_item_name": getattr(delta, "current_item_name", None) or cur_name,
@@ -708,7 +719,9 @@ def _evaluate_item_payload_impl(
                         "tactical_advice": tactical.model_dump(),
                     }
         except Exception:
-            pass
+            logger.exception("PoB2 evaluation failed for %r; falling back to heuristic engine", candidate.name or candidate.base_type)
+        else:
+            logger.warning("PoB2 returned no delta for %r; falling back to heuristic engine", candidate.name or candidate.base_type)
 
     # 2. Standard Engine live candidate evaluation (always available locally)
     try:
@@ -814,6 +827,7 @@ def _evaluate_item_payload_impl(
 
         out: dict[str, Any] = {
             "success": True,
+            "engine": "heuristic",
             "item_name": candidate.name or candidate.base_type,
             "base_type": candidate.base_type,
             "current_item_name": cur_name,

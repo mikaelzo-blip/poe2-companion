@@ -1395,3 +1395,16 @@ def test_check_auto_clipboard_reevaluates_on_context_change(tmp_path: Path, monk
 
 
 
+
+
+def test_evaluate_item_payload_pob2_failure_falls_back_with_engine_tag(tmp_path: Path, caplog) -> None:
+    broken = MagicMock(is_available=True, level=None)
+    broken.submit_candidate.side_effect = RuntimeError("PoB2 crashed")
+    payload = {"raw_text": SAMPLE_BOOTS_TEXT, "character_id": "BOMSHAK", "stage": "auto"}
+
+    with caplog.at_level("WARNING", logger="companion.dashboard_api"):
+        result = evaluate_item_payload(payload, runtime_dir=tmp_path, pob_session=broken)
+
+    assert result.get("success") is True
+    assert result.get("engine") == "heuristic"
+    assert "PoB2 evaluation failed" in caplog.text

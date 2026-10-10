@@ -1367,6 +1367,7 @@ function renderEvaluationVerdict(data, container, targetSlot = null) {
       <span style="font-size: 10.5px; font-family: var(--font-mono); color: #94a3b8; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 4px;">
         🕒 Dievaluasi: <strong style="color: #f1f5f9;">${esc(timeStr)}</strong>
       </span>
+      ${data.engine === 'heuristic' ? `<span title="PoB2 tidak tersedia / gagal; hasil dari estimasi stat lokal" style="font-size: 10.5px; font-family: var(--font-mono); color: #fbbf24; background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.4); padding: 2px 8px; border-radius: 4px;">⚠ Estimasi heuristik (tanpa PoB2)</span>` : ''}
     </div>
   `;
 

@@ -91,13 +91,14 @@ def _parse(data: dict) -> tuple[GuideProfile, str | None, list[str]]:
         imported_at=datetime.now(timezone.utc).isoformat(), stages=stages,
         has_pob=pob is not None, pob_stage_id=stages[-1].id,
     )
-    return assign_level_ranges(profile), pob, warnings
+    return profile, pob, warnings
 
 
 def parse_mobalytics_guide(data: dict) -> tuple[GuideProfile, str | None, list[str]]:
     try:
-        return _parse(data)
+        profile, pob, warnings = _parse(data)
     except ValidationError as exc:
         raise ValueError(f"Struktur guide tidak valid: {exc.errors()[0]['msg']}") from exc
     except (KeyError, TypeError, AttributeError) as exc:
         raise ValueError(f"Struktur guide tidak valid: {type(exc).__name__} {exc}") from exc
+    return assign_level_ranges(profile), pob, warnings

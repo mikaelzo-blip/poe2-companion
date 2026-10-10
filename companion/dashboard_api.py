@@ -1595,16 +1595,19 @@ def set_character_guide_payload(payload: dict[str, Any], runtime_dir: Path) -> d
     from companion.builds.store import load_guide, set_assignment
 
     char_id, guide = payload.get("character_id"), payload.get("guide")
+    override = payload.get("stage_override")
     if not char_id:
         return {"error": "character_id wajib diisi."}
     if guide is not None:
         profile = load_guide(runtime_dir, str(guide))
         if profile is None:
             return {"error": "Guide tidak ditemukan."}
-        override = payload.get("stage_override")
-        if override is not None and override not in {s.id for s in profile.stages}:
+        ids = {s.id for s in profile.stages}
+        if override is not None and (not isinstance(override, str) or override not in ids):
             return {"error": "Tahap guide tidak dikenal."}
-    set_assignment(runtime_dir, str(char_id), guide, payload.get("stage_override"))
+    elif override is not None:
+        return {"error": "Tahap tidak bisa diatur tanpa guide."}
+    set_assignment(runtime_dir, str(char_id), guide, override)
     return {"success": True}
 
 

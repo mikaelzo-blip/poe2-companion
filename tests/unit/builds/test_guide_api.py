@@ -143,3 +143,24 @@ def test_overwrite_warns_and_stage_override_validated(tmp_path):
         {"character_id": "C", "guide": NAMES[0], "stage_override": "zzz"}, tmp_path)
     assert "error" in res
     assert get_available_guides(tmp_path, "C")["active"]["guide"] is None
+
+
+def test_internal_error_in_assign_level_ranges_propagates(monkeypatch, tmp_path):
+    def boom(profile):
+        raise KeyError("internal_bug")
+
+    monkeypatch.setattr("companion.builds.mobalytics.assign_level_ranges", boom)
+    with pytest.raises(KeyError):
+        import_guide_payload({"text": _text(NAMES[0])}, tmp_path)
+
+
+def test_stage_override_edge_cases(tmp_path):
+    import_guide_payload({"text": _text(NAMES[0])}, tmp_path)
+    for guide, ov in ((NAMES[0], ["1"]), (NAMES[0], {"a": 1}), (None, "1")):
+        res = set_character_guide_payload(
+            {"character_id": "C", "guide": guide, "stage_override": ov}, tmp_path)
+        assert "error" in res
+    stage = get_available_guides(tmp_path)["guides"][0]["stages"][0]["id"]
+    assert set_character_guide_payload(
+        {"character_id": "C", "guide": NAMES[0], "stage_override": stage}, tmp_path)["success"]
+    assert get_available_guides(tmp_path, "C")["active"] == {"guide": NAMES[0], "stage_override": stage}

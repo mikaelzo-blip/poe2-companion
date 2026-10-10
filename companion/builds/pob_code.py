@@ -107,13 +107,14 @@ def _parse_pob_xml(xml: str, name: str) -> GuideProfile:
         name=name, imported_at=datetime.now(timezone.utc).isoformat(), stages=stages,
         has_pob=True, pob_stage_id=items_el.get("activeItemSet"),
     )
-    return assign_level_ranges(profile)
+    return profile
 
 
 def parse_pob_xml(xml: str, name: str) -> GuideProfile:
     try:
-        return _parse_pob_xml(xml, name)
+        profile = _parse_pob_xml(xml, name)
     except ValidationError as exc:
         raise ValueError(f"XML PoB2 tidak valid: {exc.errors()[0]['msg']}") from exc
     except (KeyError, TypeError, AttributeError) as exc:
         raise ValueError(f"XML PoB2 tidak valid: {type(exc).__name__} {exc}") from exc
+    return assign_level_ranges(profile)

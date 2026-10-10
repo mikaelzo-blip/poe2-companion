@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 def load_pob_mcp_modules(backend_path: Path | None = None) -> tuple[Any, Any] | None:
     """Import (poe_api, poe_oauth) from the PoB2 MCP backend; None if missing or broken."""
+    backend_path = backend_path or resolve_pob2_backend_path()
     if not backend_path:
         return None
     server_dir = backend_path / "server"

@@ -895,6 +895,40 @@ def test_list_api_characters_is_cached(monkeypatch):
     assert len(calls) == 1
 
 
+def test_account_characters_skips_non_dict_character_file(tmp_path, monkeypatch):
+    from companion import dashboard_api
+    from companion.dashboard_api import get_account_characters
+    monkeypatch.setattr(dashboard_api, "_list_api_characters", lambda now=None: [])
+    (tmp_path / "characters").mkdir()
+    (tmp_path / "characters" / "Bad.json").write_text("[1, 2]")
+    (tmp_path / "characters" / "Good.json").write_text(json.dumps({"character_name": "Good", "level": 3}))
+    res = get_account_characters(runtime_dir=tmp_path)
+    assert [c["name"] for c in res["characters"]] == ["Good"]
+
+
+def test_load_pob_mcp_modules_zero_arg_resolves_backend(tmp_path, monkeypatch):
+    import sys
+    from companion.equipment import pob2_equipment_advisor as adv
+    pkg = tmp_path / "server" / "pob_mcp"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("")
+    (pkg / "poe_api.py").write_text("MARK = 'api'")
+    (pkg / "poe_oauth.py").write_text("MARK = 'oauth'")
+    monkeypatch.setattr(adv, "resolve_pob2_backend_path", lambda: tmp_path)
+    saved_path = list(sys.path)
+    saved_mods = {k: v for k, v in sys.modules.items() if k == "pob_mcp" or k.startswith("pob_mcp.")}
+    for k in saved_mods:
+        del sys.modules[k]
+    try:
+        mods = adv.load_pob_mcp_modules()
+        assert mods is not None and mods[0].MARK == "api" and mods[1].MARK == "oauth"
+    finally:
+        sys.path[:] = saved_path
+        for k in [k for k in sys.modules if k == "pob_mcp" or k.startswith("pob_mcp.")]:
+            del sys.modules[k]
+        sys.modules.update(saved_mods)
+
+
 def _raise_not_logged_in():
     raise RuntimeError("not logged in")
 

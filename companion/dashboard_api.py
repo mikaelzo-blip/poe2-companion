@@ -1377,6 +1377,9 @@ def get_account_characters(
             except (OSError, ValueError) as exc:
                 logger.warning("Skipping unreadable character file %s: %s", f, exc)
                 continue
+            if not isinstance(c_data, dict):
+                logger.warning("Skipping non-object character file %s", f)
+                continue
             c_name = c_data.get("character_name") or c_data.get("character_id") or f.stem
             if c_name in seen_names:
                 continue  # API entry wins

@@ -188,6 +188,17 @@ def get_current_item_info(
     return "Slot Kosong", ""
 
 
+def resolve_char_id(char_id: str | None, runtime_dir: Path) -> str:
+    """Match a character ID case-insensitively against runtime/characters/*.json (default BOMSHAK)."""
+    raw = str(char_id or "").strip() or "BOMSHAK"
+    chars_dir = runtime_dir / "characters"
+    if chars_dir.is_dir():
+        for f in chars_dir.glob("*.json"):
+            if f.stem.lower() == raw.lower():
+                return f.stem
+    return raw
+
+
 def _stamp_evaluated(res: dict[str, Any]) -> dict[str, Any]:
     if res.get("success"):
         res.setdefault("evaluated_at", datetime.now(timezone.utc).isoformat())
@@ -204,13 +215,7 @@ def _evaluate_item_payload_impl(
     if not raw_text:
         return {"error": "Item raw text is empty."}
 
-    char_id = payload.get("character_id", "BOMSHAK")
-    chars_dir = runtime_dir / "characters"
-    if chars_dir.is_dir():
-        for f in chars_dir.glob("*.json"):
-            if f.stem.lower() == str(char_id).lower():
-                char_id = f.stem
-                break
+    char_id = resolve_char_id(payload.get("character_id"), runtime_dir)
     stage_str = payload.get("stage", "lvl 1-14")
     requested_slot = payload.get("slot")
 
@@ -912,12 +917,7 @@ def check_auto_clipboard(
     if "Rarity:" not in current_text and "Item Class:" not in current_text:
         return {"has_new_item": False}
 
-    chars_dir = runtime_dir / "characters"
-    if chars_dir.is_dir():
-        for f in chars_dir.glob("*.json"):
-            if f.stem.lower() == str(char_id).lower():
-                char_id = f.stem
-                break
+    char_id = resolve_char_id(char_id, runtime_dir)
 
     _LAST_SEEN_CLIPBOARD = current_key
 

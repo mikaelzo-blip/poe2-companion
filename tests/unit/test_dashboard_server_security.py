@@ -41,3 +41,13 @@ def test_foreign_origin_post_rejected(port):
 
 def test_foreign_host_rejected(port):
     assert _req(port, "GET", "/api/guides", {"Host": "evil.example"})[0] == 403
+
+
+def test_unknown_api_routes_404(port):
+    assert _req(port, "GET", "/api/nope")[0] == 404
+    assert _req(port, "POST", "/api/nope", {"Content-Length": "2"}, "{}")[0] == 404
+
+
+def test_guides_route_dispatches(port):
+    status, body = _req(port, "GET", "/api/guides?x=1")
+    assert status == 200 and body.startswith((b"{", b"["))

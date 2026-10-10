@@ -7,13 +7,15 @@ import json
 from pathlib import Path
 import socketserver
 import sys
+import threading
 import time
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 import webbrowser
-from typing import Any
+from typing import Any, Callable
 
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+RUNTIME_DIR = PROJECT_ROOT / "runtime"
 
 
 _GLOBAL_POB_SESSIONS: dict[str, Any] = {}
@@ -23,15 +25,8 @@ POB_RETRY_INTERVAL_SECONDS = 300.0
 
 def normalize_char_id(char_id: str | None) -> str:
     """Normalize character ID case-insensitively against runtime files."""
-    if not char_id:
-        return "BOMSHAK"
-    raw = char_id.strip()
-    chars_dir = PROJECT_ROOT / "runtime" / "characters"
-    if chars_dir.is_dir():
-        for f in chars_dir.glob("*.json"):
-            if f.stem.lower() == raw.lower():
-                return f.stem
-    return raw
+    from companion.dashboard_api import resolve_char_id
+    return resolve_char_id(char_id, RUNTIME_DIR)
 
 
 def get_or_create_pob_session(character_id: str = "BOMSHAK", force_retry: bool = False):
@@ -151,211 +146,160 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.send_json({"error": "forbidden"}, 403)
         return False
 
-    def do_GET(self) -> None:
-        if self.path.startswith("/api/") and not self._request_allowed():
+    def _dispatch(self, compute: Callable[[], Any]) -> None:
+        try:
+            self.send_json(compute())
+        except ConnectionError:
             return
-        if self.path == "/" or self.path == "":
+        except Exception as exc:
+            self.send_json({"error": str(exc)}, 500)
+
+    def do_GET(self) -> None:
+        path, _, query = self.path.partition("?")
+        if path.startswith("/api/"):
+            if not self._request_allowed():
+                return
+            route = GET_ROUTES.get(path)
+            if route is None:
+                self.send_json({"error": "not found"}, 404)
+                return
+            params = {k: v[0] for k, v in parse_qs(query).items()}
+            self._dispatch(lambda: route(params))
+            return
+        if path in ("/", ""):
             self.path = "/index.html"
-        elif self.path == "/favicon.ico":
+        elif path == "/favicon.ico":
             self.send_response(204)
             self.end_headers()
-            return
-        elif self.path.startswith("/api/status"):
-            try:
-                from urllib.parse import urlparse, parse_qs
-                from companion.dashboard_api import get_dashboard_status
-                parsed = urlparse(self.path)
-                params = parse_qs(parsed.query)
-                char_id = normalize_char_id(params.get("char_id", [None])[0])
-                pob_sess = get_or_create_pob_session(char_id) if char_id else None
-
-                data = get_dashboard_status(PROJECT_ROOT / "runtime", char_id=char_id, pob_session=pob_sess)
-                self.send_json(data)
-            except ConnectionError:
-                return
-            except Exception as exc:
-                self.send_json({"error": str(exc)}, 500)
-            return
-        elif self.path.startswith("/api/clipboard-poll"):
-            try:
-                from urllib.parse import urlparse, parse_qs
-                from companion.dashboard_api import check_auto_clipboard
-                parsed = urlparse(self.path)
-                params = parse_qs(parsed.query)
-                char_id = normalize_char_id(params.get("char_id", ["BOMSHAK"])[0])
-                stage = params.get("stage", ["lvl 1-14"])[0]
-                guide = params.get("guide", [None])[0]
-                zone = params.get("zone", [None])[0]
-
-                result = check_auto_clipboard(
-                    runtime_dir=PROJECT_ROOT / "runtime",
-                    char_id=char_id,
-                    stage_str=stage,
-                    pob_session=None,
-                    guide=guide,
-                    zone=zone,
-                    pob_session_resolver=lambda: get_or_create_pob_session(char_id),
-                )
-                self.send_json(result)
-            except ConnectionError:
-                return
-            except Exception as exc:
-                self.send_json({"error": str(exc)}, 500)
-            return
-        elif self.path.startswith("/api/account-characters"):
-            try:
-                from urllib.parse import urlparse, parse_qs
-                from companion.dashboard_api import get_account_characters
-                parsed = urlparse(self.path)
-                params = parse_qs(parsed.query)
-                account_name = params.get("account", ["mikaelzo#5674"])[0]
-                result = get_account_characters(account_name=account_name, runtime_dir=PROJECT_ROOT / "runtime")
-                self.send_json(result)
-            except ConnectionError:
-                return
-            except Exception as exc:
-                self.send_json({"error": str(exc)}, 500)
-            return
-        elif self.path.startswith("/api/guides"):
-            try:
-                from companion.dashboard_api import get_available_guides
-                result = get_available_guides()
-                self.send_json(result)
-            except ConnectionError:
-                return
-            except Exception as exc:
-                self.send_json({"error": str(exc)}, 500)
-            return
-        elif self.path == "/api/get-clipboard":
-            try:
-                from companion.equipment.clipboard import get_clipboard_text
-                text = get_clipboard_text().strip()
-                self.send_json({"clipboard_text": text})
-            except ConnectionError:
-                return
-            except Exception as exc:
-                self.send_json({"error": str(exc)}, 500)
             return
         return super().do_GET()
 
     def do_POST(self) -> None:
         if not self._request_allowed(check_origin=True):
             return
-        if self.path == "/api/evaluate-item":
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
-            try:
-                payload = json.loads(body.decode("utf-8")) if body else {}
-                from companion.dashboard_api import evaluate_item_payload
-                char_id = normalize_char_id(payload.get("character_id", "BOMSHAK"))
-                payload["character_id"] = char_id
-                pob = get_or_create_pob_session(char_id, force_retry=True)
-                result = evaluate_item_payload(
-                    payload,
-                    runtime_dir=PROJECT_ROOT / "runtime",
-                    pob_session=pob,
-                )
-                self.send_json(result)
-            except ConnectionError:
-                return
-            except Exception as exc:
-                self.send_json({"error": str(exc)}, 500)
+        route = POST_ROUTES.get(self.path)
+        if route is None:
+            self.close_connection = True  # unread POST body must not poison keep-alive
+            self.send_response(404)
+            self.end_headers()
             return
-        elif self.path == "/api/equip-item":
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
-            try:
-                payload = json.loads(body.decode("utf-8")) if body else {}
-                from companion.dashboard_api import update_loadout_item_payload
-                result = update_loadout_item_payload(payload, runtime_dir=PROJECT_ROOT / "runtime")
-                if result.get("success"):
-                    char_id = payload.get("character_id", "BOMSHAK")
-                    target_slot = result.get("slot") or payload.get("slot")
-                    raw_text = payload.get("raw_text")
-                    if target_slot and raw_text:
-                        sync_equipped_item_to_pob_session(char_id, target_slot, raw_text)
-                self.send_json(result)
-            except ConnectionError:
-                return
-            except Exception as exc:
-                self.send_json({"error": str(exc)}, 500)
-            return
-        elif self.path == "/api/import-character":
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
-            try:
-                payload = json.loads(body.decode("utf-8")) if body else {}
-                from companion.dashboard_api import import_character_payload
-                result = import_character_payload(payload, runtime_dir=PROJECT_ROOT / "runtime")
-                if result.get("success"):
-                    char_id = payload.get("character_id", "BOMSHAK")
-                    invalidate_pob_session(char_id)
-                self.send_json(result)
-            except ConnectionError:
-                return
-            except Exception as exc:
-                self.send_json({"error": str(exc)}, 500)
-            return
-        elif self.path == "/api/update-stats":
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
-            try:
-                payload = json.loads(body.decode("utf-8")) if body else {}
-                from companion.dashboard_api import update_character_stats_payload
-                result = update_character_stats_payload(payload, runtime_dir=PROJECT_ROOT / "runtime")
-                if result.get("success"):
-                    char_id = payload.get("character_id", "BOMSHAK")
-                    invalidate_pob_session(char_id)
-                self.send_json(result)
-            except ConnectionError:
-                return
-            except Exception as exc:
-                self.send_json({"error": str(exc)}, 500)
-            return
-        elif self.path == "/api/select-character":
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
-            try:
-                payload = json.loads(body.decode("utf-8")) if body else {}
-                from companion.dashboard_api import select_character_payload
-                result = select_character_payload(payload, runtime_dir=PROJECT_ROOT / "runtime")
-                if result.get("success"):
-                    new_char = result.get("active_character_id")
-                    if new_char:
-                        import threading
-                        threading.Thread(
-                            target=get_or_create_pob_session,
-                            args=(new_char,),
-                            daemon=True,
-                            name=f"PoB2-Prewarm-{new_char}",
-                        ).start()
-                self.send_json(result)
-            except ConnectionError:
-                return
-            except Exception as exc:
-                self.send_json({"error": str(exc)}, 500)
-            return
-        elif self.path == "/api/fetch-public-profile":
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
-            try:
-                payload = json.loads(body.decode("utf-8")) if body else {}
-                account_name = payload.get("account_name", "")
-                character_id = payload.get("character_id", "BOMSHAK")
-                overwrite = payload.get("overwrite", True)
-                from companion.dashboard_api import fetch_public_profile
-                result = fetch_public_profile(account_name, character_id, runtime_dir=PROJECT_ROOT / "runtime", overwrite=overwrite)
-                if result.get("success"):
-                    invalidate_pob_session(character_id)
-                self.send_json(result)
-            except ConnectionError:
-                return
-            except Exception as exc:
-                self.send_json({"error": str(exc)}, 500)
-            return
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        self._dispatch(lambda: route(json.loads(body.decode("utf-8")) if body else {}))
 
-        self.send_response(404)
-        self.end_headers()
+
+def _api_status(q: dict[str, str]) -> Any:
+    from companion.dashboard_api import get_dashboard_status
+    char_id = normalize_char_id(q.get("char_id"))
+    return get_dashboard_status(RUNTIME_DIR, char_id=char_id, pob_session=get_or_create_pob_session(char_id))
+
+
+def _api_clipboard_poll(q: dict[str, str]) -> Any:
+    from companion.dashboard_api import check_auto_clipboard
+    char_id = normalize_char_id(q.get("char_id"))
+    return check_auto_clipboard(
+        runtime_dir=RUNTIME_DIR,
+        char_id=char_id,
+        stage_str=q.get("stage", "lvl 1-14"),
+        pob_session=None,
+        guide=q.get("guide"),
+        zone=q.get("zone"),
+        pob_session_resolver=lambda: get_or_create_pob_session(char_id),
+    )
+
+
+def _api_account_characters(q: dict[str, str]) -> Any:
+    from companion.dashboard_api import get_account_characters
+    return get_account_characters(account_name=q.get("account", "mikaelzo#5674"), runtime_dir=RUNTIME_DIR)
+
+
+def _api_guides(q: dict[str, str]) -> Any:
+    from companion.dashboard_api import get_available_guides
+    return get_available_guides()
+
+
+def _api_get_clipboard(q: dict[str, str]) -> Any:
+    from companion.equipment.clipboard import get_clipboard_text
+    return {"clipboard_text": get_clipboard_text().strip()}
+
+
+def _api_evaluate_item(payload: dict[str, Any]) -> Any:
+    from companion.dashboard_api import evaluate_item_payload
+    char_id = payload["character_id"] = normalize_char_id(payload.get("character_id"))
+    pob = get_or_create_pob_session(char_id, force_retry=True)
+    return evaluate_item_payload(payload, runtime_dir=RUNTIME_DIR, pob_session=pob)
+
+
+def _api_equip_item(payload: dict[str, Any]) -> Any:
+    from companion.dashboard_api import update_loadout_item_payload
+    result = update_loadout_item_payload(payload, runtime_dir=RUNTIME_DIR)
+    if result.get("success"):
+        target_slot = result.get("slot") or payload.get("slot")
+        raw_text = payload.get("raw_text")
+        if target_slot and raw_text:
+            sync_equipped_item_to_pob_session(normalize_char_id(payload.get("character_id")), target_slot, raw_text)
+    return result
+
+
+def _api_import_character(payload: dict[str, Any]) -> Any:
+    from companion.dashboard_api import import_character_payload
+    result = import_character_payload(payload, runtime_dir=RUNTIME_DIR)
+    if result.get("success"):
+        invalidate_pob_session(normalize_char_id(payload.get("character_id")))
+    return result
+
+
+def _api_update_stats(payload: dict[str, Any]) -> Any:
+    from companion.dashboard_api import update_character_stats_payload
+    result = update_character_stats_payload(payload, runtime_dir=RUNTIME_DIR)
+    if result.get("success"):
+        invalidate_pob_session(normalize_char_id(payload.get("character_id")))
+    return result
+
+
+def _api_select_character(payload: dict[str, Any]) -> Any:
+    from companion.dashboard_api import select_character_payload
+    result = select_character_payload(payload, runtime_dir=RUNTIME_DIR)
+    new_char = result.get("active_character_id") if result.get("success") else None
+    if new_char:
+        threading.Thread(
+            target=get_or_create_pob_session,
+            args=(new_char,),
+            daemon=True,
+            name=f"PoB2-Prewarm-{new_char}",
+        ).start()
+    return result
+
+
+def _api_fetch_public_profile(payload: dict[str, Any]) -> Any:
+    from companion.dashboard_api import fetch_public_profile
+    character_id = payload.get("character_id", "BOMSHAK")
+    result = fetch_public_profile(
+        payload.get("account_name", ""),
+        character_id,
+        runtime_dir=RUNTIME_DIR,
+        overwrite=payload.get("overwrite", True),
+    )
+    if result.get("success"):
+        invalidate_pob_session(normalize_char_id(character_id))
+    return result
+
+
+GET_ROUTES: dict[str, Callable[[dict[str, str]], Any]] = {
+    "/api/status": _api_status,
+    "/api/clipboard-poll": _api_clipboard_poll,
+    "/api/account-characters": _api_account_characters,
+    "/api/guides": _api_guides,
+    "/api/get-clipboard": _api_get_clipboard,
+}
+
+POST_ROUTES: dict[str, Callable[[dict[str, Any]], Any]] = {
+    "/api/evaluate-item": _api_evaluate_item,
+    "/api/equip-item": _api_equip_item,
+    "/api/import-character": _api_import_character,
+    "/api/update-stats": _api_update_stats,
+    "/api/select-character": _api_select_character,
+    "/api/fetch-public-profile": _api_fetch_public_profile,
+}
 
 
 # Alias for backward compatibility
@@ -377,11 +321,9 @@ def serve_dashboard(port: int = 8080, open_browser: bool = True) -> None:
     """Start local HTTP server for dashboard without external dependencies."""
     try:
         # Pre-warm PoB2 session in background thread
-        import threading
-        active_char_path = PROJECT_ROOT / "runtime" / "active_character.json"
+        active_char_path = RUNTIME_DIR / "active_character.json"
         char_to_warm = "BOMSHAK"
         if active_char_path.is_file():
-            import json
             try:
                 cdata = json.loads(active_char_path.read_text(encoding="utf-8"))
                 char_to_warm = cdata.get("active_character_id") or "BOMSHAK"

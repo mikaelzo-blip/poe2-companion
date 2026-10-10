@@ -98,6 +98,8 @@ def invalidate_pob_session(character_id: str | None = None) -> None:
 class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
     """HTTP request handler providing static files and Companion Suite APIs."""
     protocol_version = "HTTP/1.1"
+    # ES modules require a JS MIME type; the Windows registry can map .js to text/plain.
+    extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map, ".js": "text/javascript"}
 
     def __init__(self, *args, directory: str | None = None, **kwargs) -> None:
         super().__init__(*args, directory=str(DASHBOARD_DIR), **kwargs)

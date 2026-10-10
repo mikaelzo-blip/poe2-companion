@@ -37,13 +37,13 @@
           </div>
           <div class="char-dropdown-row">
             <select id="header-char-select" class="header-char-dropdown" title="Pilih karakter aktif">
-              <option value="BOMSHAK">BOMSHAK (Lvl 19 Mercenary)</option>
+              <option value="BOMSHAK">BOMSHAK</option>
             </select>
             <button class="btn btn-sm btn-quick-sync" id="btn-quick-sync-char" title="Tarik data equipment terbaru dari server GGG">
               🔄 Sync
             </button>
-            <span class="char-lvl-tag">LVL <strong id="hdr-char-level">19</strong></span>
-            <span class="char-zone-tag" id="hdr-char-zone">Zone: G2_1</span>
+            <span class="char-lvl-tag">LVL <strong id="hdr-char-level">—</strong></span>
+            <span class="char-zone-tag" id="hdr-char-zone">Zone: —</span>
           </div>
         </div>
       </div>
@@ -59,9 +59,6 @@
           </button>
           <!-- Hidden fallback folder input -->
           <input type="file" id="fallback-folder-input" webkitdirectory directory multiple style="display: none;">
-          <button class="btn btn-secondary" id="btn-load-demo" title="Muat data contoh saat offline">
-            <span>Demo Data</span>
-          </button>
           <button class="btn btn-secondary" id="btn-open-sync-modal" style="background: rgba(216, 169, 56, 0.15); border-color: var(--accent-gold); color: var(--accent-gold);" title="Sinkronisasi akun atau impor JSON item dari PoE">
             <span>🌐 Impor Akun / JSON</span>
           </button>
@@ -158,27 +155,27 @@
             <div class="card card-featured primary-objective-card">
               <div class="card-header">
                 <div class="card-tag tag-primary">TARGET OBJECTIVE</div>
-                <div class="priority-chip" id="obj-priority-chip">PRIORITY 5</div>
+                <div class="priority-chip" id="obj-priority-chip">PRIORITY —</div>
               </div>
               <div class="card-body">
                 <h2 class="objective-title" id="primary-obj-title">Audit Passive Tree: Ascendancy Notable</h2>
-                <p class="objective-action" id="primary-obj-action">Inspect passive tree to verify allocation</p>
+                <p class="objective-action" id="primary-obj-action">Menunggu data runtime…</p>
                 <div class="objective-meta-grid">
                   <div class="meta-item">
                     <span class="meta-label">SOURCE</span>
-                    <span class="meta-val" id="primary-obj-source">Passive Delta Evaluator</span>
+                    <span class="meta-val" id="primary-obj-source">—</span>
                   </div>
                   <div class="meta-item">
                     <span class="meta-label">RATIONALE</span>
-                    <span class="meta-val" id="primary-obj-rationale">UNOBSERVED_SUBSYSTEM</span>
+                    <span class="meta-val" id="primary-obj-rationale">—</span>
                   </div>
                   <div class="meta-item">
                     <span class="meta-label">HORIZON</span>
-                    <span class="meta-val" id="primary-obj-horizon">Next 1 Zone</span>
+                    <span class="meta-val" id="primary-obj-horizon">—</span>
                   </div>
                   <div class="meta-item">
                     <span class="meta-label">PENALTY RISK</span>
-                    <span class="meta-val risk-medium" id="primary-obj-risk">Medium (2)</span>
+                    <span class="meta-val risk-medium" id="primary-obj-risk">—</span>
                   </div>
                 </div>
               </div>
@@ -191,34 +188,34 @@
             <div class="card telemetry-card">
               <div class="card-header">
                 <div class="card-tag tag-telemetry">SENSOR STATUS</div>
-                <div class="game-status-tag" id="game-status-tag">GAME RUNNING (PID 14384)</div>
+                <div class="game-status-tag" id="game-status-tag">GAME: —</div>
               </div>
               <div class="card-body stat-grid">
                 <div class="stat-box">
                   <span class="stat-label">DEATH COUNT</span>
-                  <span class="stat-value death-val" id="stat-deaths">1</span>
+                  <span class="stat-value death-val" id="stat-deaths">—</span>
                   <span class="stat-sub">Watermark Verified</span>
                 </div>
                 <div class="stat-box">
                   <span class="stat-label">CHARACTER LEVEL</span>
-                  <span class="stat-value" id="stat-level">17</span>
-                  <span class="stat-sub" id="stat-class-sub">Gemling Legionnaire</span>
+                  <span class="stat-value" id="stat-level">—</span>
+                  <span class="stat-sub" id="stat-class-sub">—</span>
                 </div>
                 <div class="stat-box">
                   <span class="stat-label">CURRENT ZONE</span>
-                  <span class="stat-value zone-val" id="stat-zone">G2_1</span>
+                  <span class="stat-value zone-val" id="stat-zone">—</span>
                   <span class="stat-sub">Act 1 (Observed)</span>
                 </div>
                 <div class="stat-box">
                   <span class="stat-label">WEAPON SET</span>
-                  <span class="stat-value" id="stat-weapon-set">Set 1</span>
+                  <span class="stat-value" id="stat-weapon-set">—</span>
                   <span class="stat-sub">Crossbow Main</span>
                 </div>
               </div>
               <div class="card-footer">
                 <div class="heartbeat-row">
                   <span>Sensor Heartbeat:</span>
-                  <strong id="stat-heartbeat">Active (Just now)</strong>
+                  <strong id="stat-heartbeat">—</strong>
                 </div>
               </div>
             </div>
@@ -241,21 +238,21 @@
                     <div class="attr-bar-wrap">
                       <div class="attr-bar str-bar" id="bar-str" style="width: 48%;"></div>
                     </div>
-                    <span class="attr-num" id="val-str">48</span>
+                    <span class="attr-num" id="val-str">—</span>
                   </div>
                   <div class="attr-row">
                     <span class="attr-name">Dexterity</span>
                     <div class="attr-bar-wrap">
                       <div class="attr-bar dex-bar" id="bar-dex" style="width: 85%;"></div>
                     </div>
-                    <span class="attr-num" id="val-dex">85</span>
+                    <span class="attr-num" id="val-dex">—</span>
                   </div>
                   <div class="attr-row">
                     <span class="attr-name">Intelligence</span>
                     <div class="attr-bar-wrap">
                       <div class="attr-bar int-bar" id="bar-int" style="width: 53%;"></div>
                     </div>
-                    <span class="attr-num" id="val-int">53</span>
+                    <span class="attr-num" id="val-int">—</span>
                   </div>
                 </div>
 
@@ -264,23 +261,23 @@
                 <div class="defenses-summary">
                   <div class="def-item">
                     <span class="def-label">Max Life</span>
-                    <strong class="def-val highlight-life" id="def-life">723</strong>
+                    <strong class="def-val highlight-life" id="def-life">—</strong>
                   </div>
                   <div class="def-item">
                     <span class="def-label">Mana / Spirit</span>
-                    <strong class="def-val" id="def-mana" style="color: #60a5fa;">284 / 30</strong>
+                    <strong class="def-val" id="def-mana" style="color: #60a5fa;">—</strong>
                   </div>
                   <div class="def-item">
                     <span class="def-label">Armour</span>
-                    <strong class="def-val" id="def-armour">112</strong>
+                    <strong class="def-val" id="def-armour">—</strong>
                   </div>
                   <div class="def-item">
                     <span class="def-label">Evasion</span>
-                    <strong class="def-val" id="def-evasion">465</strong>
+                    <strong class="def-val" id="def-evasion">—</strong>
                   </div>
                   <div class="def-item">
                     <span class="def-label">Energy Shield</span>
-                    <strong class="def-val" id="def-es">47</strong>
+                    <strong class="def-val" id="def-es">—</strong>
                   </div>
                 </div>
 
@@ -288,24 +285,24 @@
                 <div class="resistances-summary" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-subtle);">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-dim); letter-spacing: 0.5px;">Resistances (Target 75%)</span>
-                    <span style="font-size: 9px; color: var(--text-muted);" id="res-status-caption">Cold & Light Negatif!</span>
+                    <span style="font-size: 9px; color: var(--text-muted);" id="res-status-caption"></span>
                   </div>
                   <div class="res-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
                     <div class="res-badge-box" id="res-box-fire" style="padding: 6px 4px; border-radius: 4px; text-align: center; background: rgba(255, 100, 50, 0.1); border: 1px solid rgba(255, 100, 50, 0.3);">
                       <span style="display: block; font-size: 9px; color: #ff8866; font-weight: 700;">FIRE</span>
-                      <strong id="val-fire-res" style="font-size: 13px; color: #ffaa88;">23%</strong>
+                      <strong id="val-fire-res" style="font-size: 13px; color: #ffaa88;">—</strong>
                     </div>
                     <div class="res-badge-box" id="res-box-cold" style="padding: 6px 4px; border-radius: 4px; text-align: center; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.5);">
                       <span style="display: block; font-size: 9px; color: #f87171; font-weight: 700;">COLD</span>
-                      <strong id="val-cold-res" style="font-size: 13px; color: #ef4444; font-weight: 800;">-3%</strong>
+                      <strong id="val-cold-res" style="font-size: 13px; color: #ef4444; font-weight: 800;">—</strong>
                     </div>
                     <div class="res-badge-box" id="res-box-light" style="padding: 6px 4px; border-radius: 4px; text-align: center; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.5);">
                       <span style="display: block; font-size: 9px; color: #f87171; font-weight: 700;">LIGHT</span>
-                      <strong id="val-light-res" style="font-size: 13px; color: #ef4444; font-weight: 800;">-4%</strong>
+                      <strong id="val-light-res" style="font-size: 13px; color: #ef4444; font-weight: 800;">—</strong>
                     </div>
                     <div class="res-badge-box" id="res-box-chaos" style="padding: 6px 4px; border-radius: 4px; text-align: center; background: rgba(200, 80, 255, 0.1); border: 1px solid rgba(200, 80, 255, 0.3);">
                       <span style="display: block; font-size: 9px; color: #cc88ff; font-weight: 700;">CHAOS</span>
-                      <strong id="val-chaos-res" style="font-size: 13px; color: #eee;">0%</strong>
+                      <strong id="val-chaos-res" style="font-size: 13px; color: #eee;">—</strong>
                     </div>
                   </div>
                 </div>
@@ -380,8 +377,8 @@
             <!-- Equipment Paperdoll / Slot Grid -->
             <div class="card paperdoll-card">
               <div class="card-header">
-                <span class="card-title" id="equipped-loadout-title">Equipped Loadout (BOMSHAK)</span>
-                <span class="badge-soft" id="gear-finalized-badge">Revision 1 (Draft)</span>
+                <span class="card-title" id="equipped-loadout-title">Equipped Loadout</span>
+                <span class="badge-soft" id="gear-finalized-badge">—</span>
               </div>
               <div class="card-body">
                 <div class="slots-grid" id="slots-grid">
@@ -456,7 +453,6 @@
                       </svg>
                       <span>Paste dari Clipboard (Ctrl+V)</span>
                     </button>
-                    <button class="btn btn-secondary" id="btn-demo-candidate">Contoh Candidate Upgrade</button>
                   </div>
                   <textarea id="candidate-textarea" class="candidate-input" rows="5" placeholder="Contoh teks item PoE2:
 Item Class: Boots
@@ -537,7 +533,7 @@ Requirements: Level 12
                   </div>
                   <div class="req-box req-unsatisfied">
                     <span class="req-title">Required Character Level</span>
-                    <span class="req-status" id="req-status-level">LVL 17 / 52</span>
+                    <span class="req-status" id="req-status-level">LVL — / 52</span>
                     <p class="req-hint">Belum mencapai level minimum transisi.</p>
                   </div>
                 </div>
@@ -596,7 +592,7 @@ Requirements: Level 12
         </div>
         <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted);">
           <input type="checkbox" id="sync-public-overwrite" checked style="accent-color: var(--accent-gold); cursor: pointer;">
-          <label for="sync-public-overwrite" style="cursor: pointer;">Timpa perlengkapan manual / demo yang ada saat ini</label>
+          <label for="sync-public-overwrite" style="cursor: pointer;">Timpa perlengkapan manual yang ada saat ini</label>
         </div>
         <button class="btn btn-primary btn-block" id="btn-do-fetch-public" style="background: var(--accent-gold); color: #000; font-weight: 700;">
           🔄 Tarik Seluruh Equipment dari GGG
@@ -615,7 +611,7 @@ Requirements: Level 12
         <textarea id="sync-json-textarea" class="modal-textarea" rows="6" placeholder="Paste seluruh output teks JSON dari browser di sini (Ctrl+V)..."></textarea>
         <div style="margin-top: 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted);">
           <input type="checkbox" id="sync-json-overwrite" checked style="accent-color: var(--accent-green); cursor: pointer;">
-          <label for="sync-json-overwrite" style="cursor: pointer;">Timpa perlengkapan manual / demo yang ada saat ini</label>
+          <label for="sync-json-overwrite" style="cursor: pointer;">Timpa perlengkapan manual yang ada saat ini</label>
         </div>
         <button class="btn btn-primary btn-block" id="btn-do-import-json" style="margin-top: 10px; background: var(--accent-green); color: #000; font-weight: 700;">
           📥 Terapkan Seluruh Equipment ke Loadout
@@ -739,6 +735,6 @@ Requirements: Level 12
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>

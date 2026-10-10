@@ -584,11 +584,12 @@ def test_dashboard_server_http_evaluate_endpoint() -> None:
                 assert "compare-history-container" in html_text
                 assert "TARGET LOADOUT SLOT" in html_text
 
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/app.js", timeout=5) as resp:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/js/compare.js", timeout=5) as resp:
                 assert resp.status == 200
+                assert resp.headers["Content-Type"].startswith("text/javascript")
                 js_text = resp.read().decode("utf-8")
                 assert "SLOT_LABELS" in js_text
-                assert "recordSlotComparison" in js_text
+                assert "export function recordSlotComparison" in js_text
 
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/style.css", timeout=5) as resp:
                 assert resp.status == 200

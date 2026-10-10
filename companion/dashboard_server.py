@@ -64,6 +64,10 @@ def get_or_create_pob_session(character_id: str = "BOMSHAK", force_retry: bool =
         if sess.initialize():
             _GLOBAL_POB_SESSIONS[character_id] = sess
             _FAILED_CHARACTERS.pop(character_id, None)
+            try:
+                _apply_session(character_id, sess)
+            except Exception:
+                logger.warning("PoB2 runtime import failed for %s", character_id, exc_info=True)
             return sess
         _FAILED_CHARACTERS[character_id] = now
     except Exception:
@@ -335,22 +339,13 @@ def _api_update_stats(payload: dict[str, Any]) -> Any:
     return result
 
 
-def _prewarm_and_apply(character_id: str) -> None:
-    sess = get_or_create_pob_session(character_id)
-    if sess is not None:
-        try:
-            _apply_session(character_id, sess)
-        except Exception:
-            logger.warning("PoB2 runtime import failed for %s", character_id, exc_info=True)
-
-
 def _api_select_character(payload: dict[str, Any]) -> Any:
     from companion.dashboard_api import select_character_payload
     result = select_character_payload(payload, runtime_dir=RUNTIME_DIR)
     new_char = result.get("active_character_id") if result.get("success") else None
     if new_char:
         threading.Thread(
-            target=_prewarm_and_apply,
+            target=get_or_create_pob_session,
             args=(new_char,),
             daemon=True,
             name=f"PoB2-Prewarm-{new_char}",

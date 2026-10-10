@@ -8,7 +8,9 @@ from typing import Any
 from companion.equipment.baseline import BaselineSource, CharacterFact, CharacterStatBaseline
 from companion.equipment.baseline_cli import load_baseline, save_baseline
 from companion.equipment.loadout import EquippedLoadout
-from companion.equipment.loadout_cli import load_loadout, save_loadout
+from companion.equipment.loadout_cli import (
+    character_runtime_lock, execute_loadout_transition, load_loadout, save_loadout,
+)
 from companion.equipment.parser import parse_item_text
 from companion.equipment.pob2_equipment_advisor import POB2_PRODUCTION_SLOTS
 from companion.equipment.schema import SlotType, WeaponSetContext
@@ -37,24 +39,34 @@ _DEFENSE_FIELDS = {
 }
 
 
-def _apply_items(loadout: EquippedLoadout, session: Any, warnings: list[str]) -> None:
+def _parse_items(equipped: dict[str, Any], warnings: list[str]) -> list[tuple[SlotType, WeaponSetContext | None, Any]]:
+    parsed = []
     for pob_slot in sorted(POB2_PRODUCTION_SLOTS):
         mapped = _SLOT_MAP.get(pob_slot)
-        if mapped is None:
+        eq = equipped.get(pob_slot)
+        if mapped is None or not eq or not eq.get("equipped") or not eq.get("raw"):
             continue
         slot, wset = mapped
         try:
-            eq = session.get_equipped_item(pob_slot)
-            if not eq or not eq.get("equipped") or not eq.get("raw"):
-                continue
-            item = parse_item_text(eq["raw"], target_slot=slot, target_weapon_set=wset)
-            loadout.transition_slot(
-                slot, item, source=BaselineSource.GGG_OFFICIAL_API, weapon_set=wset,
-                verification=VerificationState.VERIFIED,
-            )
+            parsed.append((slot, wset, parse_item_text(eq["raw"], target_slot=slot, target_weapon_set=wset)))
         except Exception as exc:
             logger.warning("PoB2 item import failed for %s", pob_slot, exc_info=True)
             warnings.append(f"{pob_slot}: could not import item ({exc})")
+    return parsed
+
+
+def _apply_items(loadout: EquippedLoadout, parsed: list) -> bool:
+    """Mutate loadout in place; True if a decision-relevant change occurred."""
+    changed = False
+    for slot, wset, item in parsed:
+        if loadout.transition_slot(
+            slot, item, source=BaselineSource.GGG_OFFICIAL_API, weapon_set=wset,
+            verification=VerificationState.VERIFIED,
+        ):
+            changed = True
+        else:
+            loadout.refresh_slot_text(slot, item.raw_text, weapon_set=wset)
+    return changed
 
 
 def _set_fact(baseline: CharacterStatBaseline, attr: str, value: Any) -> None:
@@ -67,12 +79,11 @@ def _set_fact(baseline: CharacterStatBaseline, attr: str, value: Any) -> None:
     ))
 
 
-def _apply_baseline(baseline: CharacterStatBaseline, session: Any) -> None:
-    defenses = getattr(session, "defenses_before", None) or {}
+def _apply_baseline(baseline: CharacterStatBaseline, defenses: dict, stats: dict) -> None:
     for attr, key in _DEFENSE_FIELDS.items():
         if defenses.get(key) is not None:
             _set_fact(baseline, attr, defenses[key])
-    stats = (getattr(session, "stats_before", None) or {}).get("defense") or {}
+    stats = stats.get("defense") or {}
     for el in ("fire", "cold", "lightning", "chaos"):
         raw = stats.get(f"{el.capitalize()}Resist")
         if raw is None:
@@ -82,24 +93,44 @@ def _apply_baseline(baseline: CharacterStatBaseline, session: Any) -> None:
         _set_fact(baseline, f"effective_{el}_res", min(int(raw), cap))
 
 
+def _snapshot(session: Any) -> tuple[dict, dict, dict]:
+    """Copy cached session data while no sync is mutating it (never calls engine methods)."""
+    with session._engine_lock:
+        return (
+            dict(session.equipped_items or {}),
+            dict(session.defenses_before or {}),
+            dict(session.stats_before or {}),
+        )
+
+
 def apply_session_to_runtime(runtime_dir: Path, character_id: str, session: Any) -> list[str]:
     """Write the session's equipped item text and computed baseline; returns warnings, never raises."""
     warnings: list[str] = []
     try:
-        loadout = load_loadout(runtime_dir, character_id)
-        _apply_items(loadout, session, warnings)
-        if not loadout.is_finalized:
-            loadout.finalize(loadout_id=f"pob2_{character_id}")
-        save_loadout(runtime_dir, loadout)
+        equipped, defenses, stats = _snapshot(session)
+        parsed = _parse_items(equipped, warnings)
+        with character_runtime_lock(character_id):
+            loadout = load_loadout(runtime_dir, character_id)
+            if loadout.is_finalized:
+                res = execute_loadout_transition(
+                    runtime_dir, character_id, lambda lo: _apply_items(lo, parsed)
+                )
+                loadout = res.loadout
+                if not res.is_changed:
+                    save_loadout(runtime_dir, loadout)  # raw_text refreshes carry no revision bump
+            else:
+                _apply_items(loadout, parsed)
+                loadout.finalize(loadout_id=f"pob2_{character_id}")
+                save_loadout(runtime_dir, loadout)
 
-        baseline = load_baseline(runtime_dir, character_id) or CharacterStatBaseline(
-            baseline_id=f"pob2_{character_id}", character_id=character_id,
-            anchored_loadout_revision=loadout.revision,
-        )
-        baseline.anchored_loadout_revision = loadout.revision
-        baseline.anchored_loadout_fingerprint = loadout.compute_fingerprint()
-        _apply_baseline(baseline, session)
-        save_baseline(runtime_dir, baseline)
+            baseline = load_baseline(runtime_dir, character_id) or CharacterStatBaseline(
+                baseline_id=f"pob2_{character_id}", character_id=character_id,
+                anchored_loadout_revision=loadout.revision,
+            )
+            baseline.anchored_loadout_revision = loadout.revision
+            baseline.anchored_loadout_fingerprint = loadout.compute_fingerprint()
+            _apply_baseline(baseline, defenses, stats)
+            save_baseline(runtime_dir, baseline)
     except Exception as exc:
         logger.warning("apply_session_to_runtime failed for %s", character_id, exc_info=True)
         warnings.append(f"runtime update failed: {exc}")

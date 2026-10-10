@@ -114,3 +114,16 @@ def test_refresh_applies_session_to_runtime_only_after_successful_sync(monkeypat
     dashboard_server.maybe_refresh_pob_session("X", 40, None, spawn=pending.append)
     pending[0]()
     assert applied == (["X"] if synced else [])
+
+
+def test_get_or_create_applies_session_after_successful_init(monkeypatch):
+    import companion.equipment.pob2_equipment_advisor as adv
+    fake = MagicMock(); fake.initialize.return_value = True
+    fake.character_name = "ZED"; fake.is_available = True
+    monkeypatch.setattr(adv, "Pob2EquipmentSession", lambda character_name: fake)
+    monkeypatch.setattr(dashboard_server, "normalize_char_id", lambda c: c)
+    monkeypatch.setattr(dashboard_server, "_GLOBAL_POB_SESSIONS", {})
+    applied = []
+    monkeypatch.setattr(dashboard_server, "_apply_session", lambda cid, s: applied.append((cid, s)))
+    assert dashboard_server.get_or_create_pob_session("ZED", force_retry=True) is fake
+    assert applied == [("ZED", fake)]

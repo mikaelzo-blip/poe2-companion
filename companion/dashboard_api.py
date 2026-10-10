@@ -915,6 +915,12 @@ def check_auto_clipboard(
 
 
 def update_loadout_item_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
+    from companion.equipment.loadout_cli import character_runtime_lock
+    with character_runtime_lock(payload.get("character_id", "BOMSHAK")):
+        return _update_loadout_item_payload_locked(payload, runtime_dir)
+
+
+def _update_loadout_item_payload_locked(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
     """Equip or update an item in character loadout from web UI."""
     raw_text = payload.get("raw_text", "").strip()
     if not raw_text:
@@ -978,6 +984,12 @@ def update_loadout_item_payload(payload: dict[str, Any], runtime_dir: Path) -> d
 
 
 def import_character_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
+    from companion.equipment.loadout_cli import character_runtime_lock
+    with character_runtime_lock(payload.get("character_id", "BOMSHAK")):
+        return _import_character_payload_locked(payload, runtime_dir)
+
+
+def _import_character_payload_locked(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
     """Import full character equipment JSON (from GGG get-items or export)."""
     char_id = payload.get("character_id", "BOMSHAK")
     raw_payload = payload.get("character_data") or payload
@@ -1067,6 +1079,12 @@ def import_character_payload(payload: dict[str, Any], runtime_dir: Path) -> dict
 
 
 def update_character_stats_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
+    from companion.equipment.loadout_cli import character_runtime_lock
+    with character_runtime_lock(payload.get("character_id") or "BOMSHAK"):
+        return _update_character_stats_payload_locked(payload, runtime_dir)
+
+
+def _update_character_stats_payload_locked(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
     """Update CharacterState and CharacterStatBaseline with live character stats from in-game / UI."""
     char_id = payload.get("character_id") or "BOMSHAK"
 

@@ -85,14 +85,16 @@ def maybe_refresh_pob_session(
     level: int | None,
     zone: str | None,
     spawn: Callable[[Callable[[], None]], None] = _spawn_daemon,
+    now: float | None = None,
 ) -> bool:
     """Re-sync a cached session in the background when stale; True if a refresh was started."""
     sess = _GLOBAL_POB_SESSIONS.get(character_id)
-    if sess is None or not sess.needs_refresh(level, zone):
+    if sess is None:
         return False
     with _REFRESH_LOCK:
-        if character_id in _REFRESHING:
+        if character_id in _REFRESHING or not sess.needs_refresh(level, zone, now=now):
             return False
+        sess.mark_refresh_started(level, zone, now=now)
         _REFRESHING.add(character_id)
 
     def run() -> None:

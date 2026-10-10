@@ -329,6 +329,8 @@ class Pob2EquipmentSession:
         self.level: int | None = None
         self.last_synced_at: float = 0.0
         self._last_zone: str | None = None
+        self.last_refresh_attempt_at: float = float("-inf")
+        self._handed_level: int | None = None
         self.equipped_items: dict[str, dict[str, Any]] = {}
         self.defenses_before: dict[str, Any] = {}
         self.stats_before: dict[str, Any] = {}
@@ -618,14 +620,30 @@ class Pob2EquipmentSession:
         zone: str | None,
         max_age_s: float = 600.0,
         now: float | None = None,
+        min_interval_s: float = 60.0,
     ) -> bool:
-        """True when the character leveled up, changed zone, or the last sync is stale."""
+        """True when the character leveled up, changed zone, or the last sync is stale.
+
+        Side-effect free (except recording the very first zone) and rate-limited to one
+        attempt per ``min_interval_s``; call ``mark_refresh_started`` when a refresh begins.
+        """
         now = time.monotonic() if now is None else now
+        if self._last_zone is None and zone is not None:
+            self._last_zone = zone
+        if now - self.last_refresh_attempt_at < min_interval_s:
+            return False
+        known = [v for v in (self.level, self._handed_level) if v is not None]
+        leveled = level is not None and bool(known) and level > max(known)
         zone_changed = zone is not None and self._last_zone is not None and zone != self._last_zone
+        return leveled or zone_changed or (now - self.last_synced_at) > max_age_s
+
+    def mark_refresh_started(self, level: int | None, zone: str | None, now: float | None = None) -> None:
+        """Record a refresh attempt so its triggers (level, zone) are consumed exactly once."""
+        self.last_refresh_attempt_at = time.monotonic() if now is None else now
+        if level is not None:
+            self._handed_level = level if self._handed_level is None else max(self._handed_level, level)
         if zone is not None:
             self._last_zone = zone
-        leveled = level is not None and (self.level is None or level > self.level)
-        return leveled or zone_changed or (now - self.last_synced_at) > max_age_s
 
     def get_current_item_name(self, slot: str) -> str | None:
         """Get the current equipped item name for a given slot."""

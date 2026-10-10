@@ -1,4 +1,6 @@
 import json
+
+import pytest
 from unittest.mock import MagicMock
 
 from companion import dashboard_server
@@ -20,6 +22,11 @@ Str: 12
 +14% to Cold Resistance
 15% increased Movement Speed
 +18 to maximum Life"""
+
+
+@pytest.fixture(autouse=True)
+def _clean_refreshing(monkeypatch):
+    monkeypatch.setattr(dashboard_server, "_REFRESHING", set())
 
 
 def test_needs_refresh_on_level_up_zone_change_and_age():
@@ -54,3 +61,43 @@ def test_effective_level_prefers_newer_character_file(tmp_path):
     (tmp_path / "characters" / "X.json").write_text(json.dumps({"level": {"value": 53}}))
     ctx = _build_eval_context({"character_id": "X", "stage": "auto"}, SAMPLE_BOOTS_TEXT, tmp_path, MagicMock(level=37))
     assert ctx.char_level == 53
+
+
+def _real_session(level=37):
+    s = Pob2EquipmentSession("X"); s.level = level; s.last_synced_at = 1000.0
+    s.sync_character = MagicMock(return_value=False)
+    return s
+
+
+def test_failed_sync_is_rate_limited_to_60s(monkeypatch):
+    monkeypatch.setitem(dashboard_server._GLOBAL_POB_SESSIONS, "X", _real_session())
+    run = lambda fn: fn()
+    assert dashboard_server.maybe_refresh_pob_session("X", 40, None, spawn=run, now=1001.0) is True
+    assert dashboard_server.maybe_refresh_pob_session("X", 41, None, spawn=run, now=1002.0) is False
+    assert dashboard_server.maybe_refresh_pob_session("X", 41, None, spawn=run, now=1062.0) is True
+
+
+def test_zone_change_during_inflight_refresh_still_triggers(monkeypatch):
+    monkeypatch.setitem(dashboard_server._GLOBAL_POB_SESSIONS, "X", _real_session())
+    pending = []
+    mr = dashboard_server.maybe_refresh_pob_session
+    assert mr("X", 37, "A", spawn=pending.append, now=1001.0) is False   # first zone observation
+    assert mr("X", 37, "B", spawn=pending.append, now=1002.0) is True
+    assert mr("X", 37, "C", spawn=pending.append, now=1003.0) is False   # in flight
+    pending[0]()
+    assert mr("X", 37, "C", spawn=pending.append, now=1070.0) is True
+
+
+def test_ggg_level_lag_does_not_retrigger(monkeypatch):
+    monkeypatch.setitem(dashboard_server._GLOBAL_POB_SESSIONS, "X", _real_session())
+    run = lambda fn: fn()
+    mr = dashboard_server.maybe_refresh_pob_session
+    assert mr("X", 40, None, spawn=run, now=1001.0) is True   # sync leaves session level at 37
+    assert mr("X", 40, None, spawn=run, now=1010.0) is False
+    assert mr("X", 40, None, spawn=run, now=1100.0) is False
+    assert mr("X", 41, None, spawn=run, now=1101.0) is True
+
+
+def test_no_level_trigger_when_session_level_unknown():
+    s = Pob2EquipmentSession("X"); s.last_synced_at = 1000.0
+    assert s.needs_refresh(40, None, now=1001.0) is False

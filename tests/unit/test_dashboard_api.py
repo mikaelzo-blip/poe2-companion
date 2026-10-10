@@ -1242,9 +1242,31 @@ Dex: 95
     assert "Sorceress" in (res.get("reason") or res.get("actionable_recommendation") or "")
 
 
-def test_evaluate_item_payload_resolves_real_current_item_name() -> None:
-    """Verify that evaluate_item_payload resolves real current_item_name and current_item_base_type."""
-    runtime_dir = PROJECT_ROOT / "runtime"
+def test_evaluate_item_payload_resolves_real_current_item_name(tmp_path: Path) -> None:
+    """Verify that evaluate_item_payload resolves current_item_name and current_item_base_type from the loadout."""
+    from companion.equipment.loadout import EquippedLoadout
+    from companion.equipment.loadout_cli import save_loadout
+    from companion.equipment.parser import parse_item_text
+    from companion.equipment.schema import SlotType
+
+    runtime_dir = tmp_path
+    equipped_gloves = parse_item_text("""Item Class: Gloves
+Rarity: Rare
+Plague Claw
+Spined Bracers
+--------
+Armour: 40
+--------
+Requirements:
+Level: 20
+Str: 15
+--------
++30 to Armour
++10% to Cold Resistance""", target_slot=SlotType.GLOVES)
+    loadout = EquippedLoadout.create_draft(character_id="BOMSHAK")
+    loadout.transition_slot(SlotType.GLOVES, equipped_gloves)
+    loadout.finalize(loadout_id="test")
+    save_loadout(runtime_dir, loadout)
     gloves_sample = """Item Class: Gloves
 Rarity: Rare
 Horror Grip
@@ -1270,7 +1292,6 @@ Dex: 8
     result = evaluate_item_payload(payload, runtime_dir=runtime_dir)
     assert result.get("success") is True
     assert result.get("item_name") == "Horror Grip"
-    # BOMSHAK's equipped gloves in loadouts/BOMSHAK.json are Plague Claw (Spined Bracers)
     assert result.get("current_item_name") == "Plague Claw"
     assert result.get("current_item_base_type") == "Spined Bracers"
     # Tactical advice should also mention Plague Claw, not generic "Current Item"

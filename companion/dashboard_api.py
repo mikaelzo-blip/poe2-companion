@@ -315,7 +315,7 @@ def _build_eval_context(
         if b_data:
             char_stats.update(b_data.model_dump())
     except Exception:
-        pass
+        logging.getLogger(__name__).warning("Failed to load baseline %s", char_id, exc_info=True)
 
     guide = payload.get("guide")
     if guide:

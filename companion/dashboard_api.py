@@ -1492,50 +1492,110 @@ def select_character_payload(
     }
 
 
-def get_available_guides() -> dict[str, Any]:
-    """Return available build guides and supported progression stages."""
+def get_available_guides(runtime_dir: Path, character_id: str | None = None) -> dict[str, Any]:
+    """List imported guides and the guide/stage assigned to ``character_id``."""
+    from companion.builds.store import get_assignment, list_guides
+
+    guide, override = get_assignment(runtime_dir, character_id) if character_id else (None, None)
     return {
         "guides": [
             {
-                "id": "fubgun_flameblast",
-                "name": "Fubgun Flameblast Oil Grenade (Mercenary)",
-                "class": "Mercenary",
+                "slug": g.slug,
+                "name": g.name,
+                "source_url": g.source_url,
+                "has_pob": g.has_pob,
                 "stages": [
-                    "auto",
-                    "lvl 1-14",
-                    "lvl 15-32",
-                    "lvl 33-51",
-                    "lvl 52 swap",
-                    "lvl 53-68",
-                    "lvl 85",
-                    "endgame",
-                    "mageblood",
-                    "dot cap",
+                    {"id": s.id, "title": s.title, "min_level": s.min_level,
+                     "max_level": s.max_level, "auto": s.auto}
+                    for s in g.stages
                 ],
-            },
-            {
-                "id": "navira_varashta",
-                "name": "Navira's Fracturing Varashta (Sorceress)",
-                "class": "Sorceress",
-                "stages": [
-                    "auto",
-                    "Act 1 & 2",
-                    "Act 2",
-                    "Act 3",
-                    "Act 4 to Endgame",
-                    "Early Endgame",
-                    "Mid-Endgame",
-                    "Late Endgame",
-                    "Uber Endgame",
-                ],
-            },
-            {
-                "id": "generic_pob2",
-                "name": "Generic PoB2 Optimizer (Any Class / Witch / Ranger / Sorceress)",
-                "class": "Any",
-                "stages": ["auto"],
-            },
-        ]
+                "breaker_rules": [r.model_dump() for r in g.breaker_rules],
+            }
+            for g in list_guides(runtime_dir)
+        ],
+        "active": {"guide": guide, "stage_override": override},
     }
+
+
+def import_guide_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
+    """Import a guide from bookmarklet JSON, a pobb.in URL or a PoB2 share code."""
+    from datetime import date
+
+    from companion.builds import pob_code
+    from companion.builds.mobalytics import parse_mobalytics_guide
+    from companion.builds.store import save_guide
+
+    text = str(payload.get("text") or "").strip()
+    if not text:
+        return {"error": "Teks guide kosong."}
+    warnings: list[str] = []
+    try:
+        if text.startswith("{"):
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError as exc:
+                raise ValueError("JSON guide tidak valid atau terpotong.") from exc
+            profile, code, warnings = parse_mobalytics_guide(data)
+            xml = None
+            if code:
+                try:
+                    xml = pob_code.decode_share_code(code)
+                except ValueError as exc:
+                    warnings.append(f"Kode PoB2 dilewati: {exc}")
+        else:
+            if text.startswith("https://pobb.in/"):
+                try:
+                    code = pob_code.fetch_pobb_code(text)
+                except OSError as exc:
+                    raise ValueError(f"Gagal mengambil dari pobb.in: {exc}") from exc
+            else:
+                code = text
+            xml = pob_code.decode_share_code(code)
+            profile = pob_code.parse_pob_xml(xml, f"PoB Guide {date.today().isoformat()}")
+        saved = save_guide(runtime_dir, profile, pob_xml=xml)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    return {"success": True, "slug": saved.slug, "name": saved.name,
+            "stages": len(saved.stages), "warnings": warnings}
+
+
+def delete_guide_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
+    from companion.builds.store import delete_guide
+
+    if not delete_guide(runtime_dir, str(payload.get("slug") or "")):
+        return {"error": "Guide tidak ditemukan."}
+    return {"success": True}
+
+
+def update_guide_rules_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
+    from pydantic import ValidationError
+
+    from companion.builds.guide import BreakerRule
+    from companion.builds.store import set_breaker_rules
+
+    try:
+        rules = [BreakerRule.model_validate(r) for r in payload.get("rules") or []]
+    except ValidationError as exc:
+        err = exc.errors()[0]
+        if err["loc"] and err["loc"][-1] == "pattern":
+            return {"error": f"Pola regex tidak valid: {err['msg'].removeprefix('Value error, ')}"}
+        return {"error": f"Aturan tidak valid: {err['msg']}"}
+    try:
+        set_breaker_rules(runtime_dir, str(payload.get("slug") or ""), rules)
+    except (KeyError, ValueError):
+        return {"error": "Guide tidak ditemukan."}
+    return {"success": True}
+
+
+def set_character_guide_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
+    from companion.builds.store import load_guide, set_assignment
+
+    char_id, guide = payload.get("character_id"), payload.get("guide")
+    if not char_id:
+        return {"error": "character_id wajib diisi."}
+    if guide is not None and load_guide(runtime_dir, str(guide)) is None:
+        return {"error": "Guide tidak ditemukan."}
+    set_assignment(runtime_dir, str(char_id), guide, payload.get("stage_override"))
+    return {"success": True}
 
 

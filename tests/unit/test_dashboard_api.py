@@ -531,7 +531,6 @@ def test_dashboard_server_http_evaluate_endpoint() -> None:
                 assert resp.status == 200
                 guides_body = json.loads(resp.read().decode("utf-8"))
                 assert "guides" in guides_body
-                assert len(guides_body["guides"]) >= 2
 
             # 4c. Test POST /api/select-character
             select_data = json.dumps({"character_id": "BOMSHAK"}).encode("utf-8")
@@ -975,16 +974,6 @@ def test_select_character_payload(tmp_path: Path) -> None:
     assert active_data.get("active_character_id") == "DaisyofWar"
 
 
-def test_get_available_guides() -> None:
-    from companion.dashboard_api import get_available_guides
-
-    res = get_available_guides()
-    assert "guides" in res
-    guide_ids = [g["id"] for g in res["guides"]]
-    assert "fubgun_flameblast" in guide_ids
-    assert "generic_pob2" in guide_ids
-
-
 def test_evaluate_item_payload_generic_pob2_allows_non_fubgun_weapon(tmp_path: Path) -> None:
     from companion.dashboard_api import evaluate_item_payload
 
@@ -1124,21 +1113,6 @@ def test_check_auto_clipboard_passes_zone(monkeypatch: Any, tmp_path: Path) -> N
     )
     assert res.get("has_new_item") is True
     assert captured_zone == ["vastiri_outskirts"]
-
-
-def test_get_available_guides_includes_navira_varashta() -> None:
-    from companion.dashboard_api import get_available_guides
-
-    res = get_available_guides()
-    assert "guides" in res
-    guide_map = {g["id"]: g for g in res["guides"]}
-    assert "navira_varashta" in guide_map
-
-    navira = guide_map["navira_varashta"]
-    assert "Navira" in navira["name"]
-    assert navira["class"] == "Sorceress"
-    assert "Act 1 & 2" in navira["stages"]
-    assert "Uber Endgame" in navira["stages"]
 
 
 def test_evaluate_item_payload_navira_varashta_allows_sorc_weapon(tmp_path: Path) -> None:

@@ -319,7 +319,27 @@ def _api_account_characters(q: dict[str, str]) -> Any:
 
 def _api_guides(q: dict[str, str]) -> Any:
     from companion.dashboard_api import get_available_guides
-    return get_available_guides()
+    return get_available_guides(RUNTIME_DIR, normalize_char_id(q.get("char_id")) if q.get("char_id") else None)
+
+
+def _api_import_guide(payload: dict[str, Any]) -> Any:
+    from companion.dashboard_api import import_guide_payload
+    return import_guide_payload(payload, RUNTIME_DIR)
+
+
+def _api_delete_guide(payload: dict[str, Any]) -> Any:
+    from companion.dashboard_api import delete_guide_payload
+    return delete_guide_payload(payload, RUNTIME_DIR)
+
+
+def _api_guide_rules(payload: dict[str, Any]) -> Any:
+    from companion.dashboard_api import update_guide_rules_payload
+    return update_guide_rules_payload(payload, RUNTIME_DIR)
+
+
+def _api_character_guide(payload: dict[str, Any]) -> Any:
+    from companion.dashboard_api import set_character_guide_payload
+    return set_character_guide_payload(payload, RUNTIME_DIR)
 
 
 def _api_get_clipboard(q: dict[str, str]) -> Any:
@@ -404,6 +424,10 @@ POST_ROUTES: dict[str, Callable[[dict[str, Any]], Any]] = {
     "/api/update-stats": _api_update_stats,
     "/api/select-character": _api_select_character,
     "/api/fetch-public-profile": _api_fetch_public_profile,
+    "/api/guides": _api_import_guide,
+    "/api/guides/delete": _api_delete_guide,
+    "/api/guides/rules": _api_guide_rules,
+    "/api/character-guide": _api_character_guide,
 }
 
 

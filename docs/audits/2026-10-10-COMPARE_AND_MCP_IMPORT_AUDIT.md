@@ -15,17 +15,17 @@ Catatan: audit sebelumnya (`EQUIPMENT_WORKFLOW_COMPARISON_AUDIT.md`) mendeskrips
 | 1 | Build-breaker (early ignite Oil Grenade) tidak pernah dicek di jalur PoB2 untuk slot non-senjata | Kritis | Terbukti |
 | 2 | Jalur heuristic: tactical advice **mempromosikan** verdict engine, sehingga REJECT build-breaker berubah jadi EQUIP_NOW | Kritis | Terbukti |
 | 3 | Sesi PoB2 bocor: invalidate tidak menutup engine, dan init yang gagal juga tidak menutupnya. Akibatnya container Docker yatim menumpuk | Tinggi | Terbukti (kode) -> **Diperbaiki** (b91fc8c) |
-| 4 | Item "current" hasil import GGG kehilangan base properties, requirements, dan sebagian mod, sehingga perbandingan tidak setara | Tinggi | Terbukti (data runtime) -> **Diperbaiki** (390dde7, 4d9af45, 0b4cbe9, de6f4c4) |
+| 4 | Item "current" hasil import GGG kehilangan base properties, requirements, dan sebagian mod, sehingga perbandingan tidak setara | Tinggi | Terbukti (data runtime) -> **Sebagian diperbaiki** (teks GGG: 390dde7, 4d9af45; teks PoB2 -> clipboard: fix wave final review, hanya unit test) |
 | 5 | Compare manual selalu mengirim `slot`, sehingga router senjata Fubgun dilewati. Di jalur auto-scan, UI menimpa slot pilihan server | Tinggi | Terbukti (kode) |
 | 6 | Cabang senjata 1H ambigu selalu crash (`advice.rec1` tidak ada) dan memakai kalimat sebagai verdict | Tinggi | Terbukti |
 | 7 | Simulasi slot Weapon Set 2 eksplisit tidak mengaktifkan weapon set 2 di PoB | Tinggi | Kemungkinan besar |
 | 8 | Simulasi ring dan 1H tidak mengunci main skill; baseline ring dari sumber yang berbeda | Sedang | Terbukti (kode) |
-| 9 | Baseline PoB2 basi: tidak di-refresh setelah ganti gear/naik level; level sesi menimpa level file sehingga stage salah | Sedang | Terbukti (kode) -> **Diperbaiki** (fba254f, 29b1995) |
+| 9 | Baseline PoB2 basi: tidak di-refresh setelah ganti gear/naik level; level sesi menimpa level file sehingga stage salah | Sedang | Terbukti (kode) -> **Diperbaiki, unit test saja** (fba254f, 29b1995) |
 | 10 | Threshold DPS/EHP absolut (tidak relatif); DPS absolut ditampilkan sebagai "%" | Sedang | Terbukti |
 | 11 | Auto-pasang ke slot kosong mengabaikan verdict (REJECT pun dipasang dan dimasukkan ke baseline PoB2) | Sedang | Terbukti (kode) |
-| 12 | Import GGG: baseline selalu kosong, nilai lama tidak pernah diperbarui, slot yang sudah dilepas tetap ada (ghost item) | Sedang | Terbukti -> **Diperbaiki** (17246e2, bf0dbb7, 0b4cbe9) |
-| 13 | Daftar karakter akun dibaca dari `oauth_status.json` yang tidak berisi karakter; fallback-nya data palsu | Sedang | Terbukti -> **Diperbaiki** (cbe3e49, 1b4c677) |
-| 14 | `fetch_public_profile` menelan error OAuth lalu jatuh ke endpoint lama yang pasti gagal untuk PoE2, dengan pesan menyesatkan | Sedang | Terbukti (kode) -> **Diperbaiki** (cbe3e49) |
+| 12 | Import GGG: baseline selalu kosong, nilai lama tidak pernah diperbarui, slot yang sudah dilepas tetap ada (ghost item) | Sedang | Terbukti -> **Sebagian diperbaiki** (17246e2, bf0dbb7, 0b4cbe9; default kelas 'Mercenary' tidak diubah) |
+| 13 | Daftar karakter akun dibaca dari `oauth_status.json` yang tidak berisi karakter; fallback-nya data palsu | Sedang | Terbukti -> **Diperbaiki, unit test saja** (cbe3e49, 1b4c677) |
+| 14 | `fetch_public_profile` menelan error OAuth lalu jatuh ke endpoint lama yang pasti gagal untuk PoE2, dengan pesan menyesatkan | Sedang | Terbukti (kode) -> **Diperbaiki, unit test saja** (cbe3e49) |
 | 15 | Aturan build-breaker Fubgun diterapkan ke guide lain (Navira / generic) | Sedang | Terbukti (kode) |
 | 16 | Counter staleness dipakai bersama antara compare manual dan auto-scan, sehingga simulasi bisa dibuang diam-diam | Rendah | Terbukti (kode) |
 | 17 | Engine heuristic tidak punya model offense; `weapon_projection.py` adalah dead code | Rendah | Terbukti |
@@ -75,7 +75,7 @@ Cabang `CONDITIONAL_UPGRADE` dari `INSUFFICIENT_DATA` juga merupakan promosi.
 
 ## 3. Kebocoran sesi / container Docker PoB2 (Tinggi)
 
-> **Diperbaiki** pada `b91fc8c`: engine ditutup saat init gagal; sesi dipertahankan saat invalidate. Verifikasi live 2026-10-11 lihat bawah.
+> **Diperbaiki** pada `b91fc8c`: engine ditutup saat init gagal; sesi dipertahankan saat invalidate. Pembuatan sesi serentak (race saat init lambat, penyebab container yatim yang tersisa) ditutup di fix wave final review dengan lock per karakter. Belum diverifikasi ulang live setelah lock itu.
 
 **Lokasi**: [dashboard_server.py:82](../../companion/dashboard_server.py) (`invalidate_pob_session`), [pob2_equipment_advisor.py:451](../../companion/equipment/pob2_equipment_advisor.py).
 
@@ -88,7 +88,7 @@ Cabang `CONDITIONAL_UPGRADE` dari `INSUFFICIENT_DATA` juga merupakan promosi.
 
 ## 4. Item "current" hasil import tidak setara dengan kandidat (Tinggi)
 
-> **Diperbaiki** pada `390dde7, 4d9af45, 0b4cbe9, de6f4c4`: teks item GGG lengkap (properti, requirements, item level); raw_text PoB2 ditulis ke runtime setelah sync. Sebagian: penanganan mod desecrated/mutated dan Item Class tidak dicek ulang secara live (helmet terverifikasi). Verifikasi live 2026-10-11 lihat bawah.
+> **Sebagian diperbaiki**: teks item GGG lengkap (properti, requirements, item level, Item Class) pada `390dde7, 4d9af45`; terverifikasi live pada 10 slot BOMSHAK. Teks PoB2 (`get_equipped`) memakai format internal PoB (tanpa Item Class, awalan `{tags:...}`, `Implicits: N`) dan sebelumnya ditolak parser, jadi `raw_text` PoB2 tidak pernah masuk ke runtime. Fix wave final review menambah `pob_item_to_clipboard` (`companion/equipment/pob_item_text.py`) dan menerapkannya saat sync; hanya diuji dengan unit test memakai fixture dari engine (`tests/fixtures/pob/`), belum diverifikasi live. Item PoB2 dengan mod terkenali lebih sedikit tidak menimpa item tersimpan.
 
 **Lokasi**: [api_adapter.py:169-197](../../companion/equipment/api_adapter.py).
 
@@ -163,7 +163,7 @@ fields: ['slot1_recommendation', 'slot2_recommendation', 'recommended_slot', 'su
 
 ## 9. Baseline PoB2 basi dan stage salah (Sedang)
 
-> **Diperbaiki** pada `fba254f, 29b1995`: refresh sesi saat level/zone berubah atau umur >10 menit, jeda minimal 60 dtk; level terbaru dipakai. Verifikasi live 2026-10-11 lihat bawah.
+> **Diperbaiki** pada `fba254f, 29b1995`: refresh sesi saat level/zone berubah atau umur >10 menit, jeda minimal 60 dtk; level terbaru dipakai. Hanya diverifikasi dengan unit test, belum live.
 
 - Sesi PoB2 diimpor sekali (saat start / pilih karakter) dan hanya di-refresh lewat invalidate (temuan 3) atau "Pasang" dari dashboard. Ganti gear atau naik level di game tidak memicu refresh. Compare dilakukan terhadap gear lama.
 - [dashboard_api.py:284](../../companion/dashboard_api.py): `char_level` diambil dari `pob_session.level` (saat import) dan **mengalahkan** level di `runtime/characters/*.json`, yang lebih segar (ditulis oleh observer / update stats). Stage `auto` bisa tertinggal. Misalnya level 37 menjadi 53 tetap dianggap `LEVELING_33_51` (pre-swap), sehingga aturan build-breaker post-swap mati.
@@ -187,7 +187,7 @@ Saat toggle "Auto-Pasang Slot Kosong" aktif dan slot di loadout lokal kosong, it
 
 ## 12. Import GGG: baseline kosong, nilai tidak diperbarui, ghost item (Sedang)
 
-> **Diperbaiki** pada `17246e2, bf0dbb7, 0b4cbe9`: import resmi mulai dari draft kosong; hanya fakta MANUAL yang dilindungi; baseline dari PoB2 disimpan. Default kelas 'Mercenary' tidak diubah. Verifikasi live 2026-10-11 lihat bawah.
+> **Sebagian diperbaiki** pada `17246e2, bf0dbb7, 0b4cbe9`: import resmi mulai dari draft kosong; hanya fakta MANUAL yang dilindungi; baseline dari PoB2 disimpan. Fakta manual yang dipertahankan ditandai STALE bila gear berubah (fix wave final review), dan slot yang dilaporkan PoB2 kosong ikut dikosongkan. Default kelas 'Mercenary' tidak diubah. Belum diverifikasi live.
 
 **Lokasi**: [api_adapter.py:245](../../companion/equipment/api_adapter.py), [dashboard_api.py](../../companion/dashboard_api.py) `import_character_payload`.
 
@@ -200,7 +200,7 @@ Saat toggle "Auto-Pasang Slot Kosong" aktif dan slot di loadout lokal kosong, it
 
 ## 13. Daftar karakter akun tidak pernah dari GGG (Sedang)
 
-> **Diperbaiki** pada `cbe3e49, 1b4c677`: daftar karakter dari GGG API; fallback palsu dihapus. Verifikasi live 2026-10-11 lihat bawah.
+> **Diperbaiki** pada `cbe3e49, 1b4c677`: daftar karakter dari GGG API; fallback palsu dihapus. Hanya diverifikasi dengan unit test, belum live.
 
 **Lokasi**: [dashboard_api.py:1386](../../companion/dashboard_api.py), [dashboard_api.py:1442](../../companion/dashboard_api.py).
 
@@ -210,7 +210,7 @@ Saat toggle "Auto-Pasang Slot Kosong" aktif dan slot di loadout lokal kosong, it
 
 ## 14. Error OAuth ditelan; pesan error menyesatkan (Sedang)
 
-> **Diperbaiki** pada `cbe3e49`: error OAuth/API ditampilkan apa adanya, tanpa fallback ke endpoint lama. Verifikasi live 2026-10-11 lihat bawah.
+> **Diperbaiki** pada `cbe3e49`: error OAuth/API ditampilkan apa adanya, tanpa fallback ke endpoint lama. Hanya diverifikasi dengan unit test, belum live.
 
 **Lokasi**: `fetch_public_profile`, blok `except Exception: pass` setelah jalur `poe_oauth`/`poe_api`.
 
@@ -257,4 +257,6 @@ Engine heuristic dan `_build_eval_context` selalu menjalankan `FubgunOilGrenadeF
 
 ## Verifikasi live (Phase 0, 2026-10-11)
 
-Dashboard + Docker + token MCP valid. Karakter BOMSHAK, 3x `POST /api/fetch-public-profile`: jumlah container PoB2 tetap 4 sebelum dan sesudah tiap sync (tidak bertambah). `runtime/loadouts/BOMSHAK.json` helmet `raw_text` memuat `Item Level: 40`, `Evasion Rating: 37`, `Energy Shield: 18`, requirements, dan semua mod. Setelah server dihentikan, container turun ke 0.
+Dashboard + Docker + token MCP valid. Karakter BOMSHAK, 3x `POST /api/fetch-public-profile`: jumlah container PoB2 tetap 4 sebelum dan sesudah tiap sync (tidak bertambah). Angka 4 berarti dua sesi (satu `docker run` per engine, dua engine per sesi): sisa dari race pembuatan sesi serentak, yang baru ditutup di fix wave. Setelah server dihentikan, container turun ke 0.
+
+Catatan koreksi: `runtime/loadouts/BOMSHAK.json` helmet `raw_text` yang diperiksa (`Item Level: 40`, `Evasion Rating: 37`, `Energy Shield: 18`) adalah teks hasil adapter GGG, bukan teks PoB2. Pengecekan ini memverifikasi temuan 4 sisi GGG saja.

@@ -31,4 +31,4 @@ uv run python -m companion.cli dashboard
 - **Docker wajib** untuk engine PoB2 (image `ghcr.io/pathofbuildingcommunity/pathofbuilding-tests`). Tanpa Docker, compare jatuh ke heuristic.
 - **Login MCP**: jalankan alur OAuth di `path-of-building-2-mcp` sekali; token disimpan di `%LOCALAPPDATA%/pob2-mcp/token.json`. Jika kedaluwarsa, tombol Sync menampilkan error OAuth/API apa adanya (login ulang).
 - **Auto-refresh sesi PoB2**: dipicu saat naik level, ganti zona, atau umur sesi >10 menit, dengan jeda minimal 60 detik antar percobaan.
-- Sync menulis teks item PoB2 lengkap dan baseline ke `runtime/loadouts/<char>.json`.
+- Sync menulis teks item ke `runtime/loadouts/<char>.json` (teks GGG, lalu diperbarui dengan teks PoB2 yang dikonversi ke format clipboard; item PoB2 yang menghasilkan lebih sedikit mod terkenali tidak menimpa item tersimpan) dan baseline hasil hitungan PoB2 ke `runtime/baselines/<char>.json`. Fakta baseline manual dipertahankan tetapi ditandai STALE saat gear berubah. Konversi teks PoB2 baru diuji dengan unit test (fixture dari engine), belum diverifikasi live.

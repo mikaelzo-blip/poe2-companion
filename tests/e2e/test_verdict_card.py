@@ -132,7 +132,16 @@ def test_card_sparse_response_has_no_placeholder_garbage(
     responses: list[dict[str, Any]] = [
         {
             "verdict": "ALREADY_EQUIPPED",
-            "engine": "none",
+            "engine": "pob2",
+            "engine_reason": None,
+            "slot": "boots",
+            "slot_reason": "Slot boots",
+            "dps_pct": 0.0,
+            "ehp_pct": 0.0,
+            "dps_delta": 0,
+            "life_delta": 0,
+            "slot_empty": False,
+            "auto_equip_ok": False,
             "dims": {},
             "guide": None,
             "safety": [],
@@ -159,6 +168,8 @@ def test_card_sparse_response_has_no_placeholder_garbage(
             resp,
         )
         card_text = dashboard_page.locator("#compare-verdict-result").inner_text()
+        assert "DPS +0.0%" not in card_text
+        assert "DPS " not in card_text
         for placeholder in ("NaN", "undefined", "null"):
             assert placeholder not in card_text, (
                 f"Found '{placeholder}' in verdict card text for verdict {resp.get('verdict')}: {card_text}"

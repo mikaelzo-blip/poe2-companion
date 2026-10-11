@@ -107,12 +107,19 @@ export async function setupCharacterAndGuideControls() {
           body: JSON.stringify({ character_id: selectedName, account_name: 'mikaelzo#5674' })
         });
         if (res.ok) {
+          showGuideError('');
           await refreshGuideControls();
           logToTerminal('CHARACTER', `Karakter aktif beralih ke ${selectedName}`);
           await fetchHttpRuntime();
+        } else {
+          const data = await res.json().catch(() => ({}));
+          const errMsg = data.error || `HTTP ${res.status}`;
+          showGuideError(errMsg);
+          logToTerminal('CHARACTER', `Gagal beralih karakter: ${errMsg}`);
         }
       } catch (err) {
         console.error('Failed to select character:', err);
+        showGuideError(err.message || 'Gagal menghubungi API server');
       }
     });
   }

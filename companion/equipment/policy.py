@@ -97,12 +97,14 @@ def decide(
         verdict, reason = "EQUIP_NOW", "Peningkatan melewati ambang tanpa trade-off besar."
     else:
         verdict, reason = "CONDITIONAL_UPGRADE", "Peningkatan di bawah ambang atau ada trade-off."
+    reasons = [reason]
     if missing and verdict == "EQUIP_NOW":
-        verdict, reason = "CONDITIONAL_UPGRADE", "Mod wajib dari guide belum ada."
+        verdict = "CONDITIONAL_UPGRADE"
+        reasons.insert(0, "Mod wajib dari guide belum ada.")
 
     return SlotResult(
         slot=delta.slot, verdict=verdict, dps_pct=dps_pct, ehp_pct=ehp_pct, gains=gains,
-        trade_offs=trade_offs, reasons=[reason], is_empty=is_empty, delta=delta,
+        trade_offs=trade_offs, reasons=reasons, is_empty=is_empty, delta=delta,
     )
 
 

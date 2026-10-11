@@ -34,6 +34,7 @@ def test_must_have_caps_equip_now():
     r = decide(_delta(1000, 1100, 500, 600), priority=sig)
     assert r.verdict == "CONDITIONAL_UPGRADE"
     assert "Prioritas guide kurang: 25% increased Movement Speed" in r.trade_offs
+    assert r.reasons == ["Mod wajib dari guide belum ada.", "Peningkatan melewati ambang tanpa trade-off besar."]
 
 
 def test_percent_labels():

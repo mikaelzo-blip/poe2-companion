@@ -35,7 +35,7 @@ function renderRuleItems(rules, slug) {
 
 function renderGuideRow(g) {
   const ruleCount = (g.editingRules || []).length;
-  const reimportLink = g.source_url
+  const reimportLink = /^https?:\/\//i.test(g.source_url || '')
     ? `<a href="${esc(g.source_url)}" target="_blank" rel="noopener" class="btn" style="font-size:11px;color:var(--accent-gold);border:1px solid var(--accent-gold);text-decoration:none;padding:2px 8px;border-radius:4px;">Buka halaman guide</a>`
     : '';
 

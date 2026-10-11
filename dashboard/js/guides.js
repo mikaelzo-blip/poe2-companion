@@ -239,14 +239,6 @@ export function setupGuides() {
             errBox.textContent = res.error;
             errBox.style.display = 'block';
           }
-          // Revert editingRules to committed breaker_rules so rendered list still has original rules
-          g.editingRules = (g.breaker_rules || []).map((rule) => ({
-            pattern: rule.pattern || '',
-            from_level: rule.from_level ?? 1,
-            exclude_slots: Array.isArray(rule.exclude_slots) ? [...rule.exclude_slots] : [],
-            reason: rule.reason || '',
-          }));
-          updateRulesView(g);
           return;
         }
 

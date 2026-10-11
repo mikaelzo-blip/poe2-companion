@@ -123,6 +123,11 @@ def test_rule_editor_invalid_regex_keeps_rules(dashboard_page: Page, mock_api: A
     assert "adds .*fire damage to attacks" in container_text
     assert "Fire damage ke Attack menyalakan Oil Grenade terlalu cepat" in container_text
 
+    # Unsaved input is preserved so user can fix the typo
+    assert dashboard_page.locator(".rule-input-pattern").input_value() == "[invalid("
+    assert dashboard_page.locator(".rule-input-from-level").input_value() == "50"
+    assert dashboard_page.locator(".rule-input-reason").input_value() == "Bad pattern rule"
+
 
 def test_reimport_link_points_to_source_url(dashboard_page: Page, mock_api: Any) -> None:
     guide_without_url = {
@@ -170,6 +175,51 @@ def test_rule_editor_delete_rule_updates_list_and_count(dashboard_page: Page, mo
     dashboard_page.locator("button:has-text('Aturan (1)')").click()
     dashboard_page.locator(".btn-del-rule").click()
     assert dashboard_page.locator("button:has-text('Aturan (0)')").is_visible()
+
+
+def test_rule_editor_failed_save_keeps_local_deletion(dashboard_page: Page, mock_api: Any) -> None:
+    guide_with_two_rules = {
+        **SAMPLE_FUBGUN_GUIDE,
+        "breaker_rules": [
+            SAMPLE_FUBGUN_GUIDE["breaker_rules"][0],
+            {
+                "pattern": r"dummy pattern to delete",
+                "from_level": 1,
+                "exclude_slots": [],
+                "reason": "Dummy reason",
+            },
+        ],
+    }
+    error_msg = "Pola regex tidak valid"
+    mock_api(
+        dashboard_page,
+        {
+            "/api/guides": {
+                "guides": [guide_with_two_rules],
+                "active": {"guide": guide_with_two_rules["slug"], "stage_override": None},
+            },
+            "/api/guides/rules": {"error": error_msg},
+        },
+    )
+
+    _open_guide_tab(dashboard_page)
+    dashboard_page.locator("button:has-text('Aturan (2)')").click()
+
+    # Delete the second rule locally
+    dashboard_page.locator(".btn-del-rule").nth(1).click()
+    assert dashboard_page.locator("button:has-text('Aturan (1)')").is_visible()
+
+    # Attempt to save with invalid regex
+    dashboard_page.locator(".rule-input-pattern").fill("[broken(")
+    dashboard_page.locator("button:has-text('Simpan aturan')").click()
+
+    # Error is shown
+    dashboard_page.wait_for_selector(f"text={error_msg}")
+
+    # Local deletion is kept: count is still 1 and deleted rule is NOT resurrected
+    assert dashboard_page.locator("button:has-text('Aturan (1)')").is_visible()
+    container_text = dashboard_page.locator("#guide-list").inner_text()
+    assert "dummy pattern to delete" not in container_text
 
 
 def test_select_character_error_is_shown(dashboard_page: Page, mock_api: Any) -> None:

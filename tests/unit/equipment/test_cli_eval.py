@@ -215,3 +215,16 @@ def test_live_survives_unexpected_error(tmp_path, monkeypatch):
                        clipboard_reader=lambda: next(texts), output_writer=out.append, max_polls=2)
     assert code == 0
     assert out == ["Evaluasi gagal: engine exploded"] * 2
+
+
+def test_cli_parser_gear_live_options() -> None:
+    from companion.cli import build_parser
+
+    parser = build_parser()
+    args = parser.parse_args(["gear", "live", "--no-pob", "--stage", "3"])
+    assert args.no_pob is True
+    assert args.stage == "3"
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["gear", "live", "--bootstrap"])
+

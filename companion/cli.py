@@ -269,31 +269,34 @@ def build_parser() -> argparse.ArgumentParser:
     # Equipment Intelligence gear subparsers
     glive_p = gear_sub.add_parser("live", help="Start MVP live clipboard monitoring mode")
     glive_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
-    glive_p.add_argument("--stage", help="Build progression stage (e.g. 'lvl 15-32', 'lvl 52 swap'). If omitted, uses persisted runtime stage.")
     glive_p.add_argument("--character-id", help="Character ID")
-    glive_p.add_argument("--weapon-set", help="Target weapon set (e.g. set_1, set_2)")
+    glive_p.add_argument("--stage", help="Guide stage id or title override")
     glive_p.add_argument("--poll-interval", type=float, default=0.25, help="Clipboard polling interval in seconds")
     glive_p.add_argument("--json", action="store_true", help="Output recommendation as JSON")
-    glive_p.add_argument("--bootstrap", action="store_true", help="Enable live bootstrap mode for unequipped slots")
-    glive_p.add_argument("--pob-character", help="Character name for PoB2 live simulation (milestone default: BOMSHAK)")
+    glive_p.add_argument("--pob-character", help="Character name for PoB2 live simulation")
     glive_p.add_argument("--no-pob", action="store_true", help="Disable PoB2 live equipment advisor")
 
     gclip_p = gear_sub.add_parser("inspect-clipboard", help="Inspect and evaluate item from clipboard")
-    gclip_p.add_argument("--slot", help="Target equipment slot")
-    gclip_p.add_argument("--weapon-set", help="Target weapon set (e.g. set_1, set_2)")
-    gclip_p.add_argument("--stage", default="EARLY_ENDGAME", help="Build progression stage (PRE_SWAP, EARLY_ENDGAME, PINNACLE_ENDGAME)")
     gclip_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
     gclip_p.add_argument("--character-id", help="Character ID")
+    gclip_p.add_argument("--slot", help="Target equipment slot (e.g. 'Boots', 'Ring 1')")
+    gclip_p.add_argument("--stage", help="Guide stage id or title override")
+    gclip_p.add_argument("--poll-interval", type=float, default=0.25, help="Clipboard polling interval in seconds")
     gclip_p.add_argument("--json", action="store_true", help="Output recommendation as JSON")
+    gclip_p.add_argument("--pob-character", help="Character name for PoB2 simulation")
+    gclip_p.add_argument("--no-pob", action="store_true", help="Disable PoB2 live equipment advisor")
 
     geval_p = gear_sub.add_parser("evaluate", help="Evaluate candidate item from file")
-    geval_p.add_argument("--file", required=True, help="Path to item text file")
-    geval_p.add_argument("--slot", help="Target equipment slot")
-    geval_p.add_argument("--weapon-set", help="Target weapon set (e.g. set_1, set_2)")
-    geval_p.add_argument("--stage", default="EARLY_ENDGAME", help="Build progression stage")
+    geval_p.add_argument("file", nargs="?", default=None, help="Path to item text file")
+    geval_p.add_argument("--file", dest="file_opt", help="Path to item text file")
     geval_p.add_argument("--runtime", default="runtime", help="Runtime state directory")
     geval_p.add_argument("--character-id", help="Character ID")
+    geval_p.add_argument("--slot", help="Target equipment slot (e.g. 'Boots', 'Ring 1')")
+    geval_p.add_argument("--stage", help="Guide stage id or title override")
+    geval_p.add_argument("--poll-interval", type=float, default=0.25, help="Clipboard polling interval in seconds")
     geval_p.add_argument("--json", action="store_true", help="Output recommendation as JSON")
+    geval_p.add_argument("--pob-character", help="Character name for PoB2 simulation")
+    geval_p.add_argument("--no-pob", action="store_true", help="Disable PoB2 live equipment advisor")
 
     gbase_p = gear_sub.add_parser("baseline", help="Manage character stat baseline")
     base_sub = gbase_p.add_subparsers(dest="baseline_action", required=True)
@@ -1172,82 +1175,87 @@ def handle_gear_compare(args: argparse.Namespace) -> int:
 
 
 def handle_gear_live(args: argparse.Namespace) -> int:
-    from companion.equipment.live_watcher import resolve_live_stage, run_live_watcher
+    from companion.equipment.cli_eval import open_pob_session, run_live
 
+    runtime_dir = Path(getattr(args, "runtime", "runtime"))
     char_id = _resolve_char_id(args)
-    try:
-        stage = resolve_live_stage(
-            stage_arg=getattr(args, "stage", None),
-            runtime_dir=args.runtime,
-            char_id=char_id,
-        )
-    except ValueError as err:
-        sys.stderr.write(f"Error: {err}\n")
-        return 1
-
+    pob_char = getattr(args, "pob_character", None) or char_id
     pob_enabled = not getattr(args, "no_pob", False)
-    pob_char = getattr(args, "pob_character", None) or "BOMSHAK"
+    pob_session = open_pob_session(pob_char, enabled=pob_enabled)
 
-    return run_live_watcher(
-        runtime_dir=args.runtime,
+    return run_live(
+        runtime_dir=runtime_dir,
         character_id=char_id,
-        stage=stage,
+        pob_session=pob_session,
         poll_interval=getattr(args, "poll_interval", 0.25),
         as_json=getattr(args, "json", False),
-        weapon_set=getattr(args, "weapon_set", None),
-        bootstrap=getattr(args, "bootstrap", False),
-        pob_character=pob_char,
-        pob_enabled=pob_enabled,
+        stage_override=getattr(args, "stage", None),
     )
 
 
 def handle_gear_inspect_clipboard(args: argparse.Namespace) -> int:
-    from companion.equipment.clipboard import run_inspect_clipboard
-    from companion.equipment.rules import BuildProgressionStage
+    from companion.equipment.cli_eval import evaluate_once, open_pob_session
+    from companion.equipment.clipboard import get_clipboard_text
 
+    runtime_dir = Path(getattr(args, "runtime", "runtime"))
     char_id = _resolve_char_id(args)
-    stage = BuildProgressionStage(getattr(args, "stage", "EARLY_ENDGAME"))
-    try:
-        report, rec = run_inspect_clipboard(
-            runtime_dir=args.runtime,
-            character_id=char_id,
-            slot_name=getattr(args, "slot", None),
-            weapon_set_name=getattr(args, "weapon_set", None),
-            stage=stage,
-        )
-        if getattr(args, "json", False):
-            print(rec.model_dump_json(indent=2))
+    pob_char = getattr(args, "pob_character", None) or char_id
+    pob_enabled = not getattr(args, "no_pob", False)
+    pob_session = open_pob_session(pob_char, enabled=pob_enabled)
+
+    raw = get_clipboard_text()
+    code, text = evaluate_once(
+        raw,
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        pob_session=pob_session,
+        locked_slot=getattr(args, "slot", None),
+        stage_override=getattr(args, "stage", None),
+        as_json=getattr(args, "json", False),
+    )
+    if text:
+        if code != 0:
+            sys.stderr.write(f"Error inspecting clipboard: {text}\n")
         else:
-            print(report)
-        return 0
-    except Exception as exc:
-        sys.stderr.write(f"Error inspecting clipboard: {exc}\n")
-        return 1
+            print(text)
+    return code
 
 
 def handle_gear_evaluate(args: argparse.Namespace) -> int:
-    from companion.equipment.clipboard import run_evaluate_file
-    from companion.equipment.rules import BuildProgressionStage
+    from companion.equipment.cli_eval import evaluate_once, open_pob_session
 
-    char_id = _resolve_char_id(args)
-    stage = BuildProgressionStage(getattr(args, "stage", "EARLY_ENDGAME"))
-    try:
-        report, rec = run_evaluate_file(
-            runtime_dir=args.runtime,
-            file_path=args.file,
-            character_id=char_id,
-            slot_name=getattr(args, "slot", None),
-            weapon_set_name=getattr(args, "weapon_set", None),
-            stage=stage,
-        )
-        if getattr(args, "json", False):
-            print(rec.model_dump_json(indent=2))
-        else:
-            print(report)
-        return 0
-    except Exception as exc:
-        sys.stderr.write(f"Error evaluating candidate file: {exc}\n")
+    file_arg = getattr(args, "file_opt", None) or getattr(args, "file", None)
+    if not file_arg:
+        sys.stderr.write("Error: item file is required (pass <file> or --file <file>)\n")
         return 1
+
+    try:
+        raw = Path(file_arg).read_text(encoding="utf-8")
+    except Exception as exc:
+        sys.stderr.write(f"Error reading file '{file_arg}': {exc}\n")
+        return 1
+
+    runtime_dir = Path(getattr(args, "runtime", "runtime"))
+    char_id = _resolve_char_id(args)
+    pob_char = getattr(args, "pob_character", None) or char_id
+    pob_enabled = not getattr(args, "no_pob", False)
+    pob_session = open_pob_session(pob_char, enabled=pob_enabled)
+
+    code, text = evaluate_once(
+        raw,
+        runtime_dir=runtime_dir,
+        character_id=char_id,
+        pob_session=pob_session,
+        locked_slot=getattr(args, "slot", None),
+        stage_override=getattr(args, "stage", None),
+        as_json=getattr(args, "json", False),
+    )
+    if text:
+        if code != 0:
+            sys.stderr.write(f"Error evaluating candidate file: {text}\n")
+        else:
+            print(text)
+    return code
 
 
 def handle_gear_baseline(args: argparse.Namespace) -> int:

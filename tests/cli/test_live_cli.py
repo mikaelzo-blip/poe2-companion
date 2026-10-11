@@ -19,6 +19,7 @@ Armour: 50
 """
 
 
+@pytest.mark.skip(reason="retired in Phase 4 Task 4")
 def test_gear_live_cli_requires_stage_if_no_persisted(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     code = main(["gear", "live", "--runtime", str(tmp_path), "--character-id", "char_none"])
     assert code == 1
@@ -26,6 +27,7 @@ def test_gear_live_cli_requires_stage_if_no_persisted(capsys: pytest.CaptureFixt
     assert "No progression stage specified and no persisted build stage found" in captured.err
 
 
+@pytest.mark.skip(reason="retired in Phase 4 Task 4")
 def test_gear_live_cli_starts_with_explicit_stage(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     char_id = "test_cli_live_char"
     run_loadout_set_item(tmp_path, char_id, "boots", BOOTS_TEXT)
@@ -55,6 +57,7 @@ def test_gear_live_cli_starts_with_explicit_stage(capsys: pytest.CaptureFixture[
     assert "Waiting for PoE2 item clipboard..." in captured.out
 
 
+@pytest.mark.skip(reason="retired in Phase 4 Task 4")
 def test_gear_live_cli_uses_persisted_stage(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     char_id = "test_persisted_stage_char"
     store = CharacterStateStore(tmp_path)
@@ -83,6 +86,7 @@ def test_gear_live_cli_uses_persisted_stage(capsys: pytest.CaptureFixture[str], 
     assert "Stage: LEVELING_53_68" in captured.out
 
 
+@pytest.mark.skip(reason="retired in Phase 4 Task 4")
 def test_gear_live_cli_bootstrap_flag_and_warning(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     char_id = "test_cli_bootstrap"
     store = CharacterStateStore(tmp_path)
@@ -112,6 +116,7 @@ def test_gear_live_cli_bootstrap_flag_and_warning(capsys: pytest.CaptureFixture[
     assert "first item copied for an unknown slot is assumed to be CURRENT EQUIPPED" in captured.out
 
 
+@pytest.mark.skip(reason="retired in Phase 4 Task 4")
 def test_gear_live_cli_missing_baseline_transparency(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     char_id = "test_cli_no_baseline"
     store = CharacterStateStore(tmp_path)
@@ -141,6 +146,7 @@ def test_gear_live_cli_missing_baseline_transparency(capsys: pytest.CaptureFixtu
     assert "Character-context projection: LIMITED" in captured.out
 
 
+@pytest.mark.skip(reason="retired in Phase 4 Task 4")
 def test_gear_live_cli_pob_character_configuration(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     char_id = "test_cli_pob_char"
     store = CharacterStateStore(tmp_path)

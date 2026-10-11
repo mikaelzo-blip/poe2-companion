@@ -19,6 +19,7 @@ Level: 45
 """
 
 
+@pytest.mark.skip(reason="retired in Phase 4 Task 4")
 def test_cli_gear_loadout_and_baseline_lifecycle(tmp_path: Path, capsys):
     runtime_dir = str(tmp_path / "runtime")
     char_id = "cli_char"

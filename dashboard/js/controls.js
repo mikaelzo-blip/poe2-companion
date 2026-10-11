@@ -99,7 +99,7 @@ export async function setupCharacterAndGuideControls() {
       const selectedName = charSelect.value;
       if (!selectedName) return;
 
-      appState.activeCharId = selectedName;
+      const prevCharId = appState.activeCharId;
       try {
         const res = await fetch('/api/select-character', {
           method: 'POST',
@@ -107,17 +107,22 @@ export async function setupCharacterAndGuideControls() {
           body: JSON.stringify({ character_id: selectedName, account_name: 'mikaelzo#5674' })
         });
         if (res.ok) {
+          appState.activeCharId = selectedName;
           showGuideError('');
           await refreshGuideControls();
           logToTerminal('CHARACTER', `Karakter aktif beralih ke ${selectedName}`);
           await fetchHttpRuntime();
         } else {
+          appState.activeCharId = prevCharId;
+          if (prevCharId) charSelect.value = prevCharId;
           const data = await res.json().catch(() => ({}));
           const errMsg = data.error || `HTTP ${res.status}`;
           showGuideError(errMsg);
           logToTerminal('CHARACTER', `Gagal beralih karakter: ${errMsg}`);
         }
       } catch (err) {
+        appState.activeCharId = prevCharId;
+        if (prevCharId) charSelect.value = prevCharId;
         console.error('Failed to select character:', err);
         showGuideError(err.message || 'Gagal menghubungi API server');
       }

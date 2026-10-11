@@ -198,3 +198,10 @@ def test_select_character_error_is_shown(dashboard_page: Page, mock_api: Any) ->
     dashboard_page.wait_for_selector("#guide-error:has-text('Gagal mengganti ke ALTCHAR')")
     err_text = dashboard_page.locator("#guide-error").inner_text()
     assert "Gagal mengganti ke ALTCHAR" in err_text
+
+    # Dropdown and appState revert to BOMSHAK on failure
+    assert dashboard_page.locator("#header-char-select").input_value() == "BOMSHAK"
+    active_char = dashboard_page.evaluate(
+        "async () => { const { appState } = await import('/js/state.js'); return appState.activeCharId; }"
+    )
+    assert active_char == "BOMSHAK"

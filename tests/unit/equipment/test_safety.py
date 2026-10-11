@@ -55,7 +55,7 @@ def test_weapon_not_in_guide(fubgun):
 
 def test_breaker_rule_rejects_unknown_slot_and_level():
     with pytest.raises(ValueError):
-        BreakerRule(pattern="x", reason="r", exclude_slots=["helmet"])
+        BreakerRule(pattern="x", reason="r", exclude_slots=["Hat"])
     with pytest.raises(ValueError):
         BreakerRule(pattern="x", reason="r", from_level=0)
     with pytest.raises(ValueError):

@@ -43,6 +43,7 @@ CANONICAL_SLOTS = frozenset({
     "Helmet", "Body Armour", "Gloves", "Boots", "Amulet", "Belt", "Ring 1", "Ring 2",
     "Weapon 1", "Weapon 2", "Weapon 1 Swap", "Weapon 2 Swap",
 })
+_SLOT_BY_LOWER = {s.lower(): s for s in CANONICAL_SLOTS}
 
 
 class BreakerRule(BaseModel):
@@ -57,23 +58,24 @@ class BreakerRule(BaseModel):
         try:
             re.compile(v)
         except re.error as exc:
-            raise ValueError(f"invalid regex: {exc}") from exc
+            raise ValueError(f"regex tidak valid: {exc}") from exc
         return v
 
     @field_validator("from_level")
     @classmethod
     def _valid_level(cls, v: int) -> int:
         if not 1 <= v <= 100:
-            raise ValueError("from_level must be in 1-100")
+            raise ValueError("from_level harus 1-100")
         return v
 
     @field_validator("exclude_slots")
     @classmethod
     def _canonical_slots(cls, v: list[str]) -> list[str]:
-        bad = [s for s in v if s not in CANONICAL_SLOTS]
+        canon = [_SLOT_BY_LOWER.get(s.strip().lower()) for s in v]
+        bad = [s for s, c in zip(v, canon) if c is None]
         if bad:
-            raise ValueError(f"unknown slots: {bad}")
-        return v
+            raise ValueError(f"slot tidak dikenal: {bad}")
+        return list(dict.fromkeys(canon))
 
 
 class GuideStage(BaseModel):

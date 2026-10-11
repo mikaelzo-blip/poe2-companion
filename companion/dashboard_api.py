@@ -847,7 +847,7 @@ def update_guide_rules_payload(payload: dict[str, Any], runtime_dir: Path) -> di
         err = exc.errors()[0]
         if err["loc"] and err["loc"][-1] == "pattern":
             return {"error": f"Pola regex tidak valid: {err['msg'].removeprefix('Value error, ')}"}
-        return {"error": f"Aturan tidak valid: {err['msg']}"}
+        return {"error": f"Aturan tidak valid: {err['msg'].removeprefix('Value error, ')}"}
     try:
         set_breaker_rules(runtime_dir, str(payload.get("slug") or ""), rules)
     except (KeyError, ValueError):

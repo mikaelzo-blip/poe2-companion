@@ -304,9 +304,7 @@ def _api_clipboard_poll(q: dict[str, str]) -> Any:
     return check_auto_clipboard(
         runtime_dir=RUNTIME_DIR,
         char_id=char_id,
-        stage_str=q.get("stage", "lvl 1-14"),
         pob_session=None,
-        guide=q.get("guide"),
         zone=q.get("zone"),
         pob_session_resolver=lambda: get_or_create_pob_session(char_id),
     )
@@ -339,6 +337,7 @@ def _api_guide_rules(payload: dict[str, Any]) -> Any:
 
 def _api_character_guide(payload: dict[str, Any]) -> Any:
     from companion.dashboard_api import set_character_guide_payload
+    payload["character_id"] = normalize_char_id(payload.get("character_id"))
     return set_character_guide_payload(payload, RUNTIME_DIR)
 
 

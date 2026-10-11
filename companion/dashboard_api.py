@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from companion.builds.store import get_assignment
 from companion.equipment.clipboard import get_clipboard_text
 from companion.equipment.current_item import character_level_and_zone, get_current_item_info, get_current_raw
 from companion.equipment.evaluation import EvaluationResult, evaluate
@@ -103,9 +104,7 @@ _LAST_SEEN_CLIPBOARD = ""
 def check_auto_clipboard(
     runtime_dir: Path,
     char_id: str,
-    stage_str: str,
     pob_session: Any | None = None,
-    guide: str | None = None,
     zone: str | None = None,
     pob_session_resolver: Any | None = None,
 ) -> dict[str, Any]:
@@ -113,15 +112,14 @@ def check_auto_clipboard(
     global _LAST_SEEN_CLIPBOARD
     current_text = get_clipboard_text().strip()
 
-    current_key = f"{current_text}::{char_id}::{stage_str}::{guide}::{zone}"
+    char_id = resolve_char_id(char_id, runtime_dir)
+    current_key = f"{current_text}::{char_id}::{get_assignment(runtime_dir, char_id)}::{zone}"
     if not current_text or _LAST_SEEN_CLIPBOARD in (current_text, current_key):
         return {"has_new_item": False}
 
     # Verify if it looks like a PoE item
     if "Rarity:" not in current_text and "Item Class:" not in current_text:
         return {"has_new_item": False}
-
-    char_id = resolve_char_id(char_id, runtime_dir)
 
     _LAST_SEEN_CLIPBOARD = current_key
 
@@ -719,7 +717,7 @@ def select_character_payload(
 
 def get_available_guides(runtime_dir: Path, character_id: str | None = None) -> dict[str, Any]:
     """List imported guides and the guide/stage assigned to ``character_id``."""
-    from companion.builds.store import get_assignment, list_guides
+    from companion.builds.store import list_guides
 
     guide, override = get_assignment(runtime_dir, character_id) if character_id else (None, None)
     return {

@@ -74,3 +74,9 @@ def test_singular_item_class_fallback():
     assert singular_item_class("Daggers") == "Dagger"
     assert singular_item_class("Staves") == "Staff"
     assert singular_item_class("Wands") == "Wand"
+
+
+def test_corrupt_assignments_file_returns_empty(tmp_path):
+    save_guide(tmp_path, _profile())
+    (tmp_path / "guides" / "_assignments.json").write_text("{oops", encoding="utf-8")
+    assert get_assignment(tmp_path, "c1") == (None, None)

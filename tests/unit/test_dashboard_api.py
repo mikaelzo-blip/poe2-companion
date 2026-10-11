@@ -955,7 +955,7 @@ def test_auto_clipboard_resolves_zone_and_source(fub: Path, monkeypatch: Any) ->
         return orig(*a, **kw)
 
     monkeypatch.setattr(d_api, "evaluate", spy)
-    res = d_api.check_auto_clipboard(fub, "BOMSHAK", "auto", pob_session=BadBody())
+    res = d_api.check_auto_clipboard(fub, "BOMSHAK", pob_session=BadBody())
     assert res["has_new_item"] is True and res["raw_text"] == BODY.strip() and res["verdict"] == "REJECT"
     assert "Vastiri" in res["tactical_advice"]["zone_name"] and seen == ["auto"]
 
@@ -972,7 +972,7 @@ def test_check_auto_clipboard_passes_zone(fub: Path, monkeypatch: Any) -> None:
         raise ValueError("stop")
 
     monkeypatch.setattr(d_api, "evaluate", spy)
-    res = d_api.check_auto_clipboard(fub, "BOMSHAK", "auto", zone="vastiri_outskirts")
+    res = d_api.check_auto_clipboard(fub, "BOMSHAK", zone="vastiri_outskirts")
     assert zones == ["vastiri_outskirts"] and res["has_new_item"] is True and "error" in res
 
 
@@ -981,9 +981,12 @@ def test_check_auto_clipboard_reevaluates_on_context_change(fub: Path, monkeypat
 
     d_api._LAST_SEEN_CLIPBOARD = ""
     monkeypatch.setattr(d_api, "get_clipboard_text", lambda: BOOTS)
-    assert d_api.check_auto_clipboard(fub, char_id="BOMSHAK", stage_str="auto", pob_session=Stub())["has_new_item"] is True
-    assert d_api.check_auto_clipboard(fub, char_id="BOMSHAK", stage_str="auto", pob_session=Stub())["has_new_item"] is False
-    assert d_api.check_auto_clipboard(fub, char_id="Varashta", stage_str="auto", pob_session=Stub())["has_new_item"] is True
+    assert d_api.check_auto_clipboard(fub, char_id="BOMSHAK", pob_session=Stub())["has_new_item"] is True
+    assert d_api.check_auto_clipboard(fub, char_id="BOMSHAK", pob_session=Stub())["has_new_item"] is False
+    assert d_api.check_auto_clipboard(fub, char_id="Varashta", pob_session=Stub())["has_new_item"] is True
+    from companion.builds.store import set_assignment
+    set_assignment(fub, "Varashta", FUB, "all")
+    assert d_api.check_auto_clipboard(fub, char_id="Varashta", pob_session=Stub())["has_new_item"] is True
 
 
 def test_evaluate_item_payload_unexpected_failure_returns_error(fub: Path, monkeypatch: Any) -> None:

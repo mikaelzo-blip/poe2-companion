@@ -110,7 +110,13 @@ def _set_breaker_rules_locked(runtime_dir: Path, slug: str, rules: list[BreakerR
 
 def _read_assignments(runtime_dir: Path) -> dict:
     path = _dir(runtime_dir) / _ASSIGNMENTS
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        logger.warning("Corrupt assignments file %s; ignoring", path, exc_info=True)
+        return {}
 
 
 def get_assignment(runtime_dir: Path, character_id: str) -> tuple[str | None, str | None]:

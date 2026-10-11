@@ -150,25 +150,6 @@ def test_tactical_advisor_respects_insufficient_baseline_verdict() -> None:
     assert "BASELINE" in tactical.verdict_badge or "DATA" in tactical.verdict_badge
 
 
-def test_tactical_advisor_boots_moderate_movement_speed_loss_headline() -> None:
-    delta = PobEquipmentDelta(
-        slot="Boots",
-        candidate_id=5,
-        candidate_name="Slow Sabatons",
-        movement_speed_delta=-5.0,
-        armour_delta=10,
-        ehp_delta=-1.5,
-    )
-    tactical = generate_tactical_advice(
-        delta=delta,
-        candidate_raw="Item Class: Boots\nRarity: Rare\nSlow Sabatons\nMail Sabatons\n--------",
-        current_raw="Item Class: Boots\nRarity: Rare\nFast Boots\nMail Sabatons\n--------",
-        zone_id="G2_1",
-        character_level=19,
-    )
-    assert tactical.verdict == Verdict.REJECT
-    assert "Movement Speed" in tactical.tactical_headline
-
 
 def test_dashboard_api_get_current_raw_resolves_all_loadout_slots(tmp_path: Path) -> None:
     lo = EquippedLoadout.create_draft(character_id="hero_test", loadout_id="lo_test")

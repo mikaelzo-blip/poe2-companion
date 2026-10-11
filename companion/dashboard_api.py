@@ -256,14 +256,14 @@ class _EvalContext:
     def current_info(self, slot: str) -> tuple[str, str]:
         return get_current_item_info(self.runtime_dir, self.char_id, slot, self.pob_session)
 
-    def tactical(self, delta: Any, slot: str) -> TacticalAdvice:
+    def tactical(self, delta: Any, slot: str, base_verdict: Any) -> TacticalAdvice:
         return generate_tactical_advice(
             delta=delta,
             candidate_raw=self.raw_text,
             current_raw=get_current_raw(self.runtime_dir, self.char_id, slot, self.pob_session),
             zone_id=self.zone_id,
             character_level=self.char_level,
-            stage=self.stage,
+            base_verdict=base_verdict,
             character_stats=self.char_stats,
         )
 
@@ -560,7 +560,7 @@ def _pob2_fubgun_weapon(ctx: _EvalContext, pob_slot: str, cid: Any) -> dict[str,
         stage=ctx.stage,
         use_color=False,
     )
-    tactical = ctx.tactical(delta, pob_slot)
+    tactical = ctx.tactical(delta, pob_slot, rec.verdict)
     final_verdict = merge_verdicts(rec.verdict, tactical.verdict)
     zone_override = final_verdict == "REJECT" and getattr(rec.verdict, "value", str(rec.verdict)) != "REJECT"
     slot_key = ctx.slot_key("main_hand")
@@ -636,7 +636,7 @@ def _pob2_ring(ctx: _EvalContext) -> dict[str, Any] | None:
         trade_offs = advice.trade_off_notes or list(dict.fromkeys(r1.trade_offs + r2.trade_offs))
         chosen_delta = dual_res.ring1_delta
 
-    tactical = ctx.tactical(chosen_delta, advice.recommended_slot or "Ring 1")
+    tactical = ctx.tactical(chosen_delta, advice.recommended_slot or "Ring 1", ring_verdict)
     final_verdict = merge_verdicts(ring_verdict, tactical.verdict)
     target_slot = (
         advice.recommended_slot.lower().replace(" ", "")
@@ -671,7 +671,7 @@ def _pob2_other(ctx: _EvalContext) -> dict[str, Any] | None:
     if delta is None:
         return None
     rec = evaluate_fubgun_equipment_policy(delta, stage=ctx.stage, use_color=False)
-    tactical = ctx.tactical(delta, pob_slot)
+    tactical = ctx.tactical(delta, pob_slot, rec.verdict)
     final_verdict = merge_verdicts(rec.verdict, tactical.verdict)
     zone_override = final_verdict == "REJECT" and "REJECT" not in str(getattr(rec, "verdict", ""))
     slot_key = ctx.slot_key(pob_slot.lower())
@@ -792,7 +792,7 @@ def _evaluate_heuristic(ctx: _EvalContext) -> dict[str, Any]:
             dexterity_delta=_known_delta(proj.dexterity),
             intelligence_delta=_known_delta(proj.intelligence),
         )
-        tactical = ctx.tactical(delta_fb, slot_value)
+        tactical = ctx.tactical(delta_fb, slot_value, rec.verdict)
     except Exception:
         return out
 

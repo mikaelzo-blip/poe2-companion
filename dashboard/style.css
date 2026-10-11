@@ -516,11 +516,6 @@ body {
   color: var(--accent-cyan);
 }
 
-.tag-transition {
-  background: rgba(168, 85, 247, 0.15);
-  color: var(--accent-purple);
-}
-
 /* OVERVIEW TAB STYLES */
 .hero-grid {
   display: grid;
@@ -1015,78 +1010,6 @@ body {
   font-size: 11px;
   color: var(--text-main);
   line-height: 1.4;
-}
-
-/* TRANSITION TAB */
-.transition-summary-card {
-  margin-bottom: 20px;
-}
-
-.readiness-gauge {
-  text-align: right;
-}
-
-.readiness-pct {
-  font-family: var(--font-display);
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--accent-purple);
-}
-
-.readiness-sub {
-  display: block;
-  font-size: 10px;
-  font-family: var(--font-mono);
-  color: var(--text-dim);
-}
-
-.transition-desc {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin-bottom: 20px;
-  line-height: 1.5;
-}
-
-.transition-req-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-}
-
-.req-box {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-}
-
-.req-box.req-unknown { border-left: 3px solid #EAB308; }
-.req-box.req-future { border-left: 3px solid var(--accent-purple); }
-.req-box.req-unsatisfied { border-left: 3px solid var(--accent-red); }
-.req-box.req-satisfied { border-left: 3px solid var(--accent-green); }
-
-.req-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #FFFFFF;
-}
-
-.req-status {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  margin: 4px 0;
-}
-
-.req-box.req-unknown .req-status { color: #EAB308; }
-.req-box.req-future .req-status { color: var(--accent-purple); }
-.req-box.req-unsatisfied .req-status { color: var(--accent-red); }
-
-.req-hint {
-  font-size: 11px;
-  color: var(--text-dim);
 }
 
 /* TERMINAL & LOGS TAB */

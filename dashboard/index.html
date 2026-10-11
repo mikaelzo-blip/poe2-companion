@@ -100,13 +100,6 @@
             </svg>
             <span class="nav-label">Gear & PoB2</span>
           </li>
-          <li class="nav-item" data-tab="tab-transition">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="13 17 18 12 13 7"></polyline>
-              <polyline points="6 17 11 12 6 7"></polyline>
-            </svg>
-            <span class="nav-label">Lvl 52 Transition</span>
-          </li>
           <li class="nav-item" data-tab="tab-logs">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="4 17 10 11 4 5"></polyline>
@@ -489,53 +482,7 @@ Requirements: Level 12
           </div>
         </section>
 
-        <!-- ================= TAB 4: LVL 52 TRANSITION ================= -->
-        <section class="tab-content" id="tab-transition">
-          <div class="transition-container">
-            <div class="card transition-summary-card">
-              <div class="card-header">
-                <div>
-                  <div class="card-tag tag-transition">PROGRESSION MILESTONE</div>
-                  <h2 class="transition-title">Level 52 Build Swap Readiness</h2>
-                </div>
-                <div class="readiness-gauge" id="transition-gauge">
-                  <span class="readiness-pct" id="transition-pct">0%</span>
-                  <span class="readiness-sub">Readiness</span>
-                </div>
-              </div>
-              <div class="card-body">
-                <p class="transition-desc">
-                  Level 52 adalah titik balik kritis di mana build bertransisi ke setup <strong>Flameblast / Oil Grenade Swap</strong>.
-                  Sistem mengevaluasi kondisi secara ketat (Tri-State: SATISFIED, UNSATISFIED, UNKNOWN) untuk mencegah build breaker.
-                </p>
-                <div class="transition-req-grid">
-                  <div class="req-box req-unknown">
-                    <span class="req-title">Gold Respec Reserve</span>
-                    <span class="req-status">UNKNOWN</span>
-                    <p class="req-hint">Kebutuhan estimasi ~50,000 gold untuk refund skill tree.</p>
-                  </div>
-                  <div class="req-box req-unknown">
-                    <span class="req-title">Core Gem Setup</span>
-                    <span class="req-status">UNKNOWN</span>
-                    <p class="req-hint">Flameblast + Oil Grenade uncut gems di inventory / stash.</p>
-                  </div>
-                  <div class="req-box req-future">
-                    <span class="req-title">Cast on Dodge (Lvl 58+)</span>
-                    <span class="req-status">FUTURE (ISOLATED)</span>
-                    <p class="req-hint">Dikecualikan dari blocker Level 52 (tidak memicu false alert).</p>
-                  </div>
-                  <div class="req-box req-unsatisfied">
-                    <span class="req-title">Required Character Level</span>
-                    <span class="req-status" id="req-status-level">LVL — / 52</span>
-                    <p class="req-hint">Belum mencapai level minimum transisi.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- ================= TAB 5: TELEMETRY & LOGS ================= -->
+        <!-- ================= TAB 4: TELEMETRY & LOGS ================= -->
         <section class="tab-content" id="tab-logs">
           <div class="logs-layout">
             <div class="card terminal-card">

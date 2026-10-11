@@ -229,6 +229,14 @@ def _clear_slots_in_xml(xml_str: str, clear_slots: tuple[str, ...] | list[str]) 
         return xml_str
 
 
+_RES_KEYS = {
+    "fire": "FireResist",
+    "cold": "ColdResist",
+    "lightning": "LightningResist",
+    "chaos": "ChaosResist",
+}
+
+
 class PobEquipmentDelta(BaseModel):
     """Mathematical stat deltas from PoB2 simulation for any equipment slot."""
 
@@ -259,6 +267,8 @@ class PobEquipmentDelta(BaseModel):
     ehp_after: float = 0.0
     dps_before: float = 0.0
     dps_after: float = 0.0
+    res_before: dict[str, float] = {}  # keys: fire, cold, lightning, chaos
+    res_after: dict[str, float] = {}
 
 
 class DualRingSimulationResult(BaseModel):
@@ -335,6 +345,8 @@ class Pob2EquipmentSession:
         self.equipped_items: dict[str, dict[str, Any]] = {}
         self.defenses_before: dict[str, Any] = {}
         self.stats_before: dict[str, Any] = {}
+        # 1-based main socket group reported by PoB after each import; locked on every measurement
+        self.main_group: int | None = None
 
         # Concurrency & async correctness primitives
         # _engine_lock ONLY serializes expensive PoB engine simulation calls
@@ -342,6 +354,7 @@ class Pob2EquipmentSession:
         # _state_lock synchronizes request ID generation and staleness bookkeeping independently
         self._state_lock = threading.Lock()
         self._latest_candidate_id: int = 0
+        self._latest_by_source: dict[str, int] = {}
         self._displayed_candidate_id: int = 0
 
     @property
@@ -380,6 +393,7 @@ class Pob2EquipmentSession:
 
                 self.defenses_before = self.engine.call("get_defenses")
                 self.stats_before = self.engine.call("calc_stats")
+                self._refresh_main_group()
                 self.is_available = True
                 self.is_healthy = True
                 self.unhealthy_reason = None
@@ -471,6 +485,7 @@ class Pob2EquipmentSession:
 
             self.defenses_before = self.engine.call("get_defenses")
             self.stats_before = self.engine.call("calc_stats")
+            self._refresh_main_group()
             self.is_available = True
             self.is_healthy = True
             self.unhealthy_reason = None
@@ -520,22 +535,41 @@ class Pob2EquipmentSession:
             logging.getLogger(__name__).warning("PoB2 session (%s) recovery failed: %s", self.character_name, exc)
             return False
 
-    def submit_candidate(self, candidate_raw: str, candidate_name: str = "", slot: str = "Helmet") -> int:
-        """Register a new clipboard candidate with a monotonically increasing ID.
+    def _refresh_main_group(self) -> None:
+        """Read PoB's main socket group from the hot engine after an import."""
+        try:
+            skills = self.engine.call("list_skills")
+            group = skills.get("mainSocketGroup") if isinstance(skills, dict) else None
+            self.main_group = int(group) if group else None
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Could not read PoB2 main socket group: %s", exc)
+            self.main_group = None
 
+    def submit_candidate(
+        self,
+        candidate_raw: str,
+        candidate_name: str = "",
+        slot: str = "Helmet",
+        source: str = "manual",
+    ) -> int:
+        """Register a new candidate with a monotonically increasing ID.
+
+        Staleness is tracked per ``source`` so a manual compare is not
+        superseded by an automatic clipboard watcher candidate (and vice versa).
         Synchronized via `_state_lock` without blocking on `_engine_lock`.
         """
         with self._state_lock:
             self._latest_candidate_id += 1
+            self._latest_by_source[source] = self._latest_candidate_id
             return self._latest_candidate_id
 
-    def is_stale(self, candidate_id: int) -> bool:
-        """Check if a candidate ID is superseded by a newer candidate.
+    def is_stale(self, candidate_id: int, source: str = "manual") -> bool:
+        """Check if a candidate ID is superseded by a newer candidate of the same source.
 
         Synchronized via `_state_lock` without blocking on `_engine_lock`.
         """
         with self._state_lock:
-            return candidate_id < self._latest_candidate_id
+            return candidate_id < self._latest_by_source.get(source, 0)
 
     def get_equipped_item(self, slot: str) -> dict[str, Any] | None:
         """Get equipped item dictionary for canonical slot."""
@@ -609,6 +643,7 @@ class Pob2EquipmentSession:
 
                 self.defenses_before = self.engine.call("get_defenses")
                 self.stats_before = self.engine.call("calc_stats")
+                self._refresh_main_group()
                 self.last_synced_at = time.monotonic()
                 return True
             except Exception as exc:
@@ -695,38 +730,12 @@ class Pob2EquipmentSession:
         return None
 
     def get_primary_socket_group(self, skill_context: str | None = None) -> int | None:
-        """Find the 1-based socket group index of the main damaging skill in PoB2."""
-        if not self.engine:
-            return None
-        if skill_context:
+        """Socket group for ``skill_context`` if given and found, else PoB's own main group."""
+        if skill_context and self.engine:
             idx = self.find_socket_group_for_skill(skill_context)
             if idx:
                 return idx
-        try:
-            skills = self.engine.call("list_skills")
-            groups = skills.get("groups", [])
-            primary_skills = (
-                "explosive grenade",
-                "gas grenade",
-                "flameblast",
-                "toxic grenade",
-                "crossbow shot",
-                "flash grenade",
-                "fragmentation rounds",
-            )
-            for cand in primary_skills:
-                for g in groups:
-                    active = (g.get("activeSkill") or "").lower()
-                    if cand in active:
-                        return g.get("index")
-                    for gem in g.get("gems", []):
-                        gname = (gem.get("name") or "").lower()
-                        if cand in gname:
-                            return g.get("index")
-
-            return skills.get("mainSocketGroup")
-        except Exception:
-            return None
+        return self.main_group
 
     def _build_delta(
         self,
@@ -825,7 +834,85 @@ class Pob2EquipmentSession:
             ehp_after=ehp_after,
             dps_before=dps_before,
             dps_after=dps_after,
+            res_before={k: float(def_stats_before.get(v) or 0) for k, v in _RES_KEYS.items()},
+            res_after={k: float(def_stats_after.get(v) or 0) for k, v in _RES_KEYS.items()},
         )
+
+    def measure(
+        self,
+        slot: str | SlotType,
+        raw: str,
+        candidate_id: int,
+        *,
+        source: str = "manual",
+        clear_slots: tuple[str, ...] = (),
+        candidate_name: str = "",
+    ) -> PobEquipmentDelta | None:
+        """Measure one candidate in one slot against its own context-specific baseline.
+
+        Activates the weapon set the slot belongs to, locks PoB's main skill before
+        both readings, applies ``clear_slots`` to the "after" build only, and always
+        restores the baseline XML. Returns None if stale, unavailable or on engine failure.
+        """
+        canonical_slot = normalize_and_validate_pob_slot(slot)
+        if not self.is_available or self.sandbox_engine is None or not self.xml:
+            return None
+        if self.is_stale(candidate_id, source):
+            return None
+
+        log = logging.getLogger(__name__)
+        with self._engine_lock:
+            if self.is_stale(candidate_id, source):
+                return None
+            if not self.is_healthy and not self._recover_session():
+                return None
+
+            engine = self.sandbox_engine
+            group = self.main_group
+
+            def lock_skill() -> None:
+                if group is not None:
+                    engine.call("set_main_skill", group=group)
+
+            try:
+                xml_set = _set_weapon_set_in_xml(self.xml, 2 if canonical_slot.endswith("Swap") else 1)
+                engine.call("import_build", xml=xml_set)
+                lock_skill()
+                def_before = engine.call("get_defenses")
+                stats_before = engine.call("calc_stats")
+
+                if clear_slots:
+                    engine.call("import_build", xml=_clear_slots_in_xml(xml_set, clear_slots))
+                    lock_skill()
+                engine.call("equip_item", slot=canonical_slot, raw=raw)
+                lock_skill()
+                def_after = engine.call("get_defenses")
+                stats_after = engine.call("calc_stats")
+
+                if self.is_stale(candidate_id, source):
+                    return None
+                return self._build_delta(
+                    canonical_slot, candidate_id, candidate_name, def_after, stats_after,
+                    def_before=def_before, stats_before=stats_before,
+                )
+            except EngineError as exc:
+                log.warning("PoB2 engine error for slot %s: %s", canonical_slot, exc)
+                self.is_healthy = False
+                self.unhealthy_reason = f"Engine error: {exc}"
+                return None
+            except Exception as exc:
+                log.warning("PoB2 measurement failed for slot %s: %s", canonical_slot, exc)
+                if "EngineError" in type(exc).__name__:
+                    self.is_healthy = False
+                    self.unhealthy_reason = f"Engine error: {exc}"
+                return None
+            finally:
+                try:
+                    engine.call("import_build", xml=self.xml)
+                except Exception as exc:
+                    log.warning("Failed to restore baseline in PoB2 sandbox: %s", exc)
+                    self.is_healthy = False
+                    self.unhealthy_reason = f"Baseline restore failed: {exc}"
 
     def simulate_item(
         self,
@@ -834,94 +921,11 @@ class Pob2EquipmentSession:
         candidate_id: int | None = None,
         candidate_name: str = "",
     ) -> PobEquipmentDelta | None:
-        """Execute single-flight simulation for any canonical equipment slot on hot PoB2 build.
-
-        Enforces:
-        - Canonical slot validation (fails closed with ValueError on unknown slots).
-        - Latest-wins candidate coalescing before entering expensive simulation.
-        - Single-flight serialization on engine lock.
-        - Baseline XML restoration before and after equip.
-
-        Returns PobEquipmentDelta if fresh and calculated, or None if stale or unavailable.
-        """
+        """Legacy wrapper over :meth:`measure` (slot validated; fails closed on unknown slots)."""
         canonical_slot = normalize_and_validate_pob_slot(slot)
-
         if candidate_id is None:
             candidate_id = self.submit_candidate(raw_candidate, candidate_name=candidate_name, slot=canonical_slot)
-
-        if not self.is_available or self.sandbox_engine is None or not self.xml:
-            return None
-
-        # 1. Pre-check staleness before waiting for expensive engine lock
-        if self.is_stale(candidate_id):
-            return None
-
-        # 2. Acquire engine lock for serialized single-flight simulation
-        with self._engine_lock:
-            if self.is_stale(candidate_id):
-                return None
-
-            if not self.is_healthy:
-                if not self._recover_session():
-                    return None
-
-            candidate_applied = False
-            try:
-                # 2a. Load baseline XML into sandbox engine (main engine untouched)
-                self.sandbox_engine.call("import_build", xml=self.xml)
-                primary_group = self.get_primary_socket_group()
-                if primary_group:
-                    self.sandbox_engine.call("set_main_skill", group=primary_group)
-                def_before = self.sandbox_engine.call("get_defenses")
-                stats_before = self.sandbox_engine.call("calc_stats")
-
-                # 2b. Equip candidate item in canonical slot
-                candidate_applied = True
-                self.sandbox_engine.call("equip_item", slot=canonical_slot, raw=raw_candidate)
-                if primary_group:
-                    self.sandbox_engine.call("set_main_skill", group=primary_group)
-
-                # 2c. Read post-equip defenses and stats
-                def_after = self.sandbox_engine.call("get_defenses")
-                stats_after = self.sandbox_engine.call("calc_stats")
-
-                # 2d. Reset sandbox for next simulation
-                self.sandbox_engine.call("import_build", xml=self.xml)
-                if primary_group:
-                    self.sandbox_engine.call("set_main_skill", group=primary_group)
-                candidate_applied = False
-
-                # 2e. Post-check staleness before building delta
-                if self.is_stale(candidate_id):
-                    return None
-
-                return self._build_delta(
-                    canonical_slot=canonical_slot,
-                    candidate_id=candidate_id,
-                    candidate_name=candidate_name,
-                    def_after=def_after,
-                    stats_after=stats_after,
-                    def_before=def_before,
-                    stats_before=stats_before,
-                )
-            except EngineError as exc:
-                logging.getLogger(__name__).warning("PoB2 engine error for slot %s: %s", canonical_slot, exc)
-                self.is_healthy = False
-                self.unhealthy_reason = f"Engine error: {exc}"
-                return None
-            except Exception as exc:
-                logging.getLogger(__name__).warning("PoB2 simulation failed for slot %s: %s", canonical_slot, exc)
-                if isinstance(exc, EngineError) or "EngineError" in type(exc).__name__:
-                    self.is_healthy = False
-                    self.unhealthy_reason = f"Engine error: {exc}"
-                return None
-            finally:
-                try:
-                    self.sandbox_engine.call("import_build", xml=self.xml)
-                except Exception as exc:
-                    logging.getLogger(__name__).warning("Failed to restore baseline in PoB2 sandbox: %s", exc)
-                    self.is_healthy = False
-                    self.unhealthy_reason = f"Baseline restore failed: {exc}"
+        return self.measure(canonical_slot, raw_candidate, candidate_id, candidate_name=candidate_name)
 
     def simulate_ring_candidate(
         self,
@@ -929,107 +933,21 @@ class Pob2EquipmentSession:
         candidate_id: int | None = None,
         candidate_name: str = "",
     ) -> DualRingSimulationResult | None:
-        """Execute serialized dual-simulation for a ring candidate against Ring 1 and Ring 2.
-
-        Enforces:
-        - Exact same baseline invariant (restores baseline before and after each ring simulation).
-        - Stale check before Ring 1.
-        - Stale check after Ring 1 / before Ring 2 (skips Ring 2 simulation if candidate became stale).
-        - Stale check after Ring 2.
-        - Baseline restoration guaranteed via finally blocks.
-        """
+        """Measure a ring candidate in Ring 1 and Ring 2; None if either leg fails or goes stale."""
         if candidate_id is None:
             candidate_id = self.submit_candidate(raw_candidate, candidate_name=candidate_name, slot="Ring 1")
-
-        if not self.is_available or self.sandbox_engine is None or not self.xml:
+        delta1 = self.measure("Ring 1", raw_candidate, candidate_id, candidate_name=candidate_name)
+        if delta1 is None:
             return None
-
-        # 1. Pre-check staleness before waiting for engine lock
-        if self.is_stale(candidate_id):
+        delta2 = self.measure("Ring 2", raw_candidate, candidate_id, candidate_name=candidate_name)
+        if delta2 is None:
             return None
-
-        with self._engine_lock:
-            # Re-check staleness immediately upon acquiring lock
-            if self.is_stale(candidate_id):
-                return None
-
-            if not self.is_healthy:
-                if not self._recover_session():
-                    return None
-
-            delta1: PobEquipmentDelta | None = None
-            delta2: PobEquipmentDelta | None = None
-
-            # Step 1: Simulate candidate in Ring 1
-            try:
-                self.sandbox_engine.call("import_build", xml=self.xml)
-                self.sandbox_engine.call("equip_item", slot="Ring 1", raw=raw_candidate)
-                def_after_1 = self.sandbox_engine.call("get_defenses")
-                stats_after_1 = self.sandbox_engine.call("calc_stats")
-                delta1 = self._build_delta("Ring 1", candidate_id, candidate_name, def_after_1, stats_after_1)
-            except EngineError as exc:
-                logging.getLogger(__name__).warning("PoB2 engine error during Ring 1 simulation: %s", exc)
-                self.is_healthy = False
-                self.unhealthy_reason = f"Engine error: {exc}"
-                delta1 = None
-            except Exception as exc:
-                logging.getLogger(__name__).warning("PoB2 Ring 1 simulation failed: %s", exc)
-                if isinstance(exc, EngineError) or "EngineError" in type(exc).__name__:
-                    self.is_healthy = False
-                    self.unhealthy_reason = f"Engine error: {exc}"
-                delta1 = None
-            finally:
-                # Guaranteed sandbox restoration
-                try:
-                    self.sandbox_engine.call("import_build", xml=self.xml)
-                except Exception as exc:
-                    logging.getLogger(__name__).warning("Failed to restore sandbox in Ring 1 simulation: %s", exc)
-                    self.is_healthy = False
-                    self.unhealthy_reason = f"Baseline restore failed: {exc}"
-
-            # Step 2: Staleness check between Ring 1 and Ring 2 (Requirement 4)
-            if self.is_stale(candidate_id):
-                return None
-
-            # Step 3: Simulate candidate in Ring 2
-            try:
-                self.sandbox_engine.call("import_build", xml=self.xml)
-                self.sandbox_engine.call("equip_item", slot="Ring 2", raw=raw_candidate)
-                def_after_2 = self.sandbox_engine.call("get_defenses")
-                stats_after_2 = self.sandbox_engine.call("calc_stats")
-                delta2 = self._build_delta("Ring 2", candidate_id, candidate_name, def_after_2, stats_after_2)
-            except EngineError as exc:
-                logging.getLogger(__name__).warning("PoB2 engine error during Ring 2 simulation: %s", exc)
-                self.is_healthy = False
-                self.unhealthy_reason = f"Engine error: {exc}"
-                delta2 = None
-            except Exception as exc:
-                logging.getLogger(__name__).warning("PoB2 Ring 2 simulation failed: %s", exc)
-                if isinstance(exc, EngineError) or "EngineError" in type(exc).__name__:
-                    self.is_healthy = False
-                    self.unhealthy_reason = f"Engine error: {exc}"
-                delta2 = None
-            finally:
-                # Guaranteed sandbox restoration
-                try:
-                    self.sandbox_engine.call("import_build", xml=self.xml)
-                except Exception as exc:
-                    logging.getLogger(__name__).warning("Failed to restore sandbox in Ring 2 simulation: %s", exc)
-                    self.is_healthy = False
-                    self.unhealthy_reason = f"Baseline restore failed: {exc}"
-
-            # Step 4: Staleness check after Ring 2
-            if self.is_stale(candidate_id):
-                return None
-            if delta1 is None or delta2 is None:
-                return None
-
-            return DualRingSimulationResult(
-                candidate_id=candidate_id,
-                candidate_name=candidate_name or "Candidate Ring",
-                ring1_delta=delta1,
-                ring2_delta=delta2,
-            )
+        return DualRingSimulationResult(
+            candidate_id=candidate_id,
+            candidate_name=candidate_name or "Candidate Ring",
+            ring1_delta=delta1,
+            ring2_delta=delta2,
+        )
 
     def simulate_weapon_plan(
         self,
@@ -1159,117 +1077,27 @@ class Pob2EquipmentSession:
         target_set: Any = None,
         build_stage: Any = None,
     ) -> DualWeaponSimulationResult | None:
-        """Execute serialized dual-simulation for an ambiguous 1H weapon candidate.
-
-        Simulates candidate in slot 1 (e.g. 'Weapon 1') and slot 2 (e.g. 'Weapon 2')
-        against the exact same baseline, with no arbitrary weighted winner.
-        """
+        """Measure an ambiguous 1H weapon in both hands of the target weapon set."""
         from companion.equipment.schema import WeaponSetContext
 
         if target_set == WeaponSetContext.WEAPON_SET_2:
             slot1, slot2 = "Weapon 1 Swap", "Weapon 2 Swap"
-            set_num = 2
         else:
             slot1, slot2 = "Weapon 1", "Weapon 2"
-            set_num = 1
-
         if candidate_id is None:
             candidate_id = self.submit_candidate(raw_candidate, candidate_name=candidate_name, slot=slot1)
-
-        if not self.is_available or self.sandbox_engine is None or not self.xml:
-            return None
-
+        delta1 = self.measure(slot1, raw_candidate, candidate_id, candidate_name=candidate_name)
         if self.is_stale(candidate_id):
             return None
-
-        with self._engine_lock:
-            if self.is_stale(candidate_id):
-                return None
-
-            if not self.is_healthy:
-                if not self._recover_session():
-                    return None
-
-            delta1: PobEquipmentDelta | None = None
-            delta2: PobEquipmentDelta | None = None
-            context_xml = _set_weapon_set_in_xml(self.xml, set_num)
-
-            # Slot 1 simulation
-            try:
-                self.sandbox_engine.call("import_build", xml=context_xml)
-                def_before_1 = self.sandbox_engine.call("get_defenses")
-                stats_before_1 = self.sandbox_engine.call("calc_stats")
-
-                self.sandbox_engine.call("equip_item", slot=slot1, raw=raw_candidate)
-                def1 = self.sandbox_engine.call("get_defenses")
-                st1 = self.sandbox_engine.call("calc_stats")
-                delta1 = self._build_delta(
-                    slot1, candidate_id, candidate_name, def1, st1,
-                    def_before=def_before_1, stats_before=stats_before_1,
-                )
-            except EngineError as exc:
-                logging.getLogger(__name__).warning("PoB2 engine error during ambiguous 1H slot1 simulation: %s", exc)
-                self.is_healthy = False
-                self.unhealthy_reason = f"Engine error: {exc}"
-                delta1 = None
-            except Exception as exc:
-                logging.getLogger(__name__).warning("PoB2 ambiguous 1H slot1 simulation failed: %s", exc)
-                if isinstance(exc, EngineError) or "EngineError" in type(exc).__name__:
-                    self.is_healthy = False
-                    self.unhealthy_reason = f"Engine error: {exc}"
-                delta1 = None
-            finally:
-                try:
-                    self.sandbox_engine.call("import_build", xml=self.xml)
-                except Exception as exc:
-                    logging.getLogger(__name__).warning("Failed to restore sandbox in ambiguous 1H slot1 simulation: %s", exc)
-                    self.is_healthy = False
-                    self.unhealthy_reason = f"Baseline restore failed: {exc}"
-
-            if self.is_stale(candidate_id):
-                return None
-
-            # Slot 2 simulation
-            try:
-                self.sandbox_engine.call("import_build", xml=context_xml)
-                def_before_2 = self.sandbox_engine.call("get_defenses")
-                stats_before_2 = self.sandbox_engine.call("calc_stats")
-
-                self.sandbox_engine.call("equip_item", slot=slot2, raw=raw_candidate)
-                def2 = self.sandbox_engine.call("get_defenses")
-                st2 = self.sandbox_engine.call("calc_stats")
-                delta2 = self._build_delta(
-                    slot2, candidate_id, candidate_name, def2, st2,
-                    def_before=def_before_2, stats_before=stats_before_2,
-                )
-            except EngineError as exc:
-                logging.getLogger(__name__).warning("PoB2 engine error during ambiguous 1H slot2 simulation: %s", exc)
-                self.is_healthy = False
-                self.unhealthy_reason = f"Engine error: {exc}"
-                delta2 = None
-            except Exception as exc:
-                logging.getLogger(__name__).warning("PoB2 ambiguous 1H slot2 simulation failed: %s", exc)
-                if isinstance(exc, EngineError) or "EngineError" in type(exc).__name__:
-                    self.is_healthy = False
-                    self.unhealthy_reason = f"Engine error: {exc}"
-                delta2 = None
-            finally:
-                try:
-                    self.sandbox_engine.call("import_build", xml=self.xml)
-                except Exception as exc:
-                    logging.getLogger(__name__).warning("Failed to restore sandbox in ambiguous 1H slot2 simulation: %s", exc)
-                    self.is_healthy = False
-                    self.unhealthy_reason = f"Baseline restore failed: {exc}"
-
-            if self.is_stale(candidate_id):
-                return None
-
-            return DualWeaponSimulationResult(
-                candidate_id=candidate_id,
-                candidate_name=candidate_name or "Candidate Weapon",
-                slot1_delta=delta1,
-                slot2_delta=delta2,
-            )
+        delta2 = self.measure(slot2, raw_candidate, candidate_id, candidate_name=candidate_name)
+        if self.is_stale(candidate_id):
+            return None
+        return DualWeaponSimulationResult(
+            candidate_id=candidate_id,
+            candidate_name=candidate_name or "Candidate Weapon",
+            slot1_delta=delta1,
+            slot2_delta=delta2,
+        )
 
     def display_recommendation(
         self,

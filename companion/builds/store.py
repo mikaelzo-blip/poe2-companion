@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import threading
 from pathlib import Path
 import re
 
@@ -10,6 +12,8 @@ from companion.builds.guide import BreakerRule, GuideProfile
 from companion.state.store import atomic_write_file
 
 _ASSIGNMENTS = "_assignments.json"
+_LOCK = threading.Lock()
+logger = logging.getLogger(__name__)
 
 
 def slugify(text: str) -> str:
@@ -38,7 +42,11 @@ def load_guide(runtime_dir: Path, slug: str) -> GuideProfile | None:
         return None
     if not path.exists():
         return None
-    return GuideProfile.model_validate_json(path.read_text(encoding="utf-8"))
+    try:
+        return GuideProfile.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:  # pydantic ValidationError is a ValueError
+        logger.warning("Skipping unreadable guide %s: %s", path.name, exc)
+        return None
 
 
 def load_guide_xml(runtime_dir: Path, slug: str) -> str | None:
@@ -56,7 +64,7 @@ def _write(runtime_dir: Path, profile: GuideProfile) -> None:
     )
 
 
-def save_guide(runtime_dir: Path, profile: GuideProfile, pob_xml: str | None = None) -> GuideProfile:
+def _save_guide_locked(runtime_dir: Path, profile: GuideProfile, pob_xml: str | None = None) -> GuideProfile:
     profile = profile.model_copy(update={"slug": slugify(profile.slug)})
     existing = load_guide(runtime_dir, profile.slug)
     if existing is not None:
@@ -74,9 +82,8 @@ def list_guides(runtime_dir: Path) -> list[GuideProfile]:
     if not d.exists():
         return []
     guides = [
-        GuideProfile.model_validate_json(p.read_text(encoding="utf-8"))
-        for p in d.glob("*.json")
-        if p.name != _ASSIGNMENTS
+        g for p in d.glob("*.json") if p.name != _ASSIGNMENTS
+        if (g := load_guide(runtime_dir, p.stem)) is not None
     ]
     return sorted(guides, key=lambda g: g.name)
 
@@ -92,7 +99,7 @@ def delete_guide(runtime_dir: Path, slug: str) -> bool:
     return existed
 
 
-def set_breaker_rules(runtime_dir: Path, slug: str, rules: list[BreakerRule]) -> GuideProfile:
+def _set_breaker_rules_locked(runtime_dir: Path, slug: str, rules: list[BreakerRule]) -> GuideProfile:
     profile = load_guide(runtime_dir, slug)
     if profile is None:
         raise KeyError(slug)
@@ -113,7 +120,7 @@ def get_assignment(runtime_dir: Path, character_id: str) -> tuple[str | None, st
     return entry["guide_slug"], entry.get("stage_override")
 
 
-def set_assignment(
+def _set_assignment_locked(
     runtime_dir: Path, character_id: str, guide_slug: str | None, stage_override: str | None
 ) -> None:
     data = _read_assignments(runtime_dir)
@@ -121,3 +128,20 @@ def set_assignment(
     atomic_write_file(
         _dir(runtime_dir) / _ASSIGNMENTS, json.dumps(data, indent=2).encode("utf-8")
     )
+
+
+def save_guide(runtime_dir: Path, profile: GuideProfile, pob_xml: str | None = None) -> GuideProfile:
+    with _LOCK:
+        return _save_guide_locked(runtime_dir, profile, pob_xml)
+
+
+def set_breaker_rules(runtime_dir: Path, slug: str, rules: list[BreakerRule]) -> GuideProfile:
+    with _LOCK:
+        return _set_breaker_rules_locked(runtime_dir, slug, rules)
+
+
+def set_assignment(
+    runtime_dir: Path, character_id: str, guide_slug: str | None, stage_override: str | None
+) -> None:
+    with _LOCK:
+        _set_assignment_locked(runtime_dir, character_id, guide_slug, stage_override)

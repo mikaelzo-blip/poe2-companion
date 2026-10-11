@@ -157,3 +157,8 @@ def test_bare_early_mid_late_are_not_keywords():
 ])
 def test_act_pair_dash_and_lv(title, expected):
     assert parse_level_range(title) == expected
+
+
+def test_act_pair_second_number_bounded():
+    assert parse_level_range("Act 2 - 30") == (16, 29, False)
+    assert parse_level_range("Act 1-2") == parse_level_range("Act 1 & 2")

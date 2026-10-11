@@ -60,3 +60,17 @@ def test_hostile_slug_stays_inside(tmp_path):
     save_guide(tmp_path, _profile(slug="../evil"))
     assert (tmp_path / "guides" / "evil.json").exists()
     assert not (tmp_path / "evil.json").exists()
+
+
+def test_corrupt_guide_file_is_skipped(tmp_path):
+    save_guide(tmp_path, _profile("ok"))
+    (tmp_path / "guides" / "bad.json").write_text("{not json", encoding="utf-8")
+    assert load_guide(tmp_path, "bad") is None
+    assert [g.slug for g in list_guides(tmp_path)] == ["ok"]
+
+
+def test_singular_item_class_fallback():
+    from companion.builds.guide import singular_item_class
+    assert singular_item_class("Daggers") == "Dagger"
+    assert singular_item_class("Staves") == "Staff"
+    assert singular_item_class("Wands") == "Wand"

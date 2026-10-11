@@ -14,7 +14,9 @@ _SINGULAR = {v: k for k, v in ITEM_CLASS_PLURAL.items()}
 
 def singular_item_class(label: str) -> str:
     """Clipboard plural class label ("Crossbows") -> the singular vocabulary guides use."""
-    return _SINGULAR.get(label, label)
+    if label in _SINGULAR:
+        return _SINGULAR[label]
+    return label[:-1] if label.endswith("s") else label
 
 
 def weapon_classes_of(items: dict) -> dict[int, list[str]]:

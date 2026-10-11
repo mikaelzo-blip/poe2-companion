@@ -32,12 +32,14 @@ export async function refreshGuideControls() {
     const cur = guides.find(g => g.slug === guideSelect.value);
     fillSelect(stageSelect, 'Auto (berdasarkan level)',
       (cur ? cur.stages : []).map(st => ({ value: st.id, label: st.title })), active.stage_override);
+    showGuideError('');
   } catch (err) {
     console.warn('Failed to load guides:', err);
     showGuideError('Gagal memuat daftar guide');
   }
 }
 
+// Returns an error message, or null on success.
 async function saveGuideAssignment(guide, stageOverride) {
   try {
     const res = await fetch('/api/character-guide', {
@@ -47,14 +49,11 @@ async function saveGuideAssignment(guide, stageOverride) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.error) {
-      showGuideError(data.error || 'Gagal menyimpan guide');
-      return false;
+      return data.error || 'Gagal menyimpan guide';
     }
-    showGuideError('');
-    return true;
+    return null;
   } catch (err) {
-    showGuideError('Gagal menghubungi API server');
-    return false;
+    return 'Gagal menghubungi API server';
   }
 }
 
@@ -153,15 +152,20 @@ export async function setupCharacterAndGuideControls() {
   // Handle guide & stage selectors
   if (guideSelect) {
     guideSelect.addEventListener('change', async () => {
-      await saveGuideAssignment(guideSelect.value, null);
+      const err = await saveGuideAssignment(guideSelect.value, null);
       await refreshGuideControls();
+      if (err) showGuideError(err);
       await fetchHttpRuntime();
     });
   }
 
   if (stageSelect) {
     stageSelect.addEventListener('change', async () => {
-      if (!(await saveGuideAssignment(guideSelect?.value, stageSelect.value))) await refreshGuideControls();
+      const err = await saveGuideAssignment(guideSelect?.value, stageSelect.value);
+      if (err) {
+        await refreshGuideControls();
+        showGuideError(err);
+      }
       await fetchHttpRuntime();
     });
   }

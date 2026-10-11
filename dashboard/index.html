@@ -457,9 +457,12 @@ Requirements: Level 12
 +15% to Fire Resistance
 +12% to Cold Resistance
 15% increased Movement Speed"></textarea>
-                  <button class="btn btn-primary btn-block" id="btn-run-compare" style="margin-top: 10px;">
-                    <span>Bandingkan Sekarang (PoB2 Engine)</span>
-                  </button>
+                  <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+                    <button class="btn btn-primary btn-block" id="btn-run-compare" style="margin-top: 0; flex: 1;">
+                      <span>Bandingkan Sekarang (PoB2 Engine)</span>
+                    </button>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); cursor: pointer; white-space: nowrap;"><input type="checkbox" id="compare-lock-slot"> Kunci slot</label>
+                  </div>
 
                   <!-- Comparison Result Container -->
                   <div id="compare-verdict-result" style="display: block; margin-top: 16px;"></div>

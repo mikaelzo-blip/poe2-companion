@@ -1,4 +1,5 @@
 import { renderGearSlots, selectSlot } from './overview.js';
+export { selectSlot };
 import { fetchHttpRuntime } from './runtime.js';
 import { SLOT_LABELS, addNotification, appState, esc, logToTerminal, showTransientNotification } from './state.js';
 
@@ -35,6 +36,76 @@ export function saveSlotCompareData() {
   } catch (_) {}
 }
 
+const ITEM_CLASS_TO_SLOT = {
+  // main_hand
+  'staves': 'main_hand',
+  'staff': 'main_hand',
+  'quarterstaves': 'main_hand',
+  'quarterstaff': 'main_hand',
+  'wands': 'main_hand',
+  'wand': 'main_hand',
+  'sceptres': 'main_hand',
+  'sceptre': 'main_hand',
+  'scepters': 'main_hand',
+  'scepter': 'main_hand',
+  'crossbows': 'main_hand',
+  'crossbow': 'main_hand',
+  'bows': 'main_hand',
+  'bow': 'main_hand',
+  'one hand maces': 'main_hand',
+  'one hand mace': 'main_hand',
+  'two hand maces': 'main_hand',
+  'two hand mace': 'main_hand',
+  'one hand swords': 'main_hand',
+  'one hand sword': 'main_hand',
+  'two hand swords': 'main_hand',
+  'two hand sword': 'main_hand',
+  'one hand axes': 'main_hand',
+  'one hand axe': 'main_hand',
+  'two hand axes': 'main_hand',
+  'two hand axe': 'main_hand',
+  'spears': 'main_hand',
+  'spear': 'main_hand',
+  'flails': 'main_hand',
+  'flail': 'main_hand',
+  'talismans': 'main_hand',
+  'talisman': 'main_hand',
+  'daggers': 'main_hand',
+  'dagger': 'main_hand',
+  'claws': 'main_hand',
+  'claw': 'main_hand',
+
+  // off_hand
+  'foci': 'off_hand',
+  'focus': 'off_hand',
+  'shields': 'off_hand',
+  'shield': 'off_hand',
+  'bucklers': 'off_hand',
+  'buckler': 'off_hand',
+  'quivers': 'off_hand',
+  'quiver': 'off_hand',
+
+  // matching slots
+  'rings': 'ring1',
+  'ring': 'ring1',
+  'amulets': 'amulet',
+  'amulet': 'amulet',
+  'belts': 'belt',
+  'belt': 'belt',
+  'helmets': 'helmet',
+  'helmet': 'helmet',
+  'helms': 'helmet',
+  'helm': 'helmet',
+  'gloves': 'gloves',
+  'glove': 'gloves',
+  'boots': 'boots',
+  'boot': 'boots',
+  'body armours': 'body_armour',
+  'body armour': 'body_armour',
+  'body armors': 'body_armour',
+  'body armor': 'body_armour',
+};
+
 export function detectSlotFromItemText(rawText, fallbackSlot = null) {
   const lines = rawText.split('\n').map(l => l.trim().toLowerCase()).filter(Boolean);
   let itemClass = '';
@@ -50,6 +121,28 @@ export function detectSlotFromItemText(rawText, fallbackSlot = null) {
         baseType = lines[i + 2].toLowerCase();
       }
     }
+  }
+
+  const slotFromClass = ITEM_CLASS_TO_SLOT[itemClass];
+  if (slotFromClass) {
+    if (slotFromClass === 'ring1') {
+      if (fallbackSlot === 'ring2') return 'ring2';
+      if (appState.loadout && appState.loadout.shared_slots) {
+        const r1 = appState.loadout.shared_slots.ring1;
+        const r2 = appState.loadout.shared_slots.ring2;
+        if (r1 && r1.item && (!r2 || !r2.item)) {
+          return 'ring2';
+        }
+      }
+      return 'ring1';
+    }
+    if (slotFromClass === 'main_hand' && fallbackSlot === 'set2_main_hand') {
+      return 'set2_main_hand';
+    }
+    if (slotFromClass === 'off_hand' && fallbackSlot === 'set2_off_hand') {
+      return 'set2_off_hand';
+    }
+    return slotFromClass;
   }
 
   if (itemClass.includes('helmet') || itemClass.includes('helm') || baseType.includes('helm') || baseType.includes('circlet') || baseType.includes('crown')) {
@@ -480,32 +573,48 @@ export function setupCompareSubtabs() {
   renderCompareForSlot(appState.selectedSlot || 'helmet');
 }
 
-const WEAPON_UI_SLOTS = ['main_hand', 'off_hand', 'set2_main_hand', 'set2_off_hand'];
-
 export async function simulateVersusComparison(rawText, container, explicitSlot = null) {
-  const targetSlot = explicitSlot || detectSlotFromItemText(rawText, appState.selectedSlot);
-  const targetLabel = SLOT_LABELS[targetSlot] || targetSlot.toUpperCase();
+  const lockCheckbox = document.getElementById('compare-lock-slot');
+  const isLocked = Boolean(lockCheckbox && lockCheckbox.checked);
+
+  const targetSlot = isLocked && appState.selectedSlot
+    ? appState.selectedSlot
+    : (explicitSlot || detectSlotFromItemText(rawText, appState.selectedSlot));
+  const targetLabel = SLOT_LABELS[targetSlot] || (targetSlot ? targetSlot.toUpperCase() : 'SLOT');
 
   container.style.display = 'block';
   container.innerHTML = `<div style="color: var(--accent-gold); font-size: 12px; font-family: var(--font-mono); padding: 12px;">⏳ Mengevaluasi calon untuk slot ${esc(targetLabel)} dengan PoB2 & aturan guide...</div>`;
+
+  const payload = {
+    raw_text: rawText,
+    character_id: appState.activeCharId || 'BOMSHAK',
+  };
+  if (isLocked && appState.selectedSlot) {
+    payload.slot = appState.selectedSlot;
+  }
 
   try {
     const res = await fetch('/api/evaluate-item', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        raw_text: rawText,
-        character_id: appState.activeCharId || "BOMSHAK",
-        // Weapon slots are not sent: the server picks the weapon set from the guide.
-        ...(WEAPON_UI_SLOTS.includes(targetSlot) ? {} : { slot: targetSlot })
-      })
+      body: JSON.stringify(payload),
     });
 
     if (res.ok) {
       const data = await res.json();
+      if (data && data.error) {
+        container.innerHTML = `
+          <div class="verdict-box verdict-reject">
+            <span class="verdict-badge badge-red">EVALUATION ERROR</span>
+            <div class="verdict-details">${esc(data.error)}</div>
+          </div>
+        `;
+        return;
+      }
+
       data.raw_text = rawText;
-      if (!data.slot) data.slot = targetSlot;
       const slot = data.slot;
+      if (!slot) return;
 
       recordSlotComparison(slot, rawText, data);
       logToTerminal('EVAL', `${data.item_name || 'Item'} (${slot}) -> ${data.verdict || 'OK'}`);
@@ -583,25 +692,12 @@ export function startAutoClipboardWatcher() {
       if (res.ok) {
         const data = await res.json();
         if (data.has_new_item) {
-          const targetSlot = detectSlotFromItemText(data.raw_text, appState.selectedSlot);
-          data.slot = targetSlot;
-
-          // Check if target slot is currently empty/unassigned in loadout
-          let isSlotEmpty = true;
-          if (appState.loadout) {
-            const sharedSlots = appState.loadout.shared_slots || {};
-            const weaponSet1 = appState.loadout.weapon_set_1 || {};
-            const weaponSet2 = appState.loadout.weapon_set_2 || {};
-            if (targetSlot === 'main_hand') isSlotEmpty = !(weaponSet1.main_hand?.item || sharedSlots.main_hand?.item);
-            else if (targetSlot === 'off_hand') isSlotEmpty = !(weaponSet1.off_hand?.item || sharedSlots.off_hand?.item);
-            else if (targetSlot === 'set2_main_hand') isSlotEmpty = !weaponSet2.main_hand?.item;
-            else if (targetSlot === 'set2_off_hand') isSlotEmpty = !weaponSet2.off_hand?.item;
-            else isSlotEmpty = !sharedSlots[targetSlot]?.item;
-          }
+          const slot = data.slot;
+          if (!slot) return;
 
           const toggleAutoEquip = document.getElementById('toggle-autoequip-empty');
-          if (isSlotEmpty && toggleAutoEquip && toggleAutoEquip.checked) {
-            // Auto equip item to empty slot immediately!
+          if (toggleAutoEquip && toggleAutoEquip.checked && data.auto_equip_ok) {
+            // Auto equip item immediately!
             try {
               const equipRes = await fetch('/api/equip-item', {
                 method: 'POST',
@@ -609,14 +705,14 @@ export function startAutoClipboardWatcher() {
                 body: JSON.stringify({
                   raw_text: data.raw_text,
                   character_id: charId,
-                  slot: targetSlot
+                  slot: slot
                 })
               });
               if (equipRes.ok) {
                 await fetchHttpRuntime();
-                selectSlot(targetSlot);
-                showTransientNotification(`🛡️ Auto-Pasang: ${data.item_name || targetSlot.toUpperCase()} berhasil dipasang ke loadout!`);
-                logToTerminal('AUTOEQUIP', `${data.item_name || targetSlot.toUpperCase()} dipasang ke slot ${targetSlot}`);
+                selectSlot(slot);
+                showTransientNotification(`🛡️ Auto-Pasang: ${data.item_name || slot.toUpperCase()} berhasil dipasang ke loadout!`);
+                logToTerminal('AUTOEQUIP', `${data.item_name || slot.toUpperCase()} dipasang ke slot ${slot}`);
                 return;
               }
             } catch (_) {}
@@ -625,10 +721,10 @@ export function startAutoClipboardWatcher() {
           if (!data.timestamp) {
             data.timestamp = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
           }
-          recordSlotComparison(targetSlot, data.raw_text, data);
+          recordSlotComparison(slot, data.raw_text, data);
           const vsText = data.current_item_name ? ` vs ${data.current_item_name}` : '';
-          showTransientNotification(`📋 Item Baru: ${data.item_name || targetSlot.toUpperCase()}${vsText} (${data.verdict || 'EVALUATED'})`);
-          logToTerminal('SCAN', `${data.item_name || 'Item'}${vsText} (${targetSlot}) -> ${data.verdict || 'OK'}`);
+          showTransientNotification(`📋 Item Baru: ${data.item_name || slot.toUpperCase()}${vsText} (${data.verdict || 'EVALUATED'})`);
+          logToTerminal('SCAN', `${data.item_name || 'Item'}${vsText} (${slot}) -> ${data.verdict || 'OK'}`);
 
           // Switch main navigation to Gear tab if not currently active
           const gearNav = document.querySelector('.nav-item[data-tab="tab-gear"]');
@@ -649,7 +745,7 @@ export function startAutoClipboardWatcher() {
           }
 
           // Select this slot so UI header, loadout grid, and compare panel align
-          selectSlot(targetSlot);
+          selectSlot(slot);
         }
       }
     } catch (_) {}

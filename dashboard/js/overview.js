@@ -90,22 +90,6 @@ export function loadDataIntoUI(status, character, objective, loadout, baseline =
       if (bDex) bDex.style.width = Math.min(100, (d / 120) * 100) + '%';
       if (bInt) bInt.style.width = Math.min(100, (i / 120) * 100) + '%';
     }
-
-    if (character.build_progression) {
-      document.getElementById('sb-build-target').textContent = character.build_progression.target_build;
-      document.getElementById('sb-build-stage').textContent = `Stage: ${character.build_progression.active_stage}`;
-    }
-
-    // Update Level 52 Transition Milestone readiness
-    const transPctEl = document.getElementById('transition-pct');
-    const reqStatusLvl = document.getElementById('req-status-level');
-    const lvlNum = parseInt(charLevel, 10) || 1;
-    if (transPctEl) {
-      transPctEl.textContent = Math.min(100, Math.round((lvlNum / 52) * 100)) + '%';
-    }
-    if (reqStatusLvl) {
-      reqStatusLvl.textContent = `LVL ${lvlNum} / 52`;
-    }
   }
 
   // Defenses Summary

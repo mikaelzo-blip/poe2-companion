@@ -1,0 +1,48 @@
+{
+ "Helmet": {
+  "equipped": true,
+  "name": "Plague Crest",
+  "raw": "Rarity: RARE\nPlague Crest\nFace Mask\nEvasion: 37\nEnergy Shield: 18\nUnique ID: abcHelm\nItem Level: 40\nQuality: 0\nLevelReq: 28\nImplicits: 0\n15% increased Evasion and Energy Shield\n+74 to maximum Life\n12% increased Rarity of Items found\n+23% to Fire Resistance\n+16% to Lightning Resistance\n8 Life Regeneration per second",
+  "slot": "Helmet"
+ },
+ "Amulet": {
+  "equipped": true,
+  "name": "Sorrow Noose",
+  "raw": "Rarity: RARE\nSorrow Noose\nJade Amulet\nUnique ID: abcAmulet\nItem Level: 53\nLevelReq: 36\nImplicits: 1\n+11 to Dexterity\n15% increased Spell Damage\n+13 to maximum Energy Shield\n+91 to maximum Life\n+1 to Level of all Spell Skills\n+20 to Dexterity\n10.8 Life Regeneration per second",
+  "slot": "Amulet"
+ },
+ "Ring 1": {
+  "equipped": true,
+  "name": "Demon Nail",
+  "raw": "Rarity: RARE\nDemon Nail\nIron Ring\nUnique ID: abcRing\nItem Level: 29\nLevelReq: 8\nImplicits: 1\nAdds 1 to 4 Physical Damage to Attacks\n6% increased Chaos Damage\n+20 to Evasion Rating\n+7% to Cold Resistance",
+  "slot": "Ring 1"
+ },
+ "Ring 2": {
+  "equipped": true,
+  "name": "Smouldering Iron Ring of the Starfish",
+  "raw": "Rarity: MAGIC\nSmouldering Iron Ring of the Starfish\nUnique ID: abcRing2\nItem Level: 19\nLevelReq: 13\nImplicits: 1\nAdds 1 to 4 Physical Damage to Attacks\nAdds 5 to 9 Fire damage to Attacks\n4.4 Life Regeneration per second",
+  "slot": "Ring 2"
+ },
+ "Weapon 1": {
+  "equipped": true,
+  "name": "Cataclysm Call",
+  "raw": "Rarity: RARE\nCataclysm Call\nPyrophyte Staff\nUnique ID: abcWeapon\nItem Level: 53\nQuality: 0\nLevelReq: 36\nImplicits: 0\nGain 39% of Damage as Extra Lightning Damage\n+38 to maximum Mana\n+2 to Level of all Fire Spell Skills",
+  "slot": "Weapon 1"
+ },
+ "Body Armour": {
+  "equipped": true,
+  "name": "Eagle Ward",
+  "raw": "Rarity: RARE\nEagle Ward\nCloaked Mail\nArmour: 145\nEvasion: 122\nUnique ID: abcBodyArmour\nItem Level: 27\nQuality: 0\nLevelReq: 26\nImplicits: 0\n+6 to Armour\n14% increased Armour and Evasion\n+17 to maximum Life\n+19% to Fire Resistance",
+  "slot": "Body Armour"
+ },
+ "Boots": {
+  "equipped": true,
+  "name": "Dragon Pace",
+  "raw": "Rarity: RARE\nDragon Pace\nHunting Shoes\nEvasion: 65\nEnergy Shield: 22\nUnique ID: abcBoots\nItem Level: 38\nQuality: 0\nLevelReq: 33\nImplicits: 1\n{enchant}+5% to Cold Resistance\n20% increased Movement Speed\n+60 to maximum Life\n{desecrated}+12 to Dexterity\nCorrupted",
+  "slot": "Boots"
+ },
+ "Gloves": {
+  "equipped": false,
+  "slot": "Gloves"
+ }
+}

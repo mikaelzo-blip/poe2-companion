@@ -1,6 +1,7 @@
 import { renderGearSlots, selectSlot } from './overview.js';
+export { selectSlot };
 import { fetchHttpRuntime } from './runtime.js';
-import { SLOT_LABELS, addNotification, appState, esc, getEffectiveStage, logToTerminal, showTransientNotification } from './state.js';
+import { SLOT_LABELS, addNotification, appState, esc, logToTerminal, showTransientNotification } from './state.js';
 
 export function getCompareStorageKey() {
   const charId = appState.activeCharId || 'BOMSHAK';
@@ -35,6 +36,76 @@ export function saveSlotCompareData() {
   } catch (_) {}
 }
 
+const ITEM_CLASS_TO_SLOT = {
+  // main_hand
+  'staves': 'main_hand',
+  'staff': 'main_hand',
+  'quarterstaves': 'main_hand',
+  'quarterstaff': 'main_hand',
+  'wands': 'main_hand',
+  'wand': 'main_hand',
+  'sceptres': 'main_hand',
+  'sceptre': 'main_hand',
+  'scepters': 'main_hand',
+  'scepter': 'main_hand',
+  'crossbows': 'main_hand',
+  'crossbow': 'main_hand',
+  'bows': 'main_hand',
+  'bow': 'main_hand',
+  'one hand maces': 'main_hand',
+  'one hand mace': 'main_hand',
+  'two hand maces': 'main_hand',
+  'two hand mace': 'main_hand',
+  'one hand swords': 'main_hand',
+  'one hand sword': 'main_hand',
+  'two hand swords': 'main_hand',
+  'two hand sword': 'main_hand',
+  'one hand axes': 'main_hand',
+  'one hand axe': 'main_hand',
+  'two hand axes': 'main_hand',
+  'two hand axe': 'main_hand',
+  'spears': 'main_hand',
+  'spear': 'main_hand',
+  'flails': 'main_hand',
+  'flail': 'main_hand',
+  'talismans': 'main_hand',
+  'talisman': 'main_hand',
+  'daggers': 'main_hand',
+  'dagger': 'main_hand',
+  'claws': 'main_hand',
+  'claw': 'main_hand',
+
+  // off_hand
+  'foci': 'off_hand',
+  'focus': 'off_hand',
+  'shields': 'off_hand',
+  'shield': 'off_hand',
+  'bucklers': 'off_hand',
+  'buckler': 'off_hand',
+  'quivers': 'off_hand',
+  'quiver': 'off_hand',
+
+  // matching slots
+  'rings': 'ring1',
+  'ring': 'ring1',
+  'amulets': 'amulet',
+  'amulet': 'amulet',
+  'belts': 'belt',
+  'belt': 'belt',
+  'helmets': 'helmet',
+  'helmet': 'helmet',
+  'helms': 'helmet',
+  'helm': 'helmet',
+  'gloves': 'gloves',
+  'glove': 'gloves',
+  'boots': 'boots',
+  'boot': 'boots',
+  'body armours': 'body_armour',
+  'body armour': 'body_armour',
+  'body armors': 'body_armour',
+  'body armor': 'body_armour',
+};
+
 export function detectSlotFromItemText(rawText, fallbackSlot = null) {
   const lines = rawText.split('\n').map(l => l.trim().toLowerCase()).filter(Boolean);
   let itemClass = '';
@@ -50,6 +121,28 @@ export function detectSlotFromItemText(rawText, fallbackSlot = null) {
         baseType = lines[i + 2].toLowerCase();
       }
     }
+  }
+
+  const slotFromClass = ITEM_CLASS_TO_SLOT[itemClass];
+  if (slotFromClass) {
+    if (slotFromClass === 'ring1') {
+      if (fallbackSlot === 'ring2') return 'ring2';
+      if (appState.loadout && appState.loadout.shared_slots) {
+        const r1 = appState.loadout.shared_slots.ring1;
+        const r2 = appState.loadout.shared_slots.ring2;
+        if (r1 && r1.item && (!r2 || !r2.item)) {
+          return 'ring2';
+        }
+      }
+      return 'ring1';
+    }
+    if (slotFromClass === 'main_hand' && fallbackSlot === 'set2_main_hand') {
+      return 'set2_main_hand';
+    }
+    if (slotFromClass === 'off_hand' && fallbackSlot === 'set2_off_hand') {
+      return 'set2_off_hand';
+    }
+    return slotFromClass;
   }
 
   if (itemClass.includes('helmet') || itemClass.includes('helm') || baseType.includes('helm') || baseType.includes('circlet') || baseType.includes('crown')) {
@@ -481,39 +574,66 @@ export function setupCompareSubtabs() {
 }
 
 export async function simulateVersusComparison(rawText, container, explicitSlot = null) {
-  const targetSlot = explicitSlot || detectSlotFromItemText(rawText, appState.selectedSlot);
-  const targetLabel = SLOT_LABELS[targetSlot] || targetSlot.toUpperCase();
+  const lockCheckbox = document.getElementById('compare-lock-slot');
+  const isLocked = Boolean(lockCheckbox && lockCheckbox.checked);
+
+  if (isLocked && !appState.selectedSlot) {
+    if (container) {
+      container.style.display = 'block';
+      container.innerHTML = `<div style="color: var(--accent-gold); font-size: 12px; font-family: var(--font-mono); padding: 12px;">Pilih slot dulu untuk mengunci.</div>`;
+    }
+    return;
+  }
+
+  const targetSlot = isLocked && appState.selectedSlot
+    ? appState.selectedSlot
+    : (explicitSlot || detectSlotFromItemText(rawText, appState.selectedSlot));
+  const targetLabel = SLOT_LABELS[targetSlot] || (targetSlot ? targetSlot.toUpperCase() : 'SLOT');
 
   container.style.display = 'block';
-  container.innerHTML = `<div style="color: var(--accent-gold); font-size: 12px; font-family: var(--font-mono); padding: 12px;">⏳ Mengevaluasi calon untuk slot ${esc(targetLabel)} dengan PoB2 Engine & Fubgun Rules...</div>`;
+  container.innerHTML = `<div style="color: var(--accent-gold); font-size: 12px; font-family: var(--font-mono); padding: 12px;">⏳ Mengevaluasi calon untuk slot ${esc(targetLabel)} dengan PoB2 & aturan guide...</div>`;
+
+  const payload = {
+    raw_text: rawText,
+    character_id: appState.activeCharId || 'BOMSHAK',
+  };
+  if (isLocked && appState.selectedSlot) {
+    payload.slot = appState.selectedSlot;
+  }
 
   try {
-    const stage = getEffectiveStage();
-    const guide = appState.selectedGuide || "fubgun_flameblast";
     const res = await fetch('/api/evaluate-item', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        raw_text: rawText,
-        character_id: appState.activeCharId || "BOMSHAK",
-        stage: stage,
-        guide: guide,
-        slot: targetSlot
-      })
+      body: JSON.stringify(payload),
     });
 
     if (res.ok) {
       const data = await res.json();
+      if (data && data.error) {
+        container.innerHTML = `
+          <div class="verdict-box verdict-reject">
+            <span class="verdict-badge badge-red">EVALUATION ERROR</span>
+            <div class="verdict-details">${esc(data.error)}</div>
+          </div>
+        `;
+        return;
+      }
+
       data.raw_text = rawText;
-      if (!data.slot) data.slot = targetSlot;
+      const slot = data.slot;
+      if (!slot) {
+        renderEvaluationVerdict(data, container);
+        return;
+      }
 
-      recordSlotComparison(targetSlot, rawText, data);
-      logToTerminal('EVAL', `${data.item_name || 'Item'} (${targetSlot}) -> ${data.verdict || 'OK'}`);
+      recordSlotComparison(slot, rawText, data);
+      logToTerminal('EVAL', `${data.item_name || 'Item'} (${slot}) -> ${data.verdict || 'OK'}`);
 
-      if (appState.selectedSlot !== targetSlot) {
-        selectSlot(targetSlot);
+      if (appState.selectedSlot !== slot) {
+        selectSlot(slot);
       } else {
-        renderCompareForSlot(targetSlot);
+        renderCompareForSlot(slot);
       }
       return;
     } else {
@@ -576,34 +696,22 @@ export function startAutoClipboardWatcher() {
 
     try {
       const charId = appState.activeCharId || "BOMSHAK";
-      const stage = getEffectiveStage();
-      const guide = appState.selectedGuide || "fubgun_flameblast";
       const zoneParam = appState.currentZone ? `&zone=${encodeURIComponent(appState.currentZone)}` : '';
-      const query = `?char_id=${encodeURIComponent(charId)}&stage=${encodeURIComponent(stage)}&guide=${encodeURIComponent(guide)}${zoneParam}`;
+      const query = `?char_id=${encodeURIComponent(charId)}${zoneParam}`;
 
       const res = await fetch(`/api/clipboard-poll${query}`);
       if (res.ok) {
         const data = await res.json();
         if (data.has_new_item) {
-          const targetSlot = detectSlotFromItemText(data.raw_text, appState.selectedSlot);
-          data.slot = targetSlot;
-
-          // Check if target slot is currently empty/unassigned in loadout
-          let isSlotEmpty = true;
-          if (appState.loadout) {
-            const sharedSlots = appState.loadout.shared_slots || {};
-            const weaponSet1 = appState.loadout.weapon_set_1 || {};
-            const weaponSet2 = appState.loadout.weapon_set_2 || {};
-            if (targetSlot === 'main_hand') isSlotEmpty = !(weaponSet1.main_hand?.item || sharedSlots.main_hand?.item);
-            else if (targetSlot === 'off_hand') isSlotEmpty = !(weaponSet1.off_hand?.item || sharedSlots.off_hand?.item);
-            else if (targetSlot === 'set2_main_hand') isSlotEmpty = !weaponSet2.main_hand?.item;
-            else if (targetSlot === 'set2_off_hand') isSlotEmpty = !weaponSet2.off_hand?.item;
-            else isSlotEmpty = !sharedSlots[targetSlot]?.item;
+          const slot = data.slot;
+          if (!slot) {
+            if (data.error) showTransientNotification(`⚠ Gagal evaluasi item: ${data.error}`);
+            return;
           }
 
           const toggleAutoEquip = document.getElementById('toggle-autoequip-empty');
-          if (isSlotEmpty && toggleAutoEquip && toggleAutoEquip.checked) {
-            // Auto equip item to empty slot immediately!
+          if (toggleAutoEquip && toggleAutoEquip.checked && data.auto_equip_ok) {
+            // Auto equip item immediately!
             try {
               const equipRes = await fetch('/api/equip-item', {
                 method: 'POST',
@@ -611,14 +719,14 @@ export function startAutoClipboardWatcher() {
                 body: JSON.stringify({
                   raw_text: data.raw_text,
                   character_id: charId,
-                  slot: targetSlot
+                  slot: slot
                 })
               });
               if (equipRes.ok) {
                 await fetchHttpRuntime();
-                selectSlot(targetSlot);
-                showTransientNotification(`🛡️ Auto-Pasang: ${data.item_name || targetSlot.toUpperCase()} berhasil dipasang ke loadout!`);
-                logToTerminal('AUTOEQUIP', `${data.item_name || targetSlot.toUpperCase()} dipasang ke slot ${targetSlot}`);
+                selectSlot(slot);
+                showTransientNotification(`🛡️ Auto-Pasang: ${data.item_name || slot.toUpperCase()} berhasil dipasang ke loadout!`);
+                logToTerminal('AUTOEQUIP', `${data.item_name || slot.toUpperCase()} dipasang ke slot ${slot}`);
                 return;
               }
             } catch (_) {}
@@ -627,10 +735,10 @@ export function startAutoClipboardWatcher() {
           if (!data.timestamp) {
             data.timestamp = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
           }
-          recordSlotComparison(targetSlot, data.raw_text, data);
+          recordSlotComparison(slot, data.raw_text, data);
           const vsText = data.current_item_name ? ` vs ${data.current_item_name}` : '';
-          showTransientNotification(`📋 Item Baru: ${data.item_name || targetSlot.toUpperCase()}${vsText} (${data.verdict || 'EVALUATED'})`);
-          logToTerminal('SCAN', `${data.item_name || 'Item'}${vsText} (${targetSlot}) -> ${data.verdict || 'OK'}`);
+          showTransientNotification(`📋 Item Baru: ${data.item_name || slot.toUpperCase()}${vsText} (${data.verdict || 'EVALUATED'})`);
+          logToTerminal('SCAN', `${data.item_name || 'Item'}${vsText} (${slot}) -> ${data.verdict || 'OK'}`);
 
           // Switch main navigation to Gear tab if not currently active
           const gearNav = document.querySelector('.nav-item[data-tab="tab-gear"]');
@@ -651,11 +759,21 @@ export function startAutoClipboardWatcher() {
           }
 
           // Select this slot so UI header, loadout grid, and compare panel align
-          selectSlot(targetSlot);
+          selectSlot(slot);
         }
       }
     } catch (_) {}
   }, 800);
+}
+
+export function formatPctDelta(v) {
+  if (typeof v !== 'number' || isNaN(v)) return null;
+  const pct = v * 100;
+  const fixed = Math.abs(pct).toFixed(1);
+  if (fixed === '0.0') {
+    return '+0.0%';
+  }
+  return pct < 0 ? `−${fixed}%` : `+${fixed}%`;
 }
 
 export function renderEvaluationVerdict(data, container, targetSlot = null) {
@@ -672,8 +790,51 @@ export function renderEvaluationVerdict(data, container, targetSlot = null) {
   const badgeClass = isEquip ? 'badge-green' : (isConditional ? 'badge-gold' : (isInsufficient ? 'badge-gray' : 'badge-red'));
   const boxClass = isEquip ? 'verdict-equip-now' : (isConditional ? 'verdict-conditional' : (isInsufficient ? 'verdict-insufficient' : 'verdict-reject'));
 
-  const slotLabel = SLOT_LABELS[currentSlot] || currentSlot.toUpperCase().replace('_', ' ');
-  const slotBadgeHtml = `<div style="font-size: 11px; color: var(--accent-gold); font-family: var(--font-mono); margin-bottom: 4px;">🎯 Slot Evaluasi: ${esc(slotLabel.toUpperCase())}</div>`;
+  const effectiveSlot = data.slot || targetSlot || appState.selectedSlot || 'equipment';
+  const slotLabel = (data.slot && SLOT_LABELS[data.slot]) || SLOT_LABELS[effectiveSlot] || effectiveSlot;
+  const slotReasonPart = data.slot_reason ? ` — ${esc(data.slot_reason)}` : '';
+  const slotBadgeHtml = `<div class="verdict-slot-line" style="font-size: 11px; color: var(--accent-gold); font-family: var(--font-mono); margin-bottom: 4px;">🎯 Slot: ${esc(slotLabel)}${slotReasonPart}</div>`;
+
+  let deltasHtml = '';
+  if ((data.engine === 'pob2' || data.engine === 'heuristic') && !isInsufficient && data.verdict !== 'ALREADY_EQUIPPED') {
+    const dps = formatPctDelta(data.dps_pct);
+    const ehp = formatPctDelta(data.ehp_pct);
+    if (dps !== null && ehp !== null) {
+      deltasHtml = `<div class="verdict-deltas" style="font-size: 12px; font-weight: 700; font-family: var(--font-mono); color: #f1f5f9; margin: 4px 0;">DPS ${dps} · EHP ${ehp}</div>`;
+    }
+  }
+
+  let priorityHtml = '';
+  if (data.guide && data.guide.priority_total) {
+    const matched = Number(data.guide.priority_matched) || 0;
+    const total = Number(data.guide.priority_total);
+    const missingArr = Array.isArray(data.guide.must_have_missing) ? data.guide.must_have_missing.filter(Boolean) : [];
+    const missingPart = missingArr.length > 0 ? ` (kurang: ${missingArr.map(m => esc(String(m))).join(', ')})` : '';
+    priorityHtml = `<div class="verdict-priority-line" style="font-size: 11.5px; color: var(--accent-gold, #f59e0b); margin: 4px 0;">Prioritas guide ${matched}/${total}${missingPart}</div>`;
+  }
+
+  let targetFitHtml = '';
+  const tf = data.guide?.target_fit;
+  if (tf && typeof tf === 'object') {
+    const dps = formatPctDelta(tf.dps_pct);
+    const ehp = formatPctDelta(tf.ehp_pct);
+    if (dps !== null && ehp !== null) {
+      targetFitHtml = `<div class="verdict-target-fit" style="font-size: 11.5px; color: #94a3b8; font-family: var(--font-mono); margin: 4px 0;">Di build target: DPS ${dps} · EHP ${ehp}</div>`;
+    }
+  }
+
+  let safetyBadgesHtml = '';
+  if (Array.isArray(data.safety) && data.safety.length > 0) {
+    safetyBadgesHtml = data.safety.map(reason => `
+      <div class="verdict-safety-badge" style="background: rgba(239, 68, 68, 0.18); border: 1px solid var(--accent-red, #ef4444); color: #fca5a5; padding: 6px 12px; border-radius: 4px; font-size: 11.5px; font-weight: 600; margin: 4px 0;">⛔ ${esc(reason)}</div>
+    `).join('');
+  }
+
+  let heuristicBadgeHtml = '';
+  if (data.engine === 'heuristic') {
+    const reasonSuffix = data.engine_reason ? ` — ${esc(data.engine_reason)}` : '';
+    heuristicBadgeHtml = `<span title="PoB2 tidak tersedia / gagal; hasil dari estimasi stat lokal" style="font-size: 10.5px; font-family: var(--font-mono); color: #fbbf24; background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.4); padding: 2px 8px; border-radius: 4px;">⚠ Estimasi heuristik (tanpa PoB2)${reasonSuffix}</span>`;
+  }
 
   let gainsHtml = '';
   if (data.gains && data.gains.length > 0) {
@@ -756,9 +917,18 @@ export function renderEvaluationVerdict(data, container, targetSlot = null) {
     ? '<span class="matchup-outcome-badge outcome-keep">👑 TAHAN (LEBIH BAGUS)</span>'
     : (isWinnerCandidate ? '<span class="matchup-outcome-badge outcome-reject">🔄 DIGANTIKAN</span>' : '');
 
-  const candidateOutcomeBadge = isWinnerCandidate
-    ? '<span class="matchup-outcome-badge outcome-equip">👑 PASANG (UPGRADE)</span>'
-    : (isWinnerCurrent ? '<span class="matchup-outcome-badge outcome-reject">🛑 DITOLAK</span>' : '<span class="matchup-outcome-badge outcome-keep">⚠️ KONDISIONAL</span>');
+  let candidateOutcomeBadge = '';
+  if (isWinnerCandidate) {
+    candidateOutcomeBadge = '<span class="matchup-outcome-badge outcome-equip">👑 PASANG (UPGRADE)</span>';
+  } else if (isWinnerCurrent) {
+    candidateOutcomeBadge = '<span class="matchup-outcome-badge outcome-reject">🛑 DITOLAK</span>';
+  } else if (data.verdict === 'ALREADY_EQUIPPED') {
+    candidateOutcomeBadge = '<span class="matchup-outcome-badge outcome-keep">✓ SUDAH TERPASANG</span>';
+  } else if (data.verdict === 'INSUFFICIENT_DATA') {
+    candidateOutcomeBadge = '<span class="matchup-outcome-badge outcome-keep">❓ DATA KURANG</span>';
+  } else if (isConditional) {
+    candidateOutcomeBadge = '<span class="matchup-outcome-badge outcome-keep">⚠️ KONDISIONAL</span>';
+  }
 
   const matchupCardHtml = `
     <div class="compare-matchup-container">
@@ -830,7 +1000,7 @@ export function renderEvaluationVerdict(data, container, targetSlot = null) {
       <span style="font-size: 10.5px; font-family: var(--font-mono); color: #94a3b8; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 4px;">
         🕒 Dievaluasi: <strong style="color: #f1f5f9;">${esc(timeStr)}</strong>
       </span>
-      ${data.engine === 'heuristic' ? `<span title="PoB2 tidak tersedia / gagal; hasil dari estimasi stat lokal" style="font-size: 10.5px; font-family: var(--font-mono); color: #fbbf24; background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.4); padding: 2px 8px; border-radius: 4px;">⚠ Estimasi heuristik (tanpa PoB2)</span>` : ''}
+      ${heuristicBadgeHtml}
     </div>
   `;
 
@@ -856,11 +1026,15 @@ export function renderEvaluationVerdict(data, container, targetSlot = null) {
 
   container.innerHTML = `
     <div class="verdict-box ${boxClass}">
-      <span class="verdict-badge ${badgeClass}">VERDICT: ${esc(data.verdict)}</span>
+      <span class="verdict-badge ${badgeClass}">VERDICT: ${esc(data.verdict || '')}</span>
       <div class="verdict-details">
         ${metaBarHtml}
         ${controllerTipHtml}
+        ${safetyBadgesHtml}
         ${winnerBadgeHtml}
+        ${deltasHtml}
+        ${priorityHtml}
+        ${targetFitHtml}
         ${matchupCardHtml}
         ${reasonHtml}
         ${gainsHtml}

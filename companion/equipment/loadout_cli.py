@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import threading
 from pathlib import Path
 from typing import Any, Callable
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,6 +36,17 @@ def get_loadout_history_dir(runtime_dir: str | Path, character_id: str) -> Path:
 
 def get_loadout_history_file(runtime_dir: str | Path, character_id: str, revision: int) -> Path:
     return get_loadout_history_dir(runtime_dir, character_id) / f"rev_{revision:06d}.json"
+
+
+_CHARACTER_LOCKS: dict[str, threading.RLock] = {}
+_CHARACTER_LOCKS_GUARD = threading.Lock()
+
+
+def character_runtime_lock(character_id: str) -> threading.RLock:
+    """Per-character re-entrant lock serializing load->modify->save of runtime files."""
+    key = str(character_id).casefold()
+    with _CHARACTER_LOCKS_GUARD:
+        return _CHARACTER_LOCKS.setdefault(key, threading.RLock())
 
 
 def load_loadout(runtime_dir: str | Path, character_id: str) -> EquippedLoadout:

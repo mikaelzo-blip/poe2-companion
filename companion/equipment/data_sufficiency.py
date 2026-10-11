@@ -67,11 +67,6 @@ def is_material_unsupported_modifier(
     stage: Any | None = None,
 ) -> bool:
     """Return True if an unsupported modifier text represents a material combat, defense, or recovery effect."""
-    from companion.equipment.fubgun_priorities import is_fubgun_non_material_modifier
-
-    if is_fubgun_non_material_modifier(mod_text, slot=slot, stage=stage):
-        return False
-
     return bool(RE_MATERIAL_UNSUPPORTED.search(mod_text))
 
 

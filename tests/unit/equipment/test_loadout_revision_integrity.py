@@ -32,7 +32,6 @@ from companion.equipment.data_sufficiency import (
     analyze_data_sufficiency,
 )
 from companion.equipment.rules import BuildBreakerCertainty, BuildBreakerEvaluation
-from companion.equipment.engine import EquipmentIntelligenceEngine
 from companion.equipment.precedence import MultidimensionalComparison, Verdict
 from companion.equipment.contribution import ItemContribution
 from companion.equipment.reconciler import reconcile_baseline_after_swap
@@ -550,61 +549,6 @@ def test_stale_armour_does_not_block_defense_independent_ring():
 
     assert res.is_sufficient_for_equip_now is True
     assert res.sufficiency == RecommendationDataSufficiency.SUFFICIENT
-
-
-def test_fresh_defense_tradeoff_armour_drop_with_life_gain(tmp_path: Path):
-    # Fresh baseline Armour 1000
-    # Current body armour 800 armour
-    # Candidate body armour 0 armour, +80 Life, +10 Fire Res
-    # Expected: Verdict is CONDITIONAL_UPGRADE (MIXED_TRADEOFF), not EQUIP_NOW / DOMINANT_IMPROVEMENT
-    runtime_dir = tmp_path / "runtime"
-    char_id = "test_char_tradeoff"
-
-    curr_body_text = """Item Class: Body Armours
-Rarity: Rare
-Current Plate
-Gladiator Plate
---------
-Armour: 800
---------
-Requirements:
-Level: 50
---------
-"""
-    cand_body_text = """Item Class: Body Armours
-Rarity: Rare
-Candidate Silk
-Silk Robe
---------
-Requirements:
-Level: 50
---------
-+80 to maximum Life
-+10% to Fire Resistance
-"""
-
-    run_loadout_set_item(runtime_dir, char_id, "body_armour", curr_body_text)
-    run_loadout_finalize(runtime_dir, char_id)
-    run_baseline_set(
-        runtime_dir,
-        char_id,
-        life=1000,
-        armour=1000,
-        evasion=100,
-        energy_shield=50,
-        fire_res=70,
-        fire_raw=70,
-    )
-
-    engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)
-    rec = engine.evaluate_candidate(
-        item_text=cand_body_text,
-        character_id=char_id,
-        target_slot="body_armour",
-    )
-
-    assert rec.verdict == Verdict.CONDITIONAL_UPGRADE
-    assert "MIXED_TRADEOFF" in rec.flags
 
 
 def test_cli_promote_candidate_creates_history_snapshot(tmp_path: Path, capsys: pytest.CaptureFixture):

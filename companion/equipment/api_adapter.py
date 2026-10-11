@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import Any
 from companion.state.provenance import VerificationState
@@ -10,6 +11,76 @@ from companion.equipment.loadout import EquippedLoadout, EquippedSlotEntry
 from companion.equipment.loadout_provenance import detect_loadout_conflicts
 from companion.equipment.parser import parse_item_text
 from companion.equipment.schema import ItemCandidate, SlotType, WeaponSetContext
+
+_FRAME_RARITY = {0: "Normal", 1: "Magic", 2: "Rare", 3: "Unique", 9: "Relic"}
+
+ITEM_CLASS_PLURAL: dict[str, str] = {
+    "Helmet": "Helmets", "Body Armour": "Body Armours", "Gloves": "Gloves", "Boots": "Boots",
+    "Belt": "Belts", "Amulet": "Amulets", "Ring": "Rings", "Staff": "Staves",
+    "Quarterstaff": "Quarterstaves", "Crossbow": "Crossbows", "Bow": "Bows", "Wand": "Wands",
+    "Sceptre": "Sceptres", "Focus": "Foci", "Shield": "Shields", "Buckler": "Bucklers",
+    "Quiver": "Quivers", "Spear": "Spears", "Flail": "Flails", "Talisman": "Talismans",
+    "One Hand Mace": "One Hand Maces", "Two Hand Mace": "Two Hand Maces",
+}
+
+# (item key, suffix) in clipboard order; each non-empty group becomes one "--------" block.
+_MOD_GROUPS = (
+    ("enchantMods", " (enchant)"), ("runeMods", " (rune)"), ("implicitMods", " (implicit)"),
+    ("explicitMods", ""), ("craftedMods", ""), ("fracturedMods", " (fractured)"),
+    ("desecratedMods", " (desecrated)"), ("mutatedMods", ""),
+)
+
+SEP = "\n--------\n"
+
+
+def clean_markup(text: str) -> str:
+    """Strip GGG markup: ``<tag>{x}`` -> x, ``[a|b]`` -> b, ``[a]`` -> a."""
+    if not isinstance(text, str):
+        return ""
+    text = re.sub(r"<[^>]*>\{([^}]*)\}", lambda m: m.group(1), text)
+    text = re.sub(r"\[[^\]|]*\|([^\]]*)\]", lambda m: m.group(1), text)
+    return re.sub(r"\[([^\]]*)\]", lambda m: m.group(1), text)
+
+
+def _values(entry: dict[str, Any]) -> str:
+    return ", ".join(str(v[0]) for v in entry.get("values") or [] if v)
+
+
+def ggg_item_to_text(item: dict[str, Any]) -> str:
+    """Build in-game clipboard-format text from a GGG item JSON object."""
+    type_line = (item.get("typeLine") or "").strip()
+    base_type = (item.get("baseType") or type_line).strip()
+    name = (item.get("name") or "").strip()
+    rarity = item.get("rarity") or _FRAME_RARITY.get(item.get("frameType"), "Rare")
+
+    props = item.get("properties") or []
+    label = next((clean_markup(p.get("name", "")) for p in props if not p.get("values")), "")
+    item_class = ITEM_CLASS_PLURAL.get(label, label + "s") if label else type_line
+
+    header = [f"Item Class: {item_class}", f"Rarity: {rarity}"]
+    if rarity in ("Rare", "Unique", "Relic"):
+        header += [name or type_line, base_type]
+    else:
+        header.append(type_line)
+    blocks = [header]
+
+    prop_lines = [f"{clean_markup(p['name'])}: {_values(p)}" for p in props if p.get("values") and p.get("name")]
+    if prop_lines:
+        blocks.append(prop_lines)
+
+    req_lines = [f"{clean_markup(r['name'])}: {_values(r)}" for r in item.get("requirements") or [] if r.get("values") and r.get("name")]
+    if req_lines:
+        blocks.append(["Requirements:", *req_lines])
+
+    if item.get("ilvl"):
+        blocks.append([f"Item Level: {item['ilvl']}"])
+
+    for key, suffix in _MOD_GROUPS:
+        mods = [clean_markup(m) + suffix for m in item.get(key) or [] if isinstance(m, str)]
+        if mods:
+            blocks.append(mods)
+
+    return SEP.join("\n".join(b) for b in blocks)
 
 
 class OAuthStatus(str, Enum):
@@ -86,7 +157,8 @@ class GGGCharacterAPIAdapter:
             return None, None, warnings
 
         loadout = EquippedLoadout.create_draft(character_id=character_id)
-        if current_loadout:
+        # Official import replaces gear; only the non-overwrite path keeps current slots.
+        if current_loadout and not overwrite_conflicts:
             for s_val, entry in current_loadout.shared_slots.items():
                 if entry and entry.item:
                     slot_enum = SlotType.from_str(s_val)
@@ -119,9 +191,6 @@ class GGGCharacterAPIAdapter:
                         verification=entry.verification,
                         evidence_ref=entry.evidence_ref,
                     )
-
-        # Mapping for GGG frameType
-        frame_map = {0: "Normal", 1: "Magic", 2: "Rare", 3: "Unique", 9: "Relic"}
 
         # Ignored non-gear inventory locations
         ignored_invs = {"maininventory", "flask", "passivejewels"}
@@ -163,42 +232,10 @@ class GGGCharacterAPIAdapter:
             if not name:
                 name = base_type
 
-            raw_frame = raw_item.get("frameType")
-            rarity = raw_item.get("rarity") or frame_map.get(raw_frame, "Rare")
-
-            lines = [
-                f"Item Class: {base_type}",
-                f"Rarity: {rarity}",
-                name,
-                base_type,
-                "--------",
-            ]
-
-            # Add defenses/damage from properties
-            for p in raw_item.get("properties", []):
-                pname = p.get("name", "")
-                vals = p.get("values", [])
-                pval = vals[0][0] if vals and vals[0] else ""
-                if pname in ("Armour", "Evasion Rating", "Energy Shield", "Physical Damage"):
-                    lines.append(f"{pname}: {pval}")
-
-            lines.append("--------")
-            for m in raw_item.get("enchantMods", []):
-                lines.append(f"{m} (enchant)")
-            for m in raw_item.get("implicitMods", []):
-                lines.append(f"{m} (implicit)")
-            for m in raw_item.get("fracturedMods", []):
-                lines.append(f"{m} (fractured)")
-            for m in raw_item.get("explicitMods", []):
-                lines.append(m)
-            for m in raw_item.get("craftedMods", []):
-                lines.append(m)
-            for m in raw_item.get("runeMods", []):
-                lines.append(f"{m} (rune)")
-
             try:
+                item_text = ggg_item_to_text(raw_item)
                 item_candidate = parse_item_text(
-                    "\n".join(lines),
+                    item_text,
                     target_slot=slot,
                     target_weapon_set=weapon_set,
                 )

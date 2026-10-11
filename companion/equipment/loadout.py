@@ -339,6 +339,30 @@ class EquippedLoadout(BaseModel):
         self._raw_set_slot(slot, item, source, weapon_set, verification, evidence_ref)
         return True
 
+    def refresh_slot_text(
+        self,
+        slot: SlotType,
+        raw_text: str,
+        weapon_set: WeaponSetContext | None = None,
+    ) -> bool:
+        """Replace stored raw_text of an occupied slot without a revision change.
+
+        Returns True if the text differed and was replaced.
+        """
+        existing = self.get_slot(slot, weapon_set=weapon_set)
+        if existing is None or existing.item is None or existing.item.raw_text == raw_text:
+            return False
+        entry = existing.model_copy(update={"item": existing.item.model_copy(update={"raw_text": raw_text})})
+        if weapon_set == WeaponSetContext.WEAPON_SET_2:
+            target = self.weapon_set_2
+        elif slot in ALL_WEAPON_SLOTS:
+            target = self.weapon_set_2 if self.weapon_set_1.get(slot.value) is None else self.weapon_set_1
+        else:
+            target = self.shared_slots
+        target[slot.value] = entry
+        self.updated_at = datetime.now(timezone.utc).isoformat()
+        return True
+
     def transition_clear_slot(
         self,
         slot: SlotType,

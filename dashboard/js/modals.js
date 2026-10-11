@@ -1,3 +1,4 @@
+import { refreshGuides, setupGuides } from './guides.js';
 import { fetchHttpRuntime } from './runtime.js';
 import { addNotification, appState, esc } from './state.js';
 
@@ -25,25 +26,18 @@ export function setupSyncModal() {
     if (e.target === modal) modal.style.display = 'none';
   });
 
-  const tabPublic = document.getElementById('mtab-public-profile');
-  const tabJson = document.getElementById('mtab-paste-json');
-  const contentPublic = document.getElementById('mcontent-public');
-  const contentJson = document.getElementById('mcontent-json');
-
-  if (tabPublic && tabJson && contentPublic && contentJson) {
-    tabPublic.addEventListener('click', () => {
-      tabPublic.classList.add('active');
-      tabJson.classList.remove('active');
-      contentPublic.style.display = 'block';
-      contentJson.style.display = 'none';
-    });
-    tabJson.addEventListener('click', () => {
-      tabJson.classList.add('active');
-      tabPublic.classList.remove('active');
-      contentJson.style.display = 'block';
-      contentPublic.style.display = 'none';
+  const tabs = [['mtab-public-profile', 'mcontent-public'], ['mtab-paste-json', 'mcontent-json'], ['mtab-guides', 'mcontent-guides']]
+    .map(([t, c]) => [document.getElementById(t), document.getElementById(c)]);
+  for (const [btn] of tabs) {
+    btn?.addEventListener('click', () => {
+      for (const [b, c] of tabs) {
+        b.classList.toggle('active', b === btn);
+        c.style.display = b === btn ? 'block' : 'none';
+      }
+      if (btn.id === 'mtab-guides') refreshGuides();
     });
   }
+  setupGuides();
 
   const accInput = document.getElementById('sync-account-name');
   const charInput = document.getElementById('sync-character-name');

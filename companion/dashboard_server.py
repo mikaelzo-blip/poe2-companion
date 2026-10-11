@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import http.server
 import json
+import logging
 from pathlib import Path
 import socketserver
 import sys
@@ -16,10 +17,12 @@ from typing import Any, Callable
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RUNTIME_DIR = PROJECT_ROOT / "runtime"
+logger = logging.getLogger(__name__)
 
 
 _GLOBAL_POB_SESSIONS: dict[str, Any] = {}
 _FAILED_CHARACTERS: dict[str, float] = {}
+_FAILED_REASONS: dict[str, str | None] = {}
 POB_RETRY_INTERVAL_SECONDS = 300.0
 
 
@@ -29,14 +32,11 @@ def normalize_char_id(char_id: str | None) -> str:
     return resolve_char_id(char_id, RUNTIME_DIR)
 
 
-def get_or_create_pob_session(character_id: str = "BOMSHAK", force_retry: bool = False):
-    """Reuse or lazily initialize the PoB2 simulation session.
-    
-    Caches successful sessions per character and uses a retry cooldown on failed characters
-    to prevent UI stalling and Docker thrashing on 800ms clipboard polls.
-    """
-    global _GLOBAL_POB_SESSIONS, _FAILED_CHARACTERS
-    character_id = normalize_char_id(character_id)
+_CREATE_LOCKS: dict[str, threading.Lock] = {}
+_CREATE_LOCKS_GUARD = threading.Lock()
+
+
+def _usable_session(character_id: str):
     existing = _GLOBAL_POB_SESSIONS.get(character_id)
     if (
         existing is not None
@@ -44,23 +44,110 @@ def get_or_create_pob_session(character_id: str = "BOMSHAK", force_retry: bool =
         and getattr(existing, "is_available", False)
     ):
         return existing
+    return None
 
-    now = time.time()
-    last_fail = _FAILED_CHARACTERS.get(character_id, 0.0)
-    if not force_retry and (now - last_fail < POB_RETRY_INTERVAL_SECONDS):
+
+def get_or_create_pob_session(character_id: str = "BOMSHAK", force_retry: bool = False):
+    """Reuse or lazily initialize the PoB2 simulation session.
+
+    Caches successful sessions per character and uses a retry cooldown on failed characters
+    to prevent UI stalling and Docker thrashing on 800ms clipboard polls. Creation is
+    serialized per character: concurrent callers wait for the one in flight and reuse its
+    result, so a slow init can never leave an orphaned engine.
+    """
+    character_id = normalize_char_id(character_id)
+    if (sess := _usable_session(character_id)) is not None:
+        return sess
+    with _CREATE_LOCKS_GUARD:
+        create_lock = _CREATE_LOCKS.setdefault(character_id, threading.Lock())
+    with create_lock:
+        if (sess := _usable_session(character_id)) is not None:
+            return sess  # another caller created it while we waited
+        existing = _GLOBAL_POB_SESSIONS.pop(character_id, None)
+        if existing is not None:
+            try:
+                existing.close()
+            except Exception:
+                logger.warning("Failed to close stale PoB2 session %s", character_id, exc_info=True)
+
+        now = time.time()
+        last_fail = _FAILED_CHARACTERS.get(character_id, 0.0)
+        if not force_retry and (now - last_fail < POB_RETRY_INTERVAL_SECONDS):
+            return None
+
+        sess = None
+        try:
+            from companion.equipment.pob2_equipment_advisor import Pob2EquipmentSession
+            sess = Pob2EquipmentSession(character_name=character_id)
+            if sess.initialize():
+                _GLOBAL_POB_SESSIONS[character_id] = sess
+                _FAILED_CHARACTERS.pop(character_id, None)
+                _FAILED_REASONS.pop(character_id, None)
+                try:
+                    _apply_session(character_id, sess)
+                except Exception:
+                    logger.warning("PoB2 runtime import failed for %s", character_id, exc_info=True)
+                return sess
+            _FAILED_CHARACTERS[character_id] = now
+            reason = getattr(sess, "unavailable_reason", None) or getattr(sess, "unhealthy_reason", None)
+            if reason:
+                _FAILED_REASONS[character_id] = reason
+        except Exception as exc:
+            logger.warning("PoB2 session init failed for %s", character_id, exc_info=True)
+            _FAILED_CHARACTERS[character_id] = now
+            reason = getattr(sess, "unavailable_reason", None) or getattr(sess, "unhealthy_reason", None) or str(exc)
+            if reason:
+                _FAILED_REASONS[character_id] = reason
+            if sess is not None and _GLOBAL_POB_SESSIONS.get(character_id) is not sess:
+                try:
+                    sess.close()
+                except Exception:
+                    logger.warning("Failed to close PoB2 session %s after init error", character_id, exc_info=True)
         return None
 
+
+_REFRESHING: set[str] = set()
+_REFRESH_LOCK = threading.Lock()
+
+
+def _spawn_daemon(fn: Callable[[], None]) -> None:
+    threading.Thread(target=fn, daemon=True).start()
+
+
+def maybe_refresh_pob_session(
+    character_id: str,
+    level: int | None,
+    zone: str | None,
+    spawn: Callable[[Callable[[], None]], None] = _spawn_daemon,
+    now: float | None = None,
+) -> bool:
+    """Re-sync a cached session in the background when stale; True if a refresh was started."""
+    sess = _GLOBAL_POB_SESSIONS.get(character_id)
+    if sess is None:
+        return False
+    with _REFRESH_LOCK:
+        if character_id in _REFRESHING or not sess.needs_refresh(level, zone, now=now):
+            return False
+        sess.mark_refresh_started(level, zone, now=now)
+        _REFRESHING.add(character_id)
+
+    def run() -> None:
+        try:
+            if sess.sync_character():
+                _apply_session(character_id, sess)
+        except Exception:
+            logger.warning("PoB2 refresh failed for %s", character_id, exc_info=True)
+        finally:
+            with _REFRESH_LOCK:
+                _REFRESHING.discard(character_id)
+
     try:
-        from companion.equipment.pob2_equipment_advisor import Pob2EquipmentSession
-        sess = Pob2EquipmentSession(character_name=character_id)
-        if sess.initialize():
-            _GLOBAL_POB_SESSIONS[character_id] = sess
-            _FAILED_CHARACTERS.pop(character_id, None)
-            return sess
-        _FAILED_CHARACTERS[character_id] = now
+        spawn(run)
     except Exception:
-        _FAILED_CHARACTERS[character_id] = now
-    return None
+        with _REFRESH_LOCK:
+            _REFRESHING.discard(character_id)
+        raise
+    return True
 
 
 def sync_equipped_item_to_pob_session(character_id: str, slot: str, raw_text: str) -> bool:
@@ -79,20 +166,39 @@ def sync_equipped_item_to_pob_session(character_id: str, slot: str, raw_text: st
     return False
 
 
-def invalidate_pob_session(character_id: str | None = None) -> None:
-    """Invalidate or reset the cached PoB2 session so it will re-initialize on next use."""
+def _apply_session(character_id: str, sess: Any) -> None:
+    from companion.equipment.session_import import apply_session_to_runtime
+    for warning in apply_session_to_runtime(RUNTIME_DIR, character_id, sess):
+        logger.warning("PoB2 runtime import for %s: %s", character_id, warning)
+
+
+def invalidate_pob_session(character_id: str | None = None) -> bool:
+    """Invalidate or reset the cached PoB2 session so it will re-initialize on next use.
+
+    With a character_id, returns True when a cached session synced successfully
+    (its item text and baseline are then written to the runtime).
+    """
     global _GLOBAL_POB_SESSIONS, _FAILED_CHARACTERS
+    synced = False
     if character_id:
-        sess = _GLOBAL_POB_SESSIONS.pop(character_id, None)
+        sess = _GLOBAL_POB_SESSIONS.get(character_id)
         if sess is not None:
             try:
-                sess.sync_character()
+                synced = bool(sess.sync_character())
+                if synced:
+                    _apply_session(character_id, sess)
             except Exception:
-                pass
+                logger.warning("PoB2 sync failed for %s", character_id, exc_info=True)
         _FAILED_CHARACTERS.pop(character_id, None)
     else:
+        for sess in list(_GLOBAL_POB_SESSIONS.values()):
+            try:
+                sess.close()
+            except Exception:
+                logger.warning("Failed to close PoB2 session", exc_info=True)
         _GLOBAL_POB_SESSIONS.clear()
         _FAILED_CHARACTERS.clear()
+    return synced
 
 
 class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -192,7 +298,12 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
 def _api_status(q: dict[str, str]) -> Any:
     from companion.dashboard_api import get_dashboard_status
     char_id = normalize_char_id(q.get("char_id"))
-    return get_dashboard_status(RUNTIME_DIR, char_id=char_id, pob_session=get_or_create_pob_session(char_id))
+    data = get_dashboard_status(RUNTIME_DIR, char_id=char_id, pob_session=get_or_create_pob_session(char_id))
+    character = data.get("character") if isinstance(data, dict) else None
+    if isinstance(character, dict):
+        from companion.dashboard_api import character_level_and_zone
+        maybe_refresh_pob_session(char_id, *character_level_and_zone(character))
+    return data
 
 
 def _api_clipboard_poll(q: dict[str, str]) -> Any:
@@ -201,9 +312,7 @@ def _api_clipboard_poll(q: dict[str, str]) -> Any:
     return check_auto_clipboard(
         runtime_dir=RUNTIME_DIR,
         char_id=char_id,
-        stage_str=q.get("stage", "lvl 1-14"),
         pob_session=None,
-        guide=q.get("guide"),
         zone=q.get("zone"),
         pob_session_resolver=lambda: get_or_create_pob_session(char_id),
     )
@@ -216,7 +325,28 @@ def _api_account_characters(q: dict[str, str]) -> Any:
 
 def _api_guides(q: dict[str, str]) -> Any:
     from companion.dashboard_api import get_available_guides
-    return get_available_guides()
+    return get_available_guides(RUNTIME_DIR, normalize_char_id(q.get("char_id")) if q.get("char_id") else None)
+
+
+def _api_import_guide(payload: dict[str, Any]) -> Any:
+    from companion.dashboard_api import import_guide_payload
+    return import_guide_payload(payload, RUNTIME_DIR)
+
+
+def _api_delete_guide(payload: dict[str, Any]) -> Any:
+    from companion.dashboard_api import delete_guide_payload
+    return delete_guide_payload(payload, RUNTIME_DIR)
+
+
+def _api_guide_rules(payload: dict[str, Any]) -> Any:
+    from companion.dashboard_api import update_guide_rules_payload
+    return update_guide_rules_payload(payload, RUNTIME_DIR)
+
+
+def _api_character_guide(payload: dict[str, Any]) -> Any:
+    from companion.dashboard_api import set_character_guide_payload
+    payload["character_id"] = normalize_char_id(payload.get("character_id"))
+    return set_character_guide_payload(payload, RUNTIME_DIR)
 
 
 def _api_get_clipboard(q: dict[str, str]) -> Any:
@@ -301,6 +431,10 @@ POST_ROUTES: dict[str, Callable[[dict[str, Any]], Any]] = {
     "/api/update-stats": _api_update_stats,
     "/api/select-character": _api_select_character,
     "/api/fetch-public-profile": _api_fetch_public_profile,
+    "/api/guides": _api_import_guide,
+    "/api/guides/delete": _api_delete_guide,
+    "/api/guides/rules": _api_guide_rules,
+    "/api/character-guide": _api_character_guide,
 }
 
 

@@ -1,0 +1,22 @@
+import pytest
+
+from companion.builds.guide import StageItem
+from companion.builds.priorities import mod_family, priority_signal
+
+
+def test_priority_signal_counts_families_and_missing_must_have():
+    item = StageItem(slot="Boots", name="Leather Boots", item_class="Boots",
+                     mods=["+30 to maximum Life", "25% increased Movement Speed", "+20% to Fire Resistance"],
+                     must_have=["25% increased Movement Speed"])
+    sig = priority_signal(item, ["+52 to maximum Life", "+31% to Fire Resistance"])
+    assert (sig.matched, sig.total) == (2, 3)
+    assert sig.must_have_missing == ["25% increased Movement Speed"]
+    assert sig.ratio == pytest.approx(2 / 3)
+
+
+def test_unknown_mod_family_ignores_numbers():
+    assert mod_family("Gain 12(10-15) Rage on Hit") == mod_family("Gain 3 Rage on Hit")
+
+
+def test_priority_signal_none_without_stage_item():
+    assert priority_signal(None, ["+5 to Strength"]) is None

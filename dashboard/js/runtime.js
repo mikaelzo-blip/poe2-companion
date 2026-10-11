@@ -7,7 +7,8 @@ export async function checkHttpHost() {
     try {
       const res = await fetch('/api/status');
       if (res.ok) {
-        startHttpPolling();
+        const data = await res.json().catch(() => null);
+        startHttpPolling(data);
         return;
       }
     } catch (_) {}
@@ -15,8 +16,16 @@ export async function checkHttpHost() {
   updateStatusBadge('SERVER OFFLINE', 'idle');
 }
 
-export function startHttpPolling() {
-  updateStatusBadge('CONNECTED: HTTP LIVE', 'active');
+function applyEngineStatusBadge(engineStatus) {
+  if (engineStatus && engineStatus.available === false && engineStatus.unavailable_reason) {
+    updateStatusBadge(`PoB2 OFF: ${engineStatus.unavailable_reason}`, 'idle');
+  } else {
+    updateStatusBadge('CONNECTED: HTTP LIVE', 'active');
+  }
+}
+
+export function startHttpPolling(initialData = null) {
+  applyEngineStatusBadge(initialData?.engine_status);
   fetchHttpRuntime();
   appState.pollTimer = setInterval(fetchHttpRuntime, 2000);
 
@@ -30,6 +39,7 @@ export async function fetchHttpRuntime() {
     const res = await fetch(`/api/status?char_id=${encodeURIComponent(charId)}`);
     if (res.ok) {
       const data = await res.json();
+      applyEngineStatusBadge(data.engine_status);
       loadDataIntoUI(data.status, data.character, data.objective, data.loadout, data.baseline);
       document.getElementById('last-sync-time').textContent = 'Live Sync: ' + new Date().toLocaleTimeString();
       return;

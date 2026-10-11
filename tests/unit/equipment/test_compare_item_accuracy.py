@@ -15,14 +15,13 @@ import pytest
 
 from companion.equipment.parser import parse_item_text
 from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-from companion.equipment.fubgun_priorities import evaluate_fubgun_equipment_policy
 from companion.equipment.precedence import Verdict
-from companion.equipment.rules import BuildProgressionStage
 from companion.equipment.schema import SlotOccupancy, SlotType, WeaponSetContext
 from companion.equipment.tactical_advisor import generate_tactical_advice
 from companion.dashboard_api import evaluate_item_payload, get_current_raw
 from companion.equipment.loadout import EquippedLoadout
 from companion.equipment.loadout_cli import save_loadout
+from tests.unit.equipment.test_evaluation import Stub
 
 
 def test_parse_foci_offhand_slot_and_topology() -> None:
@@ -80,53 +79,6 @@ def test_parse_two_handed_melee_weapons_topology() -> None:
     assert item_mace.slot_conflict_topology.occupied_slots == [SlotType.MAIN_HAND, SlotType.OFF_HAND]
 
 
-def test_boots_movement_speed_loss_reason_accuracy() -> None:
-    delta = PobEquipmentDelta(
-        slot="Boots",
-        candidate_id=1,
-        candidate_name="Heavy Iron Boots",
-        armour_delta=50,
-        movement_speed_delta=-10.0,
-        ehp_delta=2.0,
-    )
-    rec = evaluate_fubgun_equipment_policy(delta)
-    assert rec.verdict == Verdict.REJECT
-    assert "+0 Life, +0% Resistance" not in rec.reason
-    assert "Movement Speed" in rec.reason
-
-
-def test_boots_movement_speed_tradeoff_with_life_and_res_reason_accuracy() -> None:
-    delta = PobEquipmentDelta(
-        slot="Boots",
-        candidate_id=2,
-        candidate_name="Tank Boots",
-        life_delta=50,
-        fire_res_delta=20,
-        cold_res_delta=20,
-        movement_speed_delta=-10.0,
-        ehp_delta=15.0,
-    )
-    rec = evaluate_fubgun_equipment_policy(delta)
-    assert rec.verdict == Verdict.CONDITIONAL_UPGRADE
-    assert "Life/Resistance trade-off" not in rec.reason
-    assert "Movement Speed" in rec.reason
-
-
-def test_amulet_material_dps_loss_downgrades_to_conditional_upgrade() -> None:
-    delta = PobEquipmentDelta(
-        slot="Amulet",
-        candidate_id=3,
-        candidate_name="Defensive Amulet",
-        life_delta=25,
-        fire_res_delta=15,
-        dps_delta=-12.5,
-        ehp_delta=8.0,
-    )
-    rec = evaluate_fubgun_equipment_policy(delta)
-    assert rec.verdict == Verdict.CONDITIONAL_UPGRADE
-    assert "DPS" in rec.reason or "damage" in rec.reason.lower()
-
-
 def test_tactical_advisor_respects_insufficient_baseline_verdict() -> None:
     delta = PobEquipmentDelta(
         slot="Helmet",
@@ -150,25 +102,6 @@ def test_tactical_advisor_respects_insufficient_baseline_verdict() -> None:
     assert "BASELINE" in tactical.verdict_badge or "DATA" in tactical.verdict_badge
 
 
-def test_tactical_advisor_boots_moderate_movement_speed_loss_headline() -> None:
-    delta = PobEquipmentDelta(
-        slot="Boots",
-        candidate_id=5,
-        candidate_name="Slow Sabatons",
-        movement_speed_delta=-5.0,
-        armour_delta=10,
-        ehp_delta=-1.5,
-    )
-    tactical = generate_tactical_advice(
-        delta=delta,
-        candidate_raw="Item Class: Boots\nRarity: Rare\nSlow Sabatons\nMail Sabatons\n--------",
-        current_raw="Item Class: Boots\nRarity: Rare\nFast Boots\nMail Sabatons\n--------",
-        zone_id="G2_1",
-        character_level=19,
-    )
-    assert tactical.verdict == Verdict.REJECT
-    assert "Movement Speed" in tactical.tactical_headline
-
 
 def test_dashboard_api_get_current_raw_resolves_all_loadout_slots(tmp_path: Path) -> None:
     lo = EquippedLoadout.create_draft(character_id="hero_test", loadout_id="lo_test")
@@ -190,6 +123,33 @@ def test_dashboard_api_get_current_raw_resolves_all_loadout_slots(tmp_path: Path
     assert "Ring Two" in raw_r2
     raw_w1 = get_current_raw(tmp_path, "hero_test", "Weapon 1")
     assert "Crossbow One" in raw_w1
+
+
+def test_get_current_raw_and_info_resolve_swap_weapon_slots(tmp_path: Path) -> None:
+    from companion.equipment.current_item import get_current_item_info
+
+    lo = EquippedLoadout.create_draft(character_id="hero_test", loadout_id="lo_test")
+    lo.set_slot(
+        SlotType.MAIN_HAND,
+        parse_item_text("Item Class: Crossbows\nRarity: Rare\nSwap Bow\nVarnished Crossbow\n--------"),
+        weapon_set=WeaponSetContext.WEAPON_SET_2,
+    )
+    lo.finalize()
+    save_loadout(tmp_path, lo)
+    assert "Swap Bow" in get_current_raw(tmp_path, "hero_test", "Weapon 1 Swap")
+    assert get_current_item_info(tmp_path, "hero_test", "Weapon 1 Swap") == ("Swap Bow", "Varnished Crossbow")
+
+
+class _BadBodyPob(Stub):
+    """PoB2 stub whose body-armour swap loses life and resistances, so the zone tactical veto fires."""
+
+    level = 19
+
+    def measure(self, slot, raw, candidate_id, **kw):
+        return PobEquipmentDelta(
+            slot=slot, candidate_id=candidate_id, candidate_name="Maelstrom Keep", life_delta=-7, fire_res_delta=-15,
+            ehp_before=1000.0, ehp_after=983.2, dps_before=100.0, dps_after=100.0,
+        )
 
 
 def test_dashboard_api_formatted_report_synchronizes_with_tactical_rejection(tmp_path: Path) -> None:
@@ -225,9 +185,8 @@ def test_dashboard_api_formatted_report_synchronizes_with_tactical_rejection(tmp
     res = evaluate_item_payload(
         {"raw_text": cand_text, "character_id": "hero_test", "slot": "body_armour", "zone": "G2_1"},
         runtime_dir=tmp_path,
-        pob_session=None,
+        pob_session=_BadBodyPob(),
     )
     assert res.get("verdict") == "REJECT"
-    assert "REJECT" in res.get("formatted_report")
-    assert "EQUIP NOW" not in res.get("formatted_report")
-    assert "CONDITIONAL UPGRADE" not in res.get("formatted_report")
+    assert res["formatted_report"].startswith("REJECT")
+    assert "EQUIP_NOW" not in res["formatted_report"]

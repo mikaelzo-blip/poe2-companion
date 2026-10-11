@@ -105,6 +105,17 @@ def parse_slot_topology_for_base(
     cls_lower = item_class.lower().strip()
     base_lower = base_type.lower().strip()
 
+    # Talismans are two-handed weapons (PoB base data: two_hand_weapon). Checked first so that
+    # substring matches like "ring" in "Roaring Talisman" cannot misclassify them.
+    if "talisman" in cls_lower or "talisman" in base_lower:
+        slot = SlotType.MAIN_HAND
+        return slot, SlotOccupancy.TWO_HAND, SlotConflictTopology(
+            occupied_slots=[SlotType.MAIN_HAND, SlotType.OFF_HAND],
+            conflicting_slots=[SlotType.MAIN_HAND, SlotType.OFF_HAND],
+            allowed_companion_slots=[],
+            is_known=True,
+        )
+
     # Shared equipment
     if "boot" in cls_lower or "boots" in base_lower:
         slot = SlotType.BOOTS

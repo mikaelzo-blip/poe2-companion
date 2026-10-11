@@ -3,8 +3,6 @@ export const appState = {
   dirHandle: null,
   pollTimer: null,
   activeCharId: 'BOMSHAK',
-  selectedGuide: 'fubgun_flameblast',
-  selectedStage: 'auto',
   runtimeStatus: null,
   characterState: null,
   currentObjective: null,
@@ -33,11 +31,6 @@ export const SLOT_LABELS = {
   set2_main_hand: 'Main Hand (Set 2)',
   set2_off_hand: 'Off Hand (Set 2)'
 };
-
-export function getEffectiveStage() {
-  // Server infers the stage when "auto".
-  return appState.selectedStage || 'auto';
-}
 
 export let logEventCount = 0;
 

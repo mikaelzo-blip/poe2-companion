@@ -1,230 +1,173 @@
-"""Unit tests for generic PoB2 Equipment Advisor foundation (TDD RED stage).
+"""Unit tests for generic PoB2 Equipment Advisor foundation.
 
 Validates:
 1. Canonical slot validation: normalize and validate equipment slots; fail closed on unknown slots.
-2. Generic simulate_item(slot, raw_candidate) support on Pob2EquipmentSession.
-3. Thread-safe bookkeeping: request ID allocation and stale checks use safe synchronization
+2. Thread-safe bookkeeping: request ID allocation and stale checks use safe synchronization
    independent from the expensive PoB engine lock.
-4. Backward compatibility: Pob2HelmetSession is a thin facade/subclass preserving helmet-specific API.
-5. Async burst coalescing: A starts, B arrives, C arrives, A finishes (discarded), B is skipped
-   before simulation starts, C simulates only.
+3. XML slot manipulation, metric delta calculation, and guide XML measurement.
 """
 
 from __future__ import annotations
 
-import math
-from pathlib import Path
-import threading
+import logging
 import time
 from typing import Any
 import pytest
 
 from companion.equipment.pob2_equipment_advisor import (
     CANONICAL_EQUIPMENT_SLOTS,
+    EngineError,
     POB2_PRODUCTION_SLOTS,
+    POB2_PRODUCTION_WEAPON_SLOTS,
     Pob2EquipmentSession,
     PobEquipmentDelta,
     _clear_slots_in_xml,
     normalize_and_validate_pob_slot,
 )
-from companion.equipment.precedence import Verdict
-from companion.equipment.rules import BuildProgressionStage
 from companion.equipment.schema import SlotType
-from companion.equipment.pob2_helmet_advisor import (
-    Pob2HelmetSession,
-    PobHelmetDelta,
-)
-from tests.unit.equipment.test_pob2_helmet_advisor import (
-    BRIMSTONE_VEIL_RAW,
-    KRAKEN_DOME_RAW,
-    FakePobEngine,
-    FakePoeApi,
-)
 
 
-POB2_PRODUCTION_CORE_SLOTS: set[str] = {
-    "Helmet",
-    "Body Armour",
-    "Gloves",
-    "Boots",
-    "Belt",
-    "Amulet",
-}
+BRIMSTONE_VEIL_RAW = """Item Class: Helmets
+Rarity: Rare
+Brimstone Veil
+Hewn Mask
+--------
+Evasion: 70
+Energy Shield: 32
+--------
+Requirements:
+Level: 17
+Dex: 20
+Int: 20
+--------
+Item Level: 17
+--------
++32 to Evasion Rating
++11 to maximum Energy Shield
+34% increased Evasion and Energy Shield
++36 to Accuracy Rating
++12 to maximum Mana
+9% increased Rarity of Items found
+3.9 Life Regeneration per second
+10% increased Light Radius
+"""
+
+KRAKEN_DOME_RAW = """Item Class: Helmets
+Rarity: Rare
+Kraken Dome
+Soldier Greathelm
+--------
+Armour: 45
+--------
+Requirements:
+Level: 15
+Str: 22
+--------
+Item Level: 19
+--------
++20 to maximum Life
++7% to Lightning Resistance
+1.2 Life Regenerated per second
+"""
 
 
-def test_production_core_slots_allowlist_matches_approved_milestone():
-    """Milestone allowlist specifies exactly the 6 core slots, excluding Rings and Weapons."""
-    from companion.equipment.live_watcher import POB2_PRODUCTION_CORE_SLOTS as PROD_SLOTS
+class FakePobEngine:
+    """Mock PoB engine matching the JSON protocol of pob_mcp.engine.PobEngine."""
 
-    assert PROD_SLOTS == {
-        "Helmet",
-        "Body Armour",
-        "Gloves",
-        "Boots",
-        "Belt",
-        "Amulet",
-    }
-    # Explicitly assert Rings and Weapons are NOT enabled
-    assert "Ring 1" not in PROD_SLOTS
-    assert "Ring 2" not in PROD_SLOTS
-    assert "Weapon 1" not in PROD_SLOTS
-    assert "Weapon 2" not in PROD_SLOTS
+    def __init__(self, simulate_delay: float = 0.0):
+        self.simulate_delay = simulate_delay
+        self.call_log: list[str] = []
+        self.equipped_helmet = {
+            "equipped": True,
+            "name": "Brimstone Veil",
+            "raw": BRIMSTONE_VEIL_RAW,
+        }
+        self.defenses_before = {
+            "Life": 361,
+            "Armour": 253,
+            "Evasion": 70,
+            "EnergyShield": 32,
+            "TotalEHP": 289.46,
+        }
+        self.stats_before = {
+            "defense": {
+                "FireResist": -35,
+                "ColdResist": -50,
+                "LightningResist": -43,
+                "ChaosResist": 0,
+                "MovementSpeed": 100.0,
+            },
+            "offense": {
+                "CombinedDPS": 29.07,
+            },
+        }
+        self.defenses_after = {
+            "Life": 381,
+            "Armour": 263,
+            "Evasion": 70,
+            "EnergyShield": 0,
+            "TotalEHP": 296.20,
+        }
+        self.stats_after = {
+            "defense": {
+                "FireResist": -35,
+                "ColdResist": -50,
+                "LightningResist": -36,
+                "ChaosResist": 0,
+                "MovementSpeed": 120.0,
+            },
+            "offense": {
+                "CombinedDPS": 27.25,
+            },
+        }
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def call(self, action: str, **kwargs: Any) -> dict[str, Any]:
+        self.call_log.append(action)
+
+        if action == "import_character":
+            return {
+                "className": "Mercenary",
+                "level": 17,
+                "xml": "<PathOfBuilding><Build/></PathOfBuilding>",
+            }
+        elif action == "get_equipped":
+            return self.equipped_helmet
+        elif action == "get_defenses":
+            return self.defenses_after if "equip_item" in self.call_log[-3:] else self.defenses_before
+        elif action == "calc_stats":
+            return self.stats_after if "equip_item" in self.call_log[-3:] else self.stats_before
+        elif action == "equip_item":
+            return {"success": True}
+        elif action == "import_build":
+            return {"success": True}
+        return {"success": True}
 
 
-def test_generic_fubgun_equipment_policy_evaluates_all_core_slots():
-    """evaluate_fubgun_equipment_policy handles Body Armour, Gloves, Boots, Belt, Amulet, and Helmet."""
-    from companion.equipment.fubgun_priorities import (
-        evaluate_fubgun_equipment_policy,
-        FubgunEquipmentRecommendation,
-    )
+class FakePoeApi:
+    def fetch_character_raw(self, character_name: str) -> str:
+        return f'{{"character": "{character_name}"}}'
 
-    # 1. Body Armour: high Armour + Life is strong upgrade
-    ba_delta = PobEquipmentDelta(
-        slot="Body Armour",
-        candidate_id=1,
-        candidate_name="Obsidian Plate",
-        current_item_name="Plate Vest",
-        life_delta=40,
-        fire_res_delta=15,
-        cold_res_delta=0,
-        lightning_res_delta=0,
-        chaos_res_delta=0,
-        armour_delta=120,
-        evasion_delta=0,
-        es_delta=0,
-        ehp_delta=45.0,
-        dps_delta=0.0,
-    )
-    rec_ba = evaluate_fubgun_equipment_policy(ba_delta, stage=BuildProgressionStage.LEVELING_15_32)
-    assert isinstance(rec_ba, FubgunEquipmentRecommendation)
-    assert rec_ba.verdict == Verdict.EQUIP_NOW
-    assert "Body Armour" in rec_ba.formatted_output
-    assert "Obsidian Plate" in rec_ba.formatted_output
-    assert "+40 Life" in rec_ba.formatted_output
-    assert "+120 Armour" in rec_ba.formatted_output
 
-    # 2. Boots: defensive upgrade without MS or with MS
-    boots_delta = PobEquipmentDelta(
-        slot="Boots",
-        candidate_id=2,
-        candidate_name="Beryl Stride",
-        current_item_name="Rawhide Boots",
-        life_delta=25,
-        fire_res_delta=0,
-        cold_res_delta=15,
-        lightning_res_delta=0,
-        chaos_res_delta=0,
-        armour_delta=50,
-        evasion_delta=0,
-        es_delta=0,
-        movement_speed_delta=10.0,
-        ehp_delta=30.0,
-        dps_delta=0.0,
-    )
-    rec_boots = evaluate_fubgun_equipment_policy(boots_delta, stage=BuildProgressionStage.LEVELING_15_32)
-    assert isinstance(rec_boots, FubgunEquipmentRecommendation)
-    assert rec_boots.verdict == Verdict.EQUIP_NOW
-    assert "Boots" in rec_boots.formatted_output
-    assert "+25 Life" in rec_boots.formatted_output
-    assert "+15% Cold Res" in rec_boots.formatted_output
+class RecordingPobEngine(FakePobEngine):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.calls: list[tuple[str, dict[str, Any]]] = []
 
-    boots_loss_delta = boots_delta.model_copy(update={"movement_speed_delta": -10})
-    rec_boots_loss = evaluate_fubgun_equipment_policy(
-        boots_loss_delta,
-        stage=BuildProgressionStage.LEVELING_15_32,
-    )
-    assert rec_boots_loss.verdict != Verdict.EQUIP_NOW
-    assert "-10% Movement Speed" in rec_boots_loss.formatted_output
+    def restart(self) -> None:
+        self.call_log.append("restart")
+        self.calls.append(("restart", {}))
 
-    # 3. Gloves: Life + Resistances
-    gloves_delta = PobEquipmentDelta(
-        slot="Gloves",
-        candidate_id=3,
-        candidate_name="Bramble Mitts",
-        current_item_name="Cloth Gloves",
-        life_delta=30,
-        fire_res_delta=20,
-        cold_res_delta=0,
-        lightning_res_delta=0,
-        chaos_res_delta=0,
-        armour_delta=30,
-        evasion_delta=0,
-        es_delta=0,
-        ehp_delta=25.0,
-        dps_delta=2.5,
-    )
-    rec_gloves = evaluate_fubgun_equipment_policy(gloves_delta, stage=BuildProgressionStage.LEVELING_15_32)
-    assert isinstance(rec_gloves, FubgunEquipmentRecommendation)
-    assert rec_gloves.verdict == Verdict.EQUIP_NOW
-    assert "Gloves" in rec_gloves.formatted_output
-    assert "+30 Life" in rec_gloves.formatted_output
-
-    # 4. Belt: Life + Resistances
-    belt_delta = PobEquipmentDelta(
-        slot="Belt",
-        candidate_id=4,
-        candidate_name="Vigour Clasp",
-        current_item_name="Chain Belt",
-        life_delta=35,
-        fire_res_delta=0,
-        cold_res_delta=0,
-        lightning_res_delta=18,
-        chaos_res_delta=0,
-        armour_delta=0,
-        evasion_delta=0,
-        es_delta=0,
-        ehp_delta=35.0,
-        dps_delta=0.0,
-    )
-    rec_belt = evaluate_fubgun_equipment_policy(belt_delta, stage=BuildProgressionStage.LEVELING_15_32)
-    assert isinstance(rec_belt, FubgunEquipmentRecommendation)
-    assert rec_belt.verdict == Verdict.EQUIP_NOW
-    assert "Belt" in rec_belt.formatted_output
-    assert "+35 Life" in rec_belt.formatted_output
-
-    # 5. Amulet: Life + Resistances
-    amulet_delta = PobEquipmentDelta(
-        slot="Amulet",
-        candidate_id=5,
-        candidate_name="Torment Gorget",
-        current_item_name="Coral Amulet",
-        life_delta=20,
-        fire_res_delta=12,
-        cold_res_delta=12,
-        lightning_res_delta=0,
-        chaos_res_delta=0,
-        armour_delta=0,
-        evasion_delta=0,
-        es_delta=0,
-        ehp_delta=30.0,
-        dps_delta=1.0,
-    )
-    rec_amulet = evaluate_fubgun_equipment_policy(amulet_delta, stage=BuildProgressionStage.LEVELING_15_32)
-    assert isinstance(rec_amulet, FubgunEquipmentRecommendation)
-    assert rec_amulet.verdict == Verdict.EQUIP_NOW
-    assert "Amulet" in rec_amulet.formatted_output
-    assert "+20 Life" in rec_amulet.formatted_output
-
-    # 7. Core armor slot with resistance gain despite minor ES / EHP delta
-    gloves_res_delta = PobEquipmentDelta(
-        slot="Gloves",
-        candidate_id=7,
-        candidate_name="Rune Mitts",
-        current_item_name="Silk Gloves",
-        life_delta=0,
-        fire_res_delta=14,
-        cold_res_delta=0,
-        lightning_res_delta=0,
-        chaos_res_delta=0,
-        armour_delta=30,
-        evasion_delta=0,
-        es_delta=-25,
-        ehp_delta=-3.2,
-        dps_delta=0.0,
-    )
-    rec_gloves_res = evaluate_fubgun_equipment_policy(gloves_res_delta, stage=BuildProgressionStage.LEVELING_15_32)
-    assert rec_gloves_res.verdict == Verdict.EQUIP_NOW
-    assert "+14% Fire Res" in rec_gloves_res.formatted_output
+    def call(self, action: str, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append((action, kwargs))
+        if action == "list_skills":
+            return {"mainSocketGroup": 1, "groups": []}
+        return super().call(action, **kwargs)
 
 
 def test_clear_slots_in_xml_is_independent_of_attribute_order():
@@ -258,7 +201,7 @@ def test_build_delta_rejects_missing_metrics_instead_of_fabricating_zeroes():
 
 def test_build_delta_tolerates_missing_movement_speed_when_no_mods_in_pob2():
     """PoB2 omits MovementSpeed from defense table when EffectiveMovementSpeedMod is nil.
-    
+
     _build_delta must not reject simulation or raise ValueError, defaulting movement delta to 0.0.
     """
     fake_engine = FakePobEngine()
@@ -293,7 +236,6 @@ def test_build_delta_tolerates_missing_movement_speed_when_no_mods_in_pob2():
     assert delta.life_delta == 20
 
 
-
 def test_generic_session_initialization_queries_all_core_equipped_items():
     """Pob2EquipmentSession queries and stores all core equipped slots on initialize."""
     fake_engine = FakePobEngine()
@@ -310,23 +252,6 @@ def test_generic_session_initialization_queries_all_core_equipped_items():
     for slot in ["Helmet", "Body Armour", "Gloves", "Boots", "Belt", "Amulet"]:
         assert slot in session.equipped_items
         assert session.get_current_item_name(slot) is not None
-SAMPLE_BOOTS_RAW = """Item Class: Boots
-Rarity: Rare
-Beryl Stride
-Mesh Greaves
---------
-Armour: 50
---------
-Requirements:
-Level: 15
-Str: 20
---------
-Item Level: 18
---------
-+25 to maximum Life
-+15% to Cold Resistance
-20% increased Movement Speed
-"""
 
 
 def test_canonical_slot_validation():
@@ -354,36 +279,6 @@ def test_canonical_slot_validation():
 
     with pytest.raises(ValueError, match="Unknown or unsupported equipment slot"):
         normalize_and_validate_pob_slot("invalid_slot")
-
-
-def test_generic_simulate_item_validates_slot_and_executes():
-    """simulate_item accepts slot and candidate, validating the slot and calling engine with normalized slot."""
-    fake_engine = FakePobEngine()
-    fake_api = FakePoeApi()
-
-    session = Pob2EquipmentSession(
-        character_name="BOMSHAK",
-        engine_factory=lambda: fake_engine,
-        poe_api_client=fake_api,
-    )
-    assert session.initialize() is True
-
-    # Character description includes class and level
-    assert session.character_desc == "BOMSHAK — Level 17 Mercenary"
-
-    # Simulating invalid slot fails closed (raises ValueError)
-    with pytest.raises(ValueError):
-        session.simulate_item(slot="unknown_slot", raw_candidate=KRAKEN_DOME_RAW)
-
-    # Simulating valid slot produces PobEquipmentDelta
-    delta = session.simulate_item(slot="Helmet", raw_candidate=KRAKEN_DOME_RAW, candidate_name="Kraken Dome")
-    assert delta is not None
-    assert isinstance(delta, PobEquipmentDelta)
-    assert delta.slot == "Helmet"
-    assert delta.candidate_name == "Kraken Dome"
-    assert delta.life_delta == 20
-    assert delta.lightning_res_delta == 7
-    assert delta.movement_speed_delta == 20.0
 
 
 def test_request_bookkeeping_thread_safety_independent_from_engine_lock():
@@ -419,460 +314,23 @@ def test_request_bookkeeping_thread_safety_independent_from_engine_lock():
         session._engine_lock.release()
 
 
-def test_backward_compatibility_facade_helmet_session():
-    """Pob2HelmetSession is a thin facade over Pob2EquipmentSession preserving helmet properties and API."""
-    fake_engine = FakePobEngine()
-    fake_api = FakePoeApi()
-
-    session = Pob2HelmetSession(
-        character_name="BOMSHAK",
-        engine_factory=lambda: fake_engine,
-        poe_api_client=fake_api,
-    )
-    assert isinstance(session, Pob2EquipmentSession)
-    assert session.initialize() is True
-
-    # Helmet-specific attributes are preserved
-    assert session.current_helmet_name == "Brimstone Veil"
-    assert session.current_helmet is not None
-    assert session.current_helmet.get("name") == "Brimstone Veil"
-
-    # simulate_candidate delegates to simulate_item for Helmet
-    cid = session.submit_candidate(KRAKEN_DOME_RAW, candidate_name="Kraken Dome")
-    delta = session.simulate_candidate(cid, KRAKEN_DOME_RAW, candidate_name="Kraken Dome")
-    assert delta is not None
-    assert isinstance(delta, PobHelmetDelta)
-    assert delta.current_helmet_name == "Brimstone Veil"
-    assert delta.life_delta == 20
-
-
-def test_simulation_failure_restores_hot_engine_baseline():
-    """A failed candidate calculation must not leave the hot engine on the candidate item."""
-
-    class FailingStatsEngine(FakePobEngine):
-        def __init__(self):
-            super().__init__()
-            self.fail_next_stats = False
-
-        def call(self, action: str, **kwargs: Any) -> dict[str, Any]:
-            if action == "calc_stats" and self.fail_next_stats:
-                self.fail_next_stats = False
-                raise RuntimeError("simulated PoB2 calculation failure")
-            return super().call(action, **kwargs)
-
-    fake_engine = FailingStatsEngine()
-    session = Pob2EquipmentSession(
-        character_name="BOMSHAK",
-        engine_factory=lambda: fake_engine,
-        poe_api_client=FakePoeApi(),
-    )
-    assert session.initialize() is True
-    fake_engine.fail_next_stats = True
-
-    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW, candidate_name="Kraken Dome")
-    assert session.simulate_item(
-        slot="Helmet",
-        raw_candidate=KRAKEN_DOME_RAW,
-        candidate_id=candidate_id,
-        candidate_name="Kraken Dome",
-    ) is None
-    assert fake_engine.call_log[-1] == "import_build"
-
-
-def test_async_burst_coalescing_skips_stale_candidate_b():
-    """Regression test for A -> B -> C burst behavior:
-    1. A starts simulation (enters engine execution).
-    2. While A is in-flight, B arrives and C arrives.
-    3. A finishes simulation and is discarded as stale.
-    4. B is already stale before simulation starts -> SKIP B (zero engine simulation calls).
-    5. Simulate C only.
-    """
-    fake_engine = FakePobEngine(simulate_delay=0.05)
-    fake_api = FakePoeApi()
-
-    session = Pob2EquipmentSession(
-        character_name="BOMSHAK",
-        engine_factory=lambda: fake_engine,
-        poe_api_client=fake_api,
-    )
-    assert session.initialize() is True
-
-    # 1. Candidate A arrives and starts simulating in a background thread
-    id_a = session.submit_candidate(BRIMSTONE_VEIL_RAW, candidate_name="Candidate A")
-    assert id_a == 1
-
-    a_finished_delta: list[Any] = []
-    a_started_event = threading.Event()
-
-    def run_sim_a():
-        a_started_event.set()
-        delta = session.simulate_item("Helmet", BRIMSTONE_VEIL_RAW, candidate_id=id_a, candidate_name="Candidate A")
-        a_finished_delta.append(delta)
-
-    thread_a = threading.Thread(target=run_sim_a)
-    thread_a.start()
-    a_started_event.wait()
-    # Allow thread A to acquire engine lock and enter simulation
-    time.sleep(0.01)
-
-    # 2. While A is in-flight, B and C arrive in burst
-    id_b = session.submit_candidate(KRAKEN_DOME_RAW, candidate_name="Candidate B")
-    assert id_b == 2
-    id_c = session.submit_candidate(KRAKEN_DOME_RAW, candidate_name="Candidate C")
-    assert id_c == 3
-
-    # 3. Wait for A to finish
-    thread_a.join()
-    # A finished, but because C arrived while A was running, A was stale and discarded!
-    assert len(a_finished_delta) == 1
-    assert a_finished_delta[0] is None, "A was superseded by B and C, so A must be discarded"
-
-    # Confirm A executed its simulation call on the engine
-    equip_calls_after_a = fake_engine.call_log.count("equip_item")
-    assert equip_calls_after_a == 1
-
-    # 4. Now Candidate B attempts to simulate:
-    # Since B is already stale before entering expensive simulation (id_b < latest_candidate_id),
-    # B MUST BE SKIPPED without calling engine simulation!
-    delta_b = session.simulate_item("Helmet", KRAKEN_DOME_RAW, candidate_id=id_b, candidate_name="Candidate B")
-    assert delta_b is None, "B was stale before simulation starts, so B must be skipped"
-
-    # Confirm engine equip_item was NOT called for B!
-    equip_calls_after_b = fake_engine.call_log.count("equip_item")
-    assert equip_calls_after_b == 1, "Candidate B must not waste engine simulation calls"
-
-    # 5. Candidate C simulates: C is latest, so C simulates successfully!
-    delta_c = session.simulate_item("Helmet", KRAKEN_DOME_RAW, candidate_id=id_c, candidate_name="Candidate C")
-    assert delta_c is not None
-    assert delta_c.candidate_id == id_c
-    assert delta_c.candidate_name == "Candidate C"
-
-    # Engine equip_item was called exactly once more for C
-    equip_calls_after_c = fake_engine.call_log.count("equip_item")
-    assert equip_calls_after_c == 2, "Only A and C should have invoked engine simulation"
-
-
-RING_CANDIDATE_RAW = """Item Class: Rings
-Rarity: Rare
-Storm Loop
-Iron Ring
---------
-Requirements:
-Level: 15
---------
-+25 to maximum Life
-+15% to Cold Resistance
-"""
-
-RING1_EQUIPPED_RAW = """Item Class: Rings
-Rarity: Rare
-Gloom Band
-Iron Ring
---------
-Requirements:
-Level: 10
---------
-+10 to maximum Life
-"""
-
-RING2_EQUIPPED_RAW = """Item Class: Rings
-Rarity: Rare
-Blood Coil
-Coral Ring
---------
-Requirements:
-Level: 12
---------
-+30 to maximum Life
-+20% to Fire Resistance
-"""
-
-
 def test_pob2_production_slots_includes_rings():
     """POB2_PRODUCTION_SLOTS must include Ring 1 and Ring 2 for production PoB2 evaluation."""
-    from companion.equipment.pob2_equipment_advisor import POB2_PRODUCTION_SLOTS
     assert "Ring 1" in POB2_PRODUCTION_SLOTS
     assert "Ring 2" in POB2_PRODUCTION_SLOTS
 
 
 def test_pob2_production_slots_includes_weapons():
     """POB2_PRODUCTION_SLOTS must include canonical weapon slots for modular weapon subsystems."""
-    from companion.equipment.pob2_equipment_advisor import (
-        POB2_PRODUCTION_SLOTS,
-        POB2_PRODUCTION_WEAPON_SLOTS,
-    )
     for w_slot in ("Weapon 1", "Weapon 2", "Weapon 1 Swap", "Weapon 2 Swap"):
         assert w_slot in POB2_PRODUCTION_WEAPON_SLOTS
         assert w_slot in POB2_PRODUCTION_SLOTS
 
 
-
-def test_simulate_ring_candidate_same_baseline_invariant():
-    """Dual ring simulation must evaluate Ring 1 and Ring 2 from the exact same baseline, restoring baseline after each."""
-    fake_engine = FakePobEngine()
-    fake_engine.equipped_by_slot = {
-        "Ring 1": {"equipped": True, "name": "Gloom Band", "raw": RING1_EQUIPPED_RAW},
-        "Ring 2": {"equipped": True, "name": "Blood Coil", "raw": RING2_EQUIPPED_RAW},
-    }
-    fake_engine.defenses_by_slot = {
-        "Ring 1": {"Life": 376, "Armour": 253, "Evasion": 70, "EnergyShield": 32, "TotalEHP": 305.0},
-        "Ring 2": {"Life": 356, "Armour": 253, "Evasion": 70, "EnergyShield": 32, "TotalEHP": 280.0},
-    }
-    fake_engine.stats_by_slot = {
-        "Ring 1": {
-            "defense": {"FireResist": -35, "ColdResist": -35, "LightningResist": -43, "ChaosResist": 0, "MovementSpeed": 100.0},
-            "offense": {"CombinedDPS": 29.07},
-        },
-        "Ring 2": {
-            "defense": {"FireResist": -55, "ColdResist": -35, "LightningResist": -43, "ChaosResist": 0, "MovementSpeed": 100.0},
-            "offense": {"CombinedDPS": 29.07},
-        },
-    }
-    session = Pob2EquipmentSession(
-        character_name="BOMSHAK",
-        engine_factory=lambda: fake_engine,
-        poe_api_client=FakePoeApi(),
-    )
-    assert session.initialize() is True
-
-    # Initial call log reset for clean assertion
-    fake_engine.call_log.clear()
-
-    res = session.simulate_ring_candidate(raw_candidate=RING_CANDIDATE_RAW, candidate_name="Storm Loop")
-    assert res is not None
-    assert res.ring1_delta is not None
-    assert res.ring2_delta is not None
-    assert res.ring1_delta.slot == "Ring 1"
-    assert res.ring2_delta.slot == "Ring 2"
-
-    # Verify the exact execution pattern and baseline restorations:
-    # 1. import_build (baseline) -> equip_item (Ring 1) -> get_defenses -> calc_stats -> import_build (restore)
-    # 2. import_build (baseline) -> equip_item (Ring 2) -> get_defenses -> calc_stats -> import_build (restore)
-    equip_indices = [i for i, call in enumerate(fake_engine.call_log) if call == "equip_item"]
-    import_indices = [i for i, call in enumerate(fake_engine.call_log) if call == "import_build"]
-
-    assert len(equip_indices) == 2, "Must equip candidate twice (once per ring slot)"
-    assert len(import_indices) >= 3, "Baseline must be restored before/after each slot equip"
-    # Ensure an import_build occurred between the two equip_item calls!
-    assert any(equip_indices[0] < imp_idx < equip_indices[1] for imp_idx in import_indices), (
-        "Baseline must be restored between Ring 1 and Ring 2 simulations"
-    )
-    # Ensure an import_build occurred after the second equip_item call!
-    assert any(imp_idx > equip_indices[1] for imp_idx in import_indices), (
-        "Baseline must be restored after Ring 2 simulation"
-    )
-
-
-def test_simulate_ring_candidate_returns_none_when_one_placement_fails():
-    """A partial dual-ring result must not be sent to the policy evaluator."""
-    class Ring2FailureEngine(FakePobEngine):
-        def call(self, action: str, **kwargs: Any) -> dict[str, Any]:
-            if action == "equip_item" and kwargs.get("slot") == "Ring 2":
-                raise RuntimeError("ring 2 simulation failed")
-            return super().call(action, **kwargs)
-
-    fake_engine = Ring2FailureEngine()
-    fake_engine.equipped_by_slot = {
-        "Ring 1": {"equipped": True, "name": "Gloom Band", "raw": RING_CANDIDATE_RAW},
-        "Ring 2": {"equipped": True, "name": "Blood Coil", "raw": RING_CANDIDATE_RAW},
-    }
-    session = Pob2EquipmentSession(
-        character_name="BOMSHAK",
-        engine_factory=lambda: fake_engine,
-        poe_api_client=FakePoeApi(),
-    )
-    assert session.initialize() is True
-
-    result = session.simulate_ring_candidate(RING_CANDIDATE_RAW, candidate_name="Storm Loop")
-
-    assert result is None
-
-
-def test_simulate_ring_candidate_skips_ring2_when_stale_after_ring1():
-    """If a newer candidate arrives after Ring 1 simulation completes, Ring 2 MUST be skipped immediately."""
-    fake_engine = FakePobEngine()
-    fake_engine.equipped_by_slot = {
-        "Ring 1": {"equipped": True, "name": "Gloom Band", "raw": RING1_EQUIPPED_RAW},
-        "Ring 2": {"equipped": True, "name": "Blood Coil", "raw": RING2_EQUIPPED_RAW},
-    }
-    session = Pob2EquipmentSession(
-        character_name="BOMSHAK",
-        engine_factory=lambda: fake_engine,
-        poe_api_client=FakePoeApi(),
-    )
-    assert session.initialize() is True
-
-    cid_a = session.submit_candidate(RING_CANDIDATE_RAW, candidate_name="Candidate A")
-
-    # Hook into fake_engine.call to inject candidate B right after Ring 1 finishes (during get_defenses or calc_stats)
-    orig_call = fake_engine.call
-
-    def side_effect(action: str, **kwargs):
-        res = orig_call(action, **kwargs)
-        if action == "equip_item" and kwargs.get("slot") == "Ring 1":
-            # Candidate B arrives while Ring 1 equip is finishing!
-            session.submit_candidate(RING_CANDIDATE_RAW, candidate_name="Candidate B")
-        return res
-
-    fake_engine.call = side_effect
-    fake_engine.call_log.clear()
-
-    res_a = session.simulate_ring_candidate(RING_CANDIDATE_RAW, candidate_id=cid_a, candidate_name="Candidate A")
-    # A was detected as stale between Ring 1 and Ring 2, so it returns None
-    assert res_a is None
-
-    # Ring 1 was equipped, but Ring 2 MUST NOT have been called!
-    assert fake_engine.call_log.count("equip_item") == 1, (
-        "Candidate A was stale after Ring 1; Ring 2 simulation must be skipped to save engine time"
-    )
-
-
-def test_dual_ring_policy_clear_preference():
-    """When one placement is an upgrade (EQUIP_NOW) and the other is a regression (REJECT), pick the upgrade."""
-    from companion.equipment.fubgun_priorities import evaluate_dual_ring_policy
-    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-    from companion.equipment.recommendation import Verdict
-
-    delta1 = PobEquipmentDelta(
-        slot="Ring 1",
-        candidate_id=1,
-        candidate_name="Storm Loop",
-        current_item_name="Gloom Band",
-        life_delta=25,
-        cold_res_delta=15,
-        ehp_delta=30.0,
-    )
-    delta2 = PobEquipmentDelta(
-        slot="Ring 2",
-        candidate_id=1,
-        candidate_name="Storm Loop",
-        current_item_name="Blood Coil",
-        life_delta=-30,
-        fire_res_delta=-20,
-        ehp_delta=-40.0,
-    )
-
-    rec = evaluate_dual_ring_policy(delta1, delta2)
-    assert rec.ring1_recommendation.verdict == Verdict.EQUIP_NOW
-    assert rec.ring2_recommendation.verdict == Verdict.REJECT
-    assert rec.recommended_slot == "Ring 1"
-    assert "Ring 1" in rec.summary_verdict
-    assert "Vs Ring 1: Gloom Band" in rec.formatted_output
-    assert "Vs Ring 2: Blood Coil" in rec.formatted_output
-    assert "Recommended placement: Ring 1" in rec.formatted_output
-
-
-def test_dual_ring_policy_empty_slot_as_known_pob_state():
-    """Empty Ring 2 is treated as a known empty slot (not missing data), recommending equipping into EMPTY."""
-    from companion.equipment.fubgun_priorities import evaluate_dual_ring_policy
-    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-    from companion.equipment.recommendation import Verdict
-
-    delta1 = PobEquipmentDelta(
-        slot="Ring 1",
-        candidate_id=1,
-        candidate_name="Storm Loop",
-        current_item_name="Gloom Band",
-        life_delta=-5,
-        cold_res_delta=15,
-        ehp_delta=10.0,
-    )
-    # Ring 2 was empty, so candidate gives pure positive stats without losing anything
-    delta2 = PobEquipmentDelta(
-        slot="Ring 2",
-        candidate_id=1,
-        candidate_name="Storm Loop",
-        current_item_name=None,  # Empty slot
-        life_delta=25,
-        cold_res_delta=15,
-        ehp_delta=50.0,
-    )
-
-    rec = evaluate_dual_ring_policy(delta1, delta2, empty_ring2=True)
-    assert rec.ring2_recommendation.verdict == Verdict.EQUIP_NOW
-    assert rec.recommended_slot == "Ring 2"
-    assert "Vs Ring 2: EMPTY" in rec.formatted_output
-    assert "Recommended placement: Ring 2 (slot is empty)" in rec.formatted_output
-
-
-def test_dual_ring_policy_material_tradeoffs_neither_dominates():
-    """When both placements are viable but trade different stats, do NOT invent a score; state both viable."""
-    from companion.equipment.fubgun_priorities import evaluate_dual_ring_policy
-    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-    from companion.equipment.recommendation import Verdict
-
-    # Ring 1 gains Life but loses Fire Res
-    delta1 = PobEquipmentDelta(
-        slot="Ring 1",
-        candidate_id=1,
-        candidate_name="Storm Loop",
-        current_item_name="Ruby Ring",
-        life_delta=30,
-        fire_res_delta=-15,
-        cold_res_delta=15,
-        ehp_delta=15.0,
-    )
-    # Ring 2 gains Cold Res but loses Life
-    delta2 = PobEquipmentDelta(
-        slot="Ring 2",
-        candidate_id=1,
-        candidate_name="Storm Loop",
-        current_item_name="Coral Ring",
-        life_delta=-20,
-        cold_res_delta=15,
-        lightning_res_delta=20,
-        ehp_delta=10.0,
-    )
-
-    rec = evaluate_dual_ring_policy(delta1, delta2)
-    assert rec.recommended_slot is None
-    assert rec.summary_verdict in (
-        "Both placements viable / No safe automatic slot preference",
-        "Neither placement recommended (keep current rings)",
-    )
-    assert len(rec.trade_off_notes) == 2
-
-
-def test_dual_ring_policy_rejected_empty_slot_is_not_overwritten_by_pareto_dominance():
-    """If an empty ring slot rejects the candidate, Pareto dominance must not overwrite it to replace the equipped ring."""
-    from companion.equipment.fubgun_priorities import evaluate_dual_ring_policy
-    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-    from companion.equipment.recommendation import Verdict
-
-    # Delta on Ring 1 has positive stats vs equipped Ring 1
-    delta1 = PobEquipmentDelta(
-        slot="Ring 1",
-        candidate_id=1,
-        candidate_name="Mediocre Band",
-        current_item_name="Old Iron Ring",
-        life_delta=15,
-        cold_res_delta=10,
-        ehp_delta=12.0,
-    )
-    # Delta on Ring 2 (empty) has zero gains, so rec2 is REJECT
-    delta2 = PobEquipmentDelta(
-        slot="Ring 2",
-        candidate_id=1,
-        candidate_name="Mediocre Band",
-        current_item_name=None,
-        life_delta=0,
-        fire_res_delta=0,
-        cold_res_delta=0,
-        lightning_res_delta=0,
-        chaos_res_delta=0,
-        ehp_delta=0.0,
-    )
-
-    rec = evaluate_dual_ring_policy(delta1, delta2, empty_ring2=True, empty_ring1=False)
-    assert rec.ring2_recommendation.verdict == Verdict.REJECT
-    assert rec.recommended_slot is None
-    assert "Neither placement recommended" in rec.summary_verdict
-
-
-def test_sandbox_engine_isolation_main_engine_never_mutated_during_simulation():
-    """Verify that simulate_item uses sandbox_engine exclusively; main engine is never called with equip_item."""
-    main_engine = FakePobEngine()
-    sandbox_engine = FakePobEngine()
+def test_measure_base_xml_uses_guide_xml_and_restores():
+    """When base_xml is given, measure uses it without locking main skill and restores session baseline."""
+    main_engine = RecordingPobEngine()
+    sandbox_engine = RecordingPobEngine()
     engine_instances = iter([main_engine, sandbox_engine])
 
     session = Pob2EquipmentSession(
@@ -881,31 +339,32 @@ def test_sandbox_engine_isolation_main_engine_never_mutated_during_simulation():
         poe_api_client=FakePoeApi(),
     )
     assert session.initialize() is True
-    assert session.engine is main_engine
-    assert session.sandbox_engine is sandbox_engine
+    session.main_group = 1
 
-    # Clear call logs after initialization
-    main_engine.call_log.clear()
-    sandbox_engine.call_log.clear()
+    guide_xml = "<PathOfBuilding><GuideBuild/></PathOfBuilding>"
+    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW)
+    sandbox_engine.calls.clear()
 
-    delta = session.simulate_item(slot="Helmet", raw_candidate=KRAKEN_DOME_RAW, candidate_name="Kraken Dome")
+    delta = session.measure("Helmet", KRAKEN_DOME_RAW, candidate_id, base_xml=guide_xml)
     assert delta is not None
 
-    # Main engine must NOT have received any equip_item calls
-    assert "equip_item" not in main_engine.call_log, (
-        f"Main engine was mutated during simulation! Calls: {main_engine.call_log}"
-    )
+    import_calls = [kw["xml"] for action, kw in sandbox_engine.calls if action == "import_build"]
+    skill_locks = [kw for action, kw in sandbox_engine.calls if action == "set_main_skill"]
 
-    # Sandbox engine MUST have received equip_item and import_build calls
-    assert "equip_item" in sandbox_engine.call_log
-    assert "import_build" in sandbox_engine.call_log
+    assert len(import_calls) >= 2
+    assert "GuideBuild" in import_calls[0]
+    assert 'useSecondWeaponSet="false"' in import_calls[0]
+    assert len(skill_locks) == 0
+    assert import_calls[-1] == session.xml
 
 
-def test_sandbox_engine_isolation_ring_simulation():
-    """Verify sandbox isolation for dual-ring simulation."""
-    main_engine = FakePobEngine()
-    sandbox_engine = FakePobEngine()
-    engine_instances = iter([main_engine, sandbox_engine])
+def _create_session(
+    main_engine: RecordingPobEngine | None = None,
+    sandbox_engine: RecordingPobEngine | None = None,
+) -> tuple[Pob2EquipmentSession, RecordingPobEngine, RecordingPobEngine]:
+    main = main_engine or RecordingPobEngine()
+    sandbox = sandbox_engine or RecordingPobEngine()
+    engine_instances = iter([main, sandbox])
 
     session = Pob2EquipmentSession(
         character_name="BOMSHAK",
@@ -913,17 +372,161 @@ def test_sandbox_engine_isolation_ring_simulation():
         poe_api_client=FakePoeApi(),
     )
     assert session.initialize() is True
+    session.main_group = 1
+    return session, main, sandbox
 
+
+def test_measure_superseded_mid_measure_returns_none():
+    """is_stale flips to True between before and after readings; measure returns None and restores baseline."""
+    session, _main_engine, sandbox_engine = _create_session()
+    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW)
+    sandbox_engine.calls.clear()
+
+    orig_call = sandbox_engine.call
+
+    def call_with_supersede(action: str, **kwargs: Any) -> dict[str, Any]:
+        if action == "equip_item":
+            session.submit_candidate(BRIMSTONE_VEIL_RAW)
+        return orig_call(action, **kwargs)
+
+    sandbox_engine.call = call_with_supersede
+
+    delta = session.measure("Helmet", KRAKEN_DOME_RAW, candidate_id)
+
+    assert delta is None
+    assert session.is_healthy is True
+    assert session.unhealthy_reason is None
+
+    import_calls = [kw["xml"] for action, kw in sandbox_engine.calls if action == "import_build"]
+    assert len(import_calls) >= 2
+    assert import_calls[-1] == session.xml
+
+
+def test_measure_engine_error_marks_unhealthy():
+    """EngineError on equip_item marks session unhealthy with 'Engine error: ...' and restores baseline."""
+    session, _main_engine, sandbox_engine = _create_session()
+    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW)
+    sandbox_engine.calls.clear()
+
+    orig_call = sandbox_engine.call
+
+    def call_with_engine_error(action: str, **kwargs: Any) -> dict[str, Any]:
+        if action == "equip_item":
+            raise EngineError("PoB process crashed on equip")
+        return orig_call(action, **kwargs)
+
+    sandbox_engine.call = call_with_engine_error
+
+    delta = session.measure("Helmet", KRAKEN_DOME_RAW, candidate_id)
+
+    assert delta is None
+    assert session.is_healthy is False
+    assert session.unhealthy_reason is not None
+    assert session.unhealthy_reason.startswith("Engine error:")
+    assert "PoB process crashed on equip" in session.unhealthy_reason
+
+    import_calls = [kw["xml"] for action, kw in sandbox_engine.calls if action == "import_build"]
+    assert len(import_calls) >= 2
+    assert import_calls[-1] == session.xml
+
+
+def test_measure_guide_sim_engine_error_leaves_session_healthy():
+    """EngineError on equip_item with base_xml provided returns None, leaves session healthy, and restores baseline."""
+    session, _main_engine, sandbox_engine = _create_session()
+    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW)
+    sandbox_engine.calls.clear()
+
+    orig_call = sandbox_engine.call
+
+    def call_with_engine_error(action: str, **kwargs: Any) -> dict[str, Any]:
+        if action == "equip_item":
+            raise EngineError("PoB process crashed on equip during guide sim")
+        return orig_call(action, **kwargs)
+
+    sandbox_engine.call = call_with_engine_error
+
+    delta = session.measure("Helmet", KRAKEN_DOME_RAW, candidate_id, base_xml=session.xml)
+
+    assert delta is None
+    assert session.is_healthy is True
+    assert session.unhealthy_reason is None
+
+    import_calls = [kw["xml"] for action, kw in sandbox_engine.calls if action == "import_build"]
+    assert len(import_calls) >= 2
+    assert import_calls[-1] == session.xml
+
+
+def test_measure_recovers_unhealthy_session():
+    """An unhealthy session triggers auto-recovery during measure, returning delta and restoring health."""
+    session, _main_engine, sandbox_engine = _create_session()
+
+    session.is_healthy = False
+    session.unhealthy_reason = "Engine error: prior crash"
+
+    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW)
+    sandbox_engine.calls.clear()
+
+    delta = session.measure("Helmet", KRAKEN_DOME_RAW, candidate_id)
+
+    assert delta is not None
+    assert session.is_healthy is True
+    assert session.unhealthy_reason is None
+    assert delta.slot == "Helmet"
+
+    actions = [action for action, _kw in sandbox_engine.calls]
+    assert "restart" in actions
+    assert "equip_item" in actions
+
+
+def test_measure_restore_failure_degrades_health(caplog: pytest.LogCaptureFixture):
+    """When baseline restore raises in finally, measure logs a warning and degrades session health."""
+    session, _main_engine, sandbox_engine = _create_session()
+    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW)
+
+    orig_call = sandbox_engine.call
+    restore_attempted = False
+
+    def call_failing_restore(action: str, **kwargs: Any) -> dict[str, Any]:
+        nonlocal restore_attempted
+        if action == "import_build" and any(a == "equip_item" for a, _ in sandbox_engine.calls):
+            restore_attempted = True
+            sandbox_engine.calls.append((action, kwargs))
+            raise EngineError("Simulated baseline restore failure")
+        return orig_call(action, **kwargs)
+
+    sandbox_engine.call = call_failing_restore
+
+    with caplog.at_level(logging.WARNING):
+        delta = session.measure("Helmet", KRAKEN_DOME_RAW, candidate_id)
+
+    assert restore_attempted is True
+    assert session.is_healthy is False
+    assert session.unhealthy_reason is not None
+    assert session.unhealthy_reason.startswith("Baseline restore failed:")
+    assert "Simulated baseline restore failure" in session.unhealthy_reason
+    assert any("Failed to restore baseline in PoB2 sandbox" in rec.message for rec in caplog.records)
+    assert delta is not None
+
+
+def test_measure_never_touches_main_engine():
+    """During measure, only the sandbox engine receives calls; main engine receives none."""
+    session, main_engine, sandbox_engine = _create_session()
+
+    main_engine.calls.clear()
     main_engine.call_log.clear()
+    sandbox_engine.calls.clear()
     sandbox_engine.call_log.clear()
 
-    result = session.simulate_ring_candidate(
-        raw_candidate=KRAKEN_DOME_RAW,
-        candidate_name="Test Ring",
-    )
-    assert result is not None
+    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW)
+    delta = session.measure("Helmet", KRAKEN_DOME_RAW, candidate_id)
 
-    # Main engine must NOT have received any equip_item calls
-    assert "equip_item" not in main_engine.call_log, (
-        f"Main engine was mutated during ring simulation! Calls: {main_engine.call_log}"
-    )
+    assert delta is not None
+    assert len(main_engine.calls) == 0
+    assert len(main_engine.call_log) == 0
+
+    sandbox_actions = [action for action, _kw in sandbox_engine.calls]
+    assert "import_build" in sandbox_actions
+    assert "equip_item" in sandbox_actions
+    assert "calc_stats" in sandbox_actions
+    assert "get_defenses" in sandbox_actions
+

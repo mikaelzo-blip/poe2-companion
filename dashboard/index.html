@@ -100,13 +100,6 @@
             </svg>
             <span class="nav-label">Gear & PoB2</span>
           </li>
-          <li class="nav-item" data-tab="tab-transition">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="13 17 18 12 13 7"></polyline>
-              <polyline points="6 17 11 12 6 7"></polyline>
-            </svg>
-            <span class="nav-label">Lvl 52 Transition</span>
-          </li>
           <li class="nav-item" data-tab="tab-logs">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="4 17 10 11 4 5"></polyline>
@@ -120,26 +113,16 @@
           <div class="guide-tag">
             <span class="guide-label">BUILD GUIDE:</span>
             <select id="guide-select" class="sidebar-dropdown">
-              <option value="fubgun_flameblast">Fubgun Flameblast (Mercenary)</option>
-              <option value="navira_varashta">Navira's Fracturing Varashta (Sorceress)</option>
-              <option value="generic_pob2">Generic PoB2 Optimizer (Any Class)</option>
+              <option value="">Karakter saja</option>
             </select>
             <span class="guide-label" style="margin-top: 8px;">PROGRESSION STAGE:</span>
             <select id="stage-select" class="sidebar-dropdown">
-              <option value="auto">Auto (Berdasarkan Level)</option>
-              <option value="lvl 1-14">lvl 1-14</option>
-              <option value="lvl 15-32">lvl 15-32</option>
-              <option value="lvl 33-51">lvl 33-51</option>
-              <option value="lvl 52 swap">lvl 52 Swap</option>
-              <option value="lvl 53-68">lvl 53-68</option>
-              <option value="lvl 85">lvl 85</option>
-              <option value="endgame">Endgame</option>
-              <option value="mageblood">Mageblood</option>
-              <option value="dot cap">DoT Cap</option>
+              <option value="">Auto (berdasarkan level)</option>
             </select>
             <div style="margin-top: 6px; font-size: 10px; color: var(--text-dim);" id="guide-status-note">
-              Aktif: <span id="sb-build-target">Fubgun 0.5.5 Flameblast</span> (<span id="sb-build-stage">lvl 1-14</span>)
+              Aktif: <span id="sb-build-target">-</span> (<span id="sb-build-stage">-</span>)
             </div>
+            <div style="margin-top: 4px; font-size: 10px; color: var(--accent-red, #e55);" id="guide-error"></div>
           </div>
         </div>
       </nav>
@@ -467,9 +450,12 @@ Requirements: Level 12
 +15% to Fire Resistance
 +12% to Cold Resistance
 15% increased Movement Speed"></textarea>
-                  <button class="btn btn-primary btn-block" id="btn-run-compare" style="margin-top: 10px;">
-                    <span>Bandingkan Sekarang (PoB2 Engine)</span>
-                  </button>
+                  <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+                    <button class="btn btn-primary btn-block" id="btn-run-compare" style="margin-top: 0; flex: 1;">
+                      <span>Bandingkan Sekarang (PoB2 Engine)</span>
+                    </button>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); cursor: pointer; white-space: nowrap;"><input type="checkbox" id="compare-lock-slot"> Kunci slot</label>
+                  </div>
 
                   <!-- Comparison Result Container -->
                   <div id="compare-verdict-result" style="display: block; margin-top: 16px;"></div>
@@ -496,53 +482,7 @@ Requirements: Level 12
           </div>
         </section>
 
-        <!-- ================= TAB 4: LVL 52 TRANSITION ================= -->
-        <section class="tab-content" id="tab-transition">
-          <div class="transition-container">
-            <div class="card transition-summary-card">
-              <div class="card-header">
-                <div>
-                  <div class="card-tag tag-transition">PROGRESSION MILESTONE</div>
-                  <h2 class="transition-title">Level 52 Build Swap Readiness</h2>
-                </div>
-                <div class="readiness-gauge" id="transition-gauge">
-                  <span class="readiness-pct" id="transition-pct">0%</span>
-                  <span class="readiness-sub">Readiness</span>
-                </div>
-              </div>
-              <div class="card-body">
-                <p class="transition-desc">
-                  Level 52 adalah titik balik kritis di mana build bertransisi ke setup <strong>Flameblast / Oil Grenade Swap</strong>.
-                  Sistem mengevaluasi kondisi secara ketat (Tri-State: SATISFIED, UNSATISFIED, UNKNOWN) untuk mencegah build breaker.
-                </p>
-                <div class="transition-req-grid">
-                  <div class="req-box req-unknown">
-                    <span class="req-title">Gold Respec Reserve</span>
-                    <span class="req-status">UNKNOWN</span>
-                    <p class="req-hint">Kebutuhan estimasi ~50,000 gold untuk refund skill tree.</p>
-                  </div>
-                  <div class="req-box req-unknown">
-                    <span class="req-title">Core Gem Setup</span>
-                    <span class="req-status">UNKNOWN</span>
-                    <p class="req-hint">Flameblast + Oil Grenade uncut gems di inventory / stash.</p>
-                  </div>
-                  <div class="req-box req-future">
-                    <span class="req-title">Cast on Dodge (Lvl 58+)</span>
-                    <span class="req-status">FUTURE (ISOLATED)</span>
-                    <p class="req-hint">Dikecualikan dari blocker Level 52 (tidak memicu false alert).</p>
-                  </div>
-                  <div class="req-box req-unsatisfied">
-                    <span class="req-title">Required Character Level</span>
-                    <span class="req-status" id="req-status-level">LVL — / 52</span>
-                    <p class="req-hint">Belum mencapai level minimum transisi.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- ================= TAB 5: TELEMETRY & LOGS ================= -->
+        <!-- ================= TAB 4: TELEMETRY & LOGS ================= -->
         <section class="tab-content" id="tab-logs">
           <div class="logs-layout">
             <div class="card terminal-card">
@@ -575,6 +515,7 @@ Requirements: Level 12
       <div class="modal-subtabs">
         <button class="modal-tab-btn active" id="mtab-public-profile">Opsi A: Tarik Profil Publik</button>
         <button class="modal-tab-btn" id="mtab-paste-json">Opsi B: Paste Character JSON</button>
+        <button class="modal-tab-btn" id="mtab-guides">📚 Tambah Guide</button>
       </div>
 
       <!-- Tab 1: Tarik Profil Publik -->
@@ -617,6 +558,19 @@ Requirements: Level 12
           📥 Terapkan Seluruh Equipment ke Loadout
         </button>
         <div id="sync-json-msg" style="margin-top: 10px; font-size: 11px; line-height: 1.4; display: none;"></div>
+      </div>
+
+      <!-- Tab 3: Tambah Guide -->
+      <div class="modal-tab-content" id="mcontent-guides" style="display: none;">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.4;">
+          <a id="guide-bookmarklet" href="#" class="btn" style="display:inline-block; padding:4px 10px; border:1px solid var(--accent-gold); border-radius:4px; color:var(--accent-gold); text-decoration:none;">Salin Guide PoE2</a><br>
+          Seret tombol ini ke bookmark bar, buka halaman guide mobalytics, lalu klik bookmark-nya.
+        </p>
+        <textarea id="guide-import-textarea" class="modal-textarea" rows="6" placeholder="Paste teks guide di sini (Ctrl+V)..."></textarea>
+        <button class="btn btn-primary btn-block" id="btn-do-import-guide" style="margin-top: 10px; background: var(--accent-gold); color: #000; font-weight: 700;">Impor Guide</button>
+        <div id="guide-import-msg" style="margin-top: 10px; font-size: 11px; line-height: 1.4; display: none;"></div>
+        <div style="font-weight: 600; font-size: 12px; margin-top: 14px; margin-bottom: 4px; color: var(--accent-gold); border-bottom: 1px solid var(--border-subtle); padding-bottom: 4px;">Daftar Guide Terpasang</div>
+        <div id="guide-list" style="margin-top: 8px; font-size: 12px;"></div>
       </div>
     </div>
   </div>

@@ -1,15 +1,10 @@
-"""Passive platform clipboard reader and CLI evaluation runners."""
+"""Passive platform clipboard reader."""
 
 from __future__ import annotations
 
 from pathlib import Path
 import subprocess
 import sys
-from typing import Any
-from companion.equipment.engine import EquipmentIntelligenceEngine
-from companion.equipment.parser import InvalidItemClipboardError, validate_poe2_item_envelope
-from companion.equipment.recommendation import EquipmentRecommendation
-from companion.equipment.rules import BuildProgressionStage
 
 
 def _read_win32_clipboard() -> str:
@@ -99,45 +94,3 @@ def read_item_input(file_path: str | Path | None = None) -> str:
         return p.read_text(encoding="utf-8")
     return get_clipboard_text()
 
-
-def run_inspect_clipboard(
-    runtime_dir: str | Path,
-    character_id: str,
-    slot_name: str | None = None,
-    weapon_set_name: str | None = None,
-    stage: BuildProgressionStage = BuildProgressionStage.EARLY_ENDGAME,
-) -> tuple[str, EquipmentRecommendation]:
-    raw_text = get_clipboard_text()
-    validate_poe2_item_envelope(raw_text)
-
-    engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)
-    rec = engine.evaluate_candidate(
-        item_text=raw_text,
-        character_id=character_id,
-        target_slot=slot_name,
-        target_weapon_set=weapon_set_name,
-        stage=stage,
-    )
-    return rec.formatted_report, rec
-
-
-def run_evaluate_file(
-    runtime_dir: str | Path,
-    file_path: str | Path,
-    character_id: str,
-    slot_name: str | None = None,
-    weapon_set_name: str | None = None,
-    stage: BuildProgressionStage = BuildProgressionStage.EARLY_ENDGAME,
-) -> tuple[str, EquipmentRecommendation]:
-    raw_text = read_item_input(file_path=file_path)
-    validate_poe2_item_envelope(raw_text)
-
-    engine = EquipmentIntelligenceEngine(runtime_dir=runtime_dir)
-    rec = engine.evaluate_candidate(
-        item_text=raw_text,
-        character_id=character_id,
-        target_slot=slot_name,
-        target_weapon_set=weapon_set_name,
-        stage=stage,
-    )
-    return rec.formatted_report, rec

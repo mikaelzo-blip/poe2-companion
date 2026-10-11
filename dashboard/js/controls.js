@@ -1,47 +1,64 @@
 import { fetchHttpRuntime } from './runtime.js';
 import { appState, logToTerminal } from './state.js';
 
-export const GUIDE_STAGES_MAP = {
-  fubgun_flameblast: [
-    { value: 'auto', label: 'Auto (Berdasarkan Level)' },
-    { value: 'lvl 1-14', label: 'lvl 1-14' },
-    { value: 'lvl 15-32', label: 'lvl 15-32' },
-    { value: 'lvl 33-51', label: 'lvl 33-51' },
-    { value: 'lvl 52 swap', label: 'lvl 52 Swap' },
-    { value: 'lvl 53-68', label: 'lvl 53-68' },
-    { value: 'lvl 85', label: 'lvl 85' },
-    { value: 'endgame', label: 'Endgame' },
-    { value: 'mageblood', label: 'Mageblood' },
-    { value: 'dot cap', label: 'DoT Cap' }
-  ],
-  navira_varashta: [
-    { value: 'auto', label: 'Auto (Berdasarkan Act/Level)' },
-    { value: 'Act 1 & 2', label: 'Act 1 & 2 (Pre-Ascend)' },
-    { value: 'Act 2', label: 'Act 2' },
-    { value: 'Act 3', label: 'Act 3' },
-    { value: 'Act 4 to Endgame', label: 'Act 4 to Endgame' },
-    { value: 'Early Endgame', label: 'Early Endgame' },
-    { value: 'Mid-Endgame', label: 'Mid-Endgame' },
-    { value: 'Late Endgame', label: 'Late Endgame' },
-    { value: 'Uber Endgame', label: 'Uber Endgame' }
-  ],
-  generic_pob2: [
-    { value: 'auto', label: 'Auto (PoB2 Default)' }
-  ]
-};
-
-export function refreshStageDropdown(guideId) {
-  const stageSelect = document.getElementById('stage-select');
-  if (!stageSelect) return;
-  const stages = GUIDE_STAGES_MAP[guideId] || GUIDE_STAGES_MAP.generic_pob2;
-  stageSelect.innerHTML = '';
-  stages.forEach(st => {
+function fillSelect(sel, firstLabel, items, selected) {
+  sel.innerHTML = '';
+  [{ value: '', label: firstLabel }, ...items].forEach(it => {
     const opt = document.createElement('option');
-    opt.value = st.value;
-    opt.textContent = st.label;
-    stageSelect.appendChild(opt);
+    opt.value = it.value;
+    opt.textContent = it.label;
+    sel.appendChild(opt);
   });
-  appState.selectedStage = 'auto';
+  sel.value = items.some(i => i.value === selected) ? selected : '';
+}
+
+function showGuideError(msg) {
+  const el = document.getElementById('guide-error');
+  if (el) el.textContent = msg || '';
+}
+
+// Rebuild guide + stage dropdowns from stored guides and the character's stored assignment.
+export async function refreshGuideControls() {
+  const guideSelect = document.getElementById('guide-select');
+  const stageSelect = document.getElementById('stage-select');
+  if (!guideSelect || !stageSelect) return;
+  try {
+    const res = await fetch(`/api/guides?char_id=${encodeURIComponent(appState.activeCharId)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const guides = data.guides || [];
+    const active = data.active || {};
+    fillSelect(guideSelect, 'Karakter saja', guides.map(g => ({ value: g.slug, label: g.name })), active.guide);
+    const cur = guides.find(g => g.slug === guideSelect.value);
+    fillSelect(stageSelect, 'Auto (berdasarkan level)',
+      (cur ? cur.stages : []).map(st => ({ value: st.id, label: st.title })), active.stage_override);
+    const tgt = document.getElementById('sb-build-target');
+    const stg = document.getElementById('sb-build-stage');
+    if (tgt) tgt.textContent = cur ? cur.name : 'Karakter saja';
+    if (stg) stg.textContent = (cur && cur.stages.find(st => st.id === stageSelect.value)?.title) || 'Auto';
+    showGuideError('');
+  } catch (err) {
+    console.warn('Failed to load guides:', err);
+    showGuideError('Gagal memuat daftar guide');
+  }
+}
+
+// Returns an error message, or null on success.
+async function saveGuideAssignment(guide, stageOverride) {
+  try {
+    const res = await fetch('/api/character-guide', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: appState.activeCharId, guide: guide || null, stage_override: stageOverride || null })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) {
+      return data.error || 'Gagal menyimpan guide';
+    }
+    return null;
+  } catch (err) {
+    return 'Gagal menghubungi API server';
+  }
 }
 
 export async function setupCharacterAndGuideControls() {
@@ -82,7 +99,7 @@ export async function setupCharacterAndGuideControls() {
       const selectedName = charSelect.value;
       if (!selectedName) return;
 
-      appState.activeCharId = selectedName;
+      const prevCharId = appState.activeCharId;
       try {
         const res = await fetch('/api/select-character', {
           method: 'POST',
@@ -90,27 +107,24 @@ export async function setupCharacterAndGuideControls() {
           body: JSON.stringify({ character_id: selectedName, account_name: 'mikaelzo#5674' })
         });
         if (res.ok) {
-          const selectedText = charSelect.selectedOptions[0]?.textContent || '';
-          if (guideSelect && selectedText.toLowerCase().includes('sorceress')) {
-            guideSelect.value = 'navira_varashta';
-            appState.selectedGuide = 'navira_varashta';
-          } else if (guideSelect && selectedText.toLowerCase().includes('mercenary')) {
-            guideSelect.value = 'fubgun_flameblast';
-            appState.selectedGuide = 'fubgun_flameblast';
-          } else if (guideSelect) {
-            guideSelect.value = 'generic_pob2';
-            appState.selectedGuide = 'generic_pob2';
-          }
-          refreshStageDropdown(appState.selectedGuide);
-          const note = document.getElementById('guide-status-note');
-          if (note && guideSelect) {
-            note.textContent = `Aktif: ${guideSelect.selectedOptions[0]?.textContent || guideSelect.value}`;
-          }
-          logToTerminal('CHARACTER', `Karakter aktif beralih ke ${selectedName} (Guide: ${appState.selectedGuide})`);
+          appState.activeCharId = selectedName;
+          showGuideError('');
+          await refreshGuideControls();
+          logToTerminal('CHARACTER', `Karakter aktif beralih ke ${selectedName}`);
           await fetchHttpRuntime();
+        } else {
+          appState.activeCharId = prevCharId;
+          if (prevCharId) charSelect.value = prevCharId;
+          const data = await res.json().catch(() => ({}));
+          const errMsg = data.error || `HTTP ${res.status}`;
+          showGuideError(errMsg);
+          logToTerminal('CHARACTER', `Gagal beralih karakter: ${errMsg}`);
         }
       } catch (err) {
+        appState.activeCharId = prevCharId;
+        if (prevCharId) charSelect.value = prevCharId;
         console.error('Failed to select character:', err);
+        showGuideError(err.message || 'Gagal menghubungi API server');
       }
     });
   }
@@ -153,19 +167,22 @@ export async function setupCharacterAndGuideControls() {
 
   // Handle guide & stage selectors
   if (guideSelect) {
-    guideSelect.addEventListener('change', () => {
-      appState.selectedGuide = guideSelect.value;
-      refreshStageDropdown(appState.selectedGuide);
-      const note = document.getElementById('guide-status-note');
-      if (note) {
-        note.textContent = `Aktif: ${guideSelect.selectedOptions[0]?.textContent || guideSelect.value}`;
-      }
+    guideSelect.addEventListener('change', async () => {
+      const err = await saveGuideAssignment(guideSelect.value, null);
+      await refreshGuideControls();
+      if (err) showGuideError(err);
+      await fetchHttpRuntime();
     });
   }
 
   if (stageSelect) {
-    stageSelect.addEventListener('change', () => {
-      appState.selectedStage = stageSelect.value;
+    stageSelect.addEventListener('change', async () => {
+      const err = await saveGuideAssignment(guideSelect?.value, stageSelect.value);
+      await refreshGuideControls();
+      showGuideError(err || '');
+      await fetchHttpRuntime();
     });
   }
+
+  await refreshGuideControls();
 }

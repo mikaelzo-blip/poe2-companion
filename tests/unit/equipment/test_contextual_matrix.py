@@ -29,9 +29,6 @@ from companion.equipment.rules import (
     BuildProgressionStage,
 )
 from companion.equipment.requirements import RequirementCascadeResult
-from companion.equipment.engine import EquipmentIntelligenceEngine
-from companion.equipment.loadout_cli import run_loadout_set_item, run_loadout_finalize
-from companion.equipment.baseline_cli import run_baseline_set
 
 
 def test_matrix_test_1_resistance_same_item_different_character():

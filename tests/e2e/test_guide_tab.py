@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from playwright.sync_api import Page
@@ -55,6 +56,13 @@ def test_rule_editor_add_and_save_posts_full_list(dashboard_page: Page, mock_api
 
     # Click Simpan aturan
     dashboard_page.locator("button:has-text('Simpan aturan')").click()
+
+    # Poll requests until /api/guides/rules is recorded
+    deadline = time.time() + 5.0
+    while time.time() < deadline:
+        if any(p == "/api/guides/rules" for p, _ in requests):
+            break
+        dashboard_page.wait_for_timeout(100)
 
     # Assert recorded /api/guides/rules body
     rule_posts = [body for path, body in requests if path == "/api/guides/rules"]

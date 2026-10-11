@@ -807,7 +807,7 @@ def import_guide_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str
             else:
                 code = text
             xml = pob_code.decode_share_code(code)
-            profile = pob_code.parse_pob_xml(xml, f"PoB Guide {date.today().isoformat()}")
+            profile = pob_code.parse_pob_xml(xml, f"PoB Guide {date.today().isoformat()}", warnings)
             base, n = profile.slug, 1
             while load_guide(runtime_dir, profile.slug) is not None:  # never overwrite another import
                 n += 1

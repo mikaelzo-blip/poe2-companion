@@ -64,16 +64,17 @@ def fetch_pobb_code(url: str, opener=urllib.request.urlopen) -> str:
         return resp.read(5_000_000).decode("utf-8").strip()
 
 
-def _item(slot: str, pob_text: str) -> StageItem:
+def _item(slot: str, pob_text: str, warnings: list[str]) -> StageItem:
     text = pob_text.strip()
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     fallback = StageItem(slot=slot, name=lines[1] if len(lines) > 1 else slot,
-                         item_class="", raw_text=text)
+                         item_class="", raw_text=None)
     try:
         clip = pob_item_to_clipboard(text)
         cand = parse_item_text(clip)
     except ValueError as exc:  # PobItemTextError is a ValueError
         log.warning("Item PoB di slot %s tidak bisa dikonversi: %s", slot, exc)
+        warnings.append(f"Item PoB di slot {slot} tidak bisa dikonversi: {exc}")
         return fallback
     klass = singular_item_class(
         next((ln[12:].strip() for ln in clip.splitlines() if ln.startswith("Item Class:")), ""))
@@ -103,7 +104,7 @@ def _main_skill(root: ET.Element, title: str, index: int) -> str | None:
     return gem.get("nameSpec") if gem is not None else None
 
 
-def _parse_pob_xml(xml: str, name: str) -> GuideProfile:
+def _parse_pob_xml(xml: str, name: str, warnings: list[str]) -> GuideProfile:
     try:
         root = ET.fromstring(xml)
     except ET.ParseError as exc:
@@ -119,7 +120,7 @@ def _parse_pob_xml(xml: str, name: str) -> GuideProfile:
         for sl in s.findall("Slot"):
             slot, text = sl.get("name"), texts.get(sl.get("itemId"), "").strip()
             if slot in _SLOTS and text:
-                items[slot] = _item(slot, text)
+                items[slot] = _item(slot, text, warnings)
         stages.append(GuideStage(id=sid, title=s.get("title") or f"Set {sid}", items=items, main_skill=_main_skill(root, s.get("title") or "", n),
                                   weapon_classes=weapon_classes_of(items)))
     profile = GuideProfile(
@@ -130,9 +131,11 @@ def _parse_pob_xml(xml: str, name: str) -> GuideProfile:
     return profile
 
 
-def parse_pob_xml(xml: str, name: str) -> GuideProfile:
+def parse_pob_xml(xml: str, name: str, warnings: list[str] | None = None) -> GuideProfile:
+    if warnings is None:
+        warnings = []
     try:
-        profile = _parse_pob_xml(xml, name)
+        profile = _parse_pob_xml(xml, name, warnings)
     except ValidationError as exc:
         raise ValueError(f"XML PoB2 tidak valid: {exc.errors()[0]['msg']}") from exc
     except (KeyError, TypeError, AttributeError) as exc:

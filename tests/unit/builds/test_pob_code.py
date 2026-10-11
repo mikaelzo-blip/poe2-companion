@@ -152,7 +152,34 @@ def test_conversion_failure_falls_back(caplog):
     bad = "Rarity: RARE\nMy Thing\nNo Such Base\nImplicits: 0"
     xml = f'<P><Items activeItemSet="1"><Item id="1">{bad}</Item><ItemSet id="1"><Slot name="Belt" itemId="1"/></ItemSet></Items></P>'
     it = parse_pob_xml(xml, "B").stages[0].items["Belt"]
-    assert it.name == "My Thing" and it.raw_text == bad
+    assert it.name == "My Thing" and it.raw_text is None
+
+
+def test_unconvertible_item_emits_warning_and_sets_raw_text_none():
+    bad = "Rarity: RARE\nMy Thing\nNo Such Base\nImplicits: 0"
+    xml = (
+        '<PathOfBuilding2><Items activeItemSet="1">'
+        f'<Item id="1">{HELMET}</Item>'
+        f'<Item id="2">{bad}</Item>'
+        '<ItemSet id="1" title="Endgame">'
+        '<Slot name="Helmet" itemId="1"/>'
+        '<Slot name="Belt" itemId="2"/>'
+        '</ItemSet>'
+        '</Items></PathOfBuilding2>'
+    )
+    warnings: list[str] = []
+    profile = parse_pob_xml(xml, "Test", warnings)
+    stage = profile.stages[0]
+
+    bad_item = stage.items["Belt"]
+    assert bad_item.raw_text is None
+    assert bad_item.item_class == ""
+    assert len(warnings) == 1
+    assert "Belt" in warnings[0]
+
+    good_item = stage.items["Helmet"]
+    assert good_item.raw_text is not None
+    assert "Item Class: Helmets" in good_item.raw_text
 
 
 def test_decompression_cap():

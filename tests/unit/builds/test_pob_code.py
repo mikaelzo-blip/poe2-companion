@@ -129,15 +129,23 @@ SK_XML = """<PathOfBuilding2><Build mainSocketGroup="1"/>
 </Items></PathOfBuilding2>"""
 
 
-def test_main_skill_per_stage_title_and_position():
+def test_main_skill_only_for_active_skill_set():
+    # mainSocketGroup indexes the active SkillSet ("Other", id 2) only; other sets have no main-skill marker.
     p = parse_pob_xml(SK_XML, "S")
-    # "Leveling" has no title match -> position 0 -> Late Skill; "Endgame" matches by title -> Late Skill
-    assert [s.main_skill for s in p.stages] == ["Late Skill", "Late Skill"]
+    # "Leveling" -> position 0 -> "Endgame" set (inactive); "Endgame" -> title match (inactive)
+    assert [s.main_skill for s in p.stages] == [None, None]
     p = parse_pob_xml(SK_XML.replace('title="Endgame"><Skill', 'title="X"><Skill').replace('title="Other"', 'title="Y"'), "S")
-    assert [s.main_skill for s in p.stages] == ["Late Skill", "Early Skill"]  # position match
+    assert [s.main_skill for s in p.stages] == [None, "Early Skill"]  # position match hits the active set
     p = parse_pob_xml(SK_XML.replace('<ItemSet id="1" title="Leveling"/><ItemSet id="2" title="Endgame"/>',
                                      '<ItemSet id="1" title="Z"/><ItemSet id="2" title="Other"/>'), "S")
-    assert [s.main_skill for s in p.stages] == ["Late Skill", "Early Skill"]  # title match
+    assert [s.main_skill for s in p.stages] == [None, "Early Skill"]  # title match hits the active set
+
+
+def test_main_skill_empty_matched_set_does_not_borrow_another():
+    xml = SK_XML.replace('<SkillSet id="2" title="Other"><Skill><Gem nameSpec="Early Skill"/></Skill></SkillSet>',
+                         '<SkillSet id="2" title="Other"></SkillSet>')
+    xml = xml.replace('<ItemSet id="2" title="Endgame"/>', '<ItemSet id="2" title="Other"/>')
+    assert parse_pob_xml(xml, "S").stages[1].main_skill is None
 
 
 def test_conversion_failure_falls_back(caplog):

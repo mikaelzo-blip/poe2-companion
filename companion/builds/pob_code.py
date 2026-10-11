@@ -89,12 +89,12 @@ def _main_skill(root: ET.Element, title: str, index: int) -> str | None:
     sets = skills.findall("SkillSet")
     container = skills
     if sets:
-        active = skills.get("activeSkillSet")
-        container = (
-            next((s for s in sets if s.get("title") == title), None)
-            or (sets[index] if index < len(sets) else None)
-            or next((s for s in sets if s.get("id") == active), sets[0])
-        )
+        container = next((s for s in sets if s.get("title") == title), None)
+        if container is None:
+            container = sets[index] if index < len(sets) else sets[0] if len(sets) == 1 else None
+        # mainSocketGroup indexes the active SkillSet only; other sets carry no main-skill marker.
+        if container is None or (len(sets) > 1 and container.get("id") != skills.get("activeSkillSet")):
+            return None
     try:
         idx = int(build.get("mainSocketGroup", "1")) - 1
         gem = container.findall("Skill")[idx].find("Gem")

@@ -105,6 +105,15 @@ def mock_api(
     return recorded
 
 
+def wait_js(page: Page, async_fn: str, timeout_ms: int = 5000) -> None:
+    """Poll an async JS predicate; page.wait_for_function does not await promises."""
+    deadline = page.evaluate("Date.now()") + timeout_ms
+    while not page.evaluate(f"({async_fn})()"):
+        if page.evaluate("Date.now()") > deadline:
+            raise TimeoutError(f"Timed out waiting for: {async_fn}")
+        page.wait_for_timeout(100)
+
+
 @pytest.fixture(name="mock_api")
 def mock_api_fixture() -> Callable[..., list[tuple[str, Any]]]:
     return mock_api
@@ -125,22 +134,6 @@ def dashboard_page(dashboard_server: str) -> Page:
 
     context = browser.new_context()
     page = context.new_page()
-
-    orig_wait_for_function = page.wait_for_function
-
-    def _async_safe_wait_for_function(expression: str, *args: Any, timeout: float | None = None, **kwargs: Any) -> Any:
-        if "async ()" in expression or "async function" in expression:
-            import time
-            limit_ms = float(timeout) if timeout is not None else 30000.0
-            deadline = time.time() + (limit_ms / 1000.0)
-            while time.time() < deadline:
-                if page.evaluate(f"({expression})()"):
-                    return True
-                page.wait_for_timeout(100)
-            raise TimeoutError(f"Timed out waiting for: {expression}")
-        return orig_wait_for_function(expression, *args, timeout=timeout, **kwargs)
-
-    page.wait_for_function = _async_safe_wait_for_function  # type: ignore[assignment]
 
     mock_api(page, {})
     page.goto(dashboard_server)

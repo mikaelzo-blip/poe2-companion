@@ -614,7 +614,10 @@ export async function simulateVersusComparison(rawText, container, explicitSlot 
 
       data.raw_text = rawText;
       const slot = data.slot;
-      if (!slot) return;
+      if (!slot) {
+        renderEvaluationVerdict(data, container);
+        return;
+      }
 
       recordSlotComparison(slot, rawText, data);
       logToTerminal('EVAL', `${data.item_name || 'Item'} (${slot}) -> ${data.verdict || 'OK'}`);
@@ -693,7 +696,10 @@ export function startAutoClipboardWatcher() {
         const data = await res.json();
         if (data.has_new_item) {
           const slot = data.slot;
-          if (!slot) return;
+          if (!slot) {
+            if (data.error) showTransientNotification(`⚠ Gagal evaluasi item: ${data.error}`);
+            return;
+          }
 
           const toggleAutoEquip = document.getElementById('toggle-autoequip-empty');
           if (toggleAutoEquip && toggleAutoEquip.checked && data.auto_equip_ok) {

@@ -6,6 +6,8 @@ from typing import Any
 
 from playwright.sync_api import Page
 
+from tests.e2e.conftest import wait_js
+
 RING_ITEM_TEXT = """Item Class: Rings
 Rarity: Rare
 Storm Circle
@@ -138,9 +140,10 @@ def test_autoscan_records_under_server_slot(dashboard_page: Page, mock_api: Any)
 
     mock_api(dashboard_page, {"/api/clipboard-poll": poll_handler})
 
-    dashboard_page.wait_for_function(
+    wait_js(
+        dashboard_page,
         "async () => { const { appState } = await import('/js/state.js'); return appState.selectedSlot === 'ring2'; }",
-        timeout=5000,
+        timeout_ms=5000,
     )
 
     storage = dashboard_page.evaluate("JSON.parse(localStorage.getItem('poe2_slot_compare_v2_BOMSHAK') || '{}')")
@@ -165,9 +168,10 @@ def test_autoscan_does_not_equip_unless_auto_equip_ok(dashboard_page: Page, mock
 
     requests = mock_api(dashboard_page, {"/api/clipboard-poll": poll_handler})
 
-    dashboard_page.wait_for_function(
+    wait_js(
+        dashboard_page,
         "async () => { const { appState } = await import('/js/state.js'); return (appState.slotCompareData.helmet?.history?.length || 0) > 0; }",
-        timeout=5000,
+        timeout_ms=5000,
     )
 
     equip_calls = [body for path, body in requests if path == "/api/equip-item"]

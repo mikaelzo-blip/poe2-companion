@@ -1084,8 +1084,10 @@ def test_status_reports_unavailable_reason(tmp_path: Path) -> None:
     assert res["engine_status"]["unavailable_reason"] == "Docker daemon is not running (zero-backend fallback active)"
 
 
-def test_status_reports_failed_init_unavailable_reason(monkeypatch: Any) -> None:
+def test_status_reports_failed_init_unavailable_reason(tmp_path: Path, monkeypatch: Any) -> None:
     import companion.dashboard_server as server
+
+    monkeypatch.setattr(server, "RUNTIME_DIR", tmp_path)
 
     class FailingSession:
         def __init__(self, character_name: str = "BOMSHAK") -> None:

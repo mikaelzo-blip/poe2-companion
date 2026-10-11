@@ -788,7 +788,7 @@ export function renderEvaluationVerdict(data, container, targetSlot = null) {
   const slotBadgeHtml = `<div class="verdict-slot-line" style="font-size: 11px; color: var(--accent-gold); font-family: var(--font-mono); margin-bottom: 4px;">🎯 Slot: ${esc(slotLabel)}${slotReasonPart}</div>`;
 
   let deltasHtml = '';
-  if (data.engine === 'pob2' || data.engine === 'heuristic') {
+  if ((data.engine === 'pob2' || data.engine === 'heuristic') && !isInsufficient) {
     const dps = formatPctDelta(data.dps_pct);
     const ehp = formatPctDelta(data.ehp_pct);
     if (dps !== null && ehp !== null) {

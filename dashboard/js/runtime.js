@@ -18,7 +18,7 @@ export async function checkHttpHost() {
 
 function applyEngineStatusBadge(engineStatus) {
   if (engineStatus && engineStatus.available === false && engineStatus.unavailable_reason) {
-    updateStatusBadge(`PoB2 OFF: ${engineStatus.unavailable_reason}`, 'active');
+    updateStatusBadge(`PoB2 OFF: ${engineStatus.unavailable_reason}`, 'idle');
   } else {
     updateStatusBadge('CONNECTED: HTTP LIVE', 'active');
   }

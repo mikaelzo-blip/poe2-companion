@@ -60,7 +60,7 @@ def get_current_raw(
                 w_ctx = WeaponSetContext.WEAPON_SET_1
 
             try:
-                st = SlotType.from_str(slot_name)
+                st, w_ctx = _swap_slot(slot_name, w_ctx)
                 entry = lo.get_slot(st, weapon_set=w_ctx)
                 if entry and entry.item and entry.item.raw_text:
                     return entry.item.raw_text
@@ -78,6 +78,18 @@ def get_current_raw(
     except Exception:
         logger.warning("Loadout read failed for %s", char_id, exc_info=True)
     return ""
+
+
+_SWAP_SLOTS = {"weapon 1 swap": "MAIN_HAND", "weapon 2 swap": "OFF_HAND"}
+
+
+def _swap_slot(slot_name: str, w_ctx: Any) -> tuple[Any, Any]:
+    """Resolve a slot name to (SlotType, weapon set); canonical swap names mean Weapon Set 2."""
+    from companion.equipment.schema import SlotType, WeaponSetContext
+    swap = _SWAP_SLOTS.get(slot_name.lower().strip())
+    if swap:
+        return SlotType[swap], WeaponSetContext.WEAPON_SET_2
+    return SlotType.from_str(slot_name), w_ctx
 
 
 def get_current_item_info(
@@ -110,7 +122,7 @@ def get_current_item_info(
                 w_ctx = WeaponSetContext.WEAPON_SET_1
 
             try:
-                st = SlotType.from_str(slot_name)
+                st, w_ctx = _swap_slot(slot_name, w_ctx)
                 entry = lo.get_slot(st, weapon_set=w_ctx)
                 if entry and entry.item and (entry.item.name or entry.item.base_type):
                     return entry.item.name or entry.item.base_type, entry.item.base_type or ""

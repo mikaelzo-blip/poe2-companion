@@ -571,20 +571,25 @@ class Pob2EquipmentSession:
         with self._state_lock:
             return candidate_id < self._latest_by_source.get(source, 0)
 
-    def get_equipped_item(self, slot: str) -> dict[str, Any] | None:
-        """Get equipped item dictionary for canonical slot."""
+    def _fetch_equipped(self, slot: str) -> dict[str, Any] | None:
+        """Like get_equipped_item but lets engine errors propagate."""
         canonical_slot = normalize_and_validate_pob_slot(slot)
         if canonical_slot in self.equipped_items:
             return self.equipped_items[canonical_slot]
         if self.is_available and self.engine is not None:
-            try:
-                item = self.engine.call("get_equipped", slot=canonical_slot)
-                if item:
-                    self.equipped_items[canonical_slot] = item
-                    return item
-            except Exception:
-                pass
+            item = self.engine.call("get_equipped", slot=canonical_slot)
+            if item:
+                self.equipped_items[canonical_slot] = item
+                return item
         return None
+
+    def get_equipped_item(self, slot: str) -> dict[str, Any] | None:
+        """Get equipped item dictionary for canonical slot."""
+        try:
+            return self._fetch_equipped(slot)
+        except Exception:
+            logger.warning("PoB2 get_equipped failed for %s", slot, exc_info=True)
+            return None
 
     def equip_item(self, slot: str | SlotType, raw_item: str) -> bool:
         """Equip an item directly into the active PoB2 baseline build.
@@ -690,7 +695,7 @@ class Pob2EquipmentSession:
 
     def is_slot_empty(self, slot: str) -> bool:
         """Return True if the specified canonical slot is empty in the loaded PoB2 build."""
-        item = self.get_equipped_item(slot)
+        item = self._fetch_equipped(slot)  # engine errors propagate so callers can fall back
         if not item:
             return True
         return not item.get("equipped", False)

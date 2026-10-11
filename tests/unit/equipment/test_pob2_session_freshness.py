@@ -164,3 +164,19 @@ def test_concurrent_get_or_create_creates_one_session_and_no_orphans(monkeypatch
         t.join(5)
     assert len(created) == 1 and not created[0].closed
     assert results == [created[0]] * 4
+
+
+def test_failed_equipped_lookup_is_logged_and_not_reported_empty(caplog):
+    from unittest.mock import MagicMock
+
+    from companion.equipment.pob2_equipment_advisor import Pob2EquipmentSession
+
+    sess = Pob2EquipmentSession.__new__(Pob2EquipmentSession)
+    sess.equipped_items, sess.is_available = {}, True
+    sess.engine = MagicMock()
+    sess.engine.call.side_effect = RuntimeError("engine down")
+    with caplog.at_level("WARNING"):
+        assert sess.get_equipped_item("Ring 1") is None
+    assert "get_equipped failed" in caplog.text
+    with pytest.raises(RuntimeError):
+        sess.is_slot_empty("Ring 1")

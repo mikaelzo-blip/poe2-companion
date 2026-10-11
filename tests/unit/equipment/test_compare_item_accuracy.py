@@ -174,6 +174,21 @@ def test_dashboard_api_get_current_raw_resolves_all_loadout_slots(tmp_path: Path
     assert "Crossbow One" in raw_w1
 
 
+def test_get_current_raw_and_info_resolve_swap_weapon_slots(tmp_path: Path) -> None:
+    from companion.equipment.current_item import get_current_item_info
+
+    lo = EquippedLoadout.create_draft(character_id="hero_test", loadout_id="lo_test")
+    lo.set_slot(
+        SlotType.MAIN_HAND,
+        parse_item_text("Item Class: Crossbows\nRarity: Rare\nSwap Bow\nVarnished Crossbow\n--------"),
+        weapon_set=WeaponSetContext.WEAPON_SET_2,
+    )
+    lo.finalize()
+    save_loadout(tmp_path, lo)
+    assert "Swap Bow" in get_current_raw(tmp_path, "hero_test", "Weapon 1 Swap")
+    assert get_current_item_info(tmp_path, "hero_test", "Weapon 1 Swap") == ("Swap Bow", "Varnished Crossbow")
+
+
 class _BadBodyPob(Stub):
     """PoB2 stub whose body-armour swap loses life and resistances, so the zone tactical veto fires."""
 

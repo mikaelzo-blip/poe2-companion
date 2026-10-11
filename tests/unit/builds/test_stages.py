@@ -121,6 +121,41 @@ def test_resolve_stage_fallback():
     assert resolve_stage(p, 200).id == "b"
 
 
+def test_resolve_stage_override_title_match(caplog):
+    p = GuideProfile(
+        slug="x",
+        name="x",
+        imported_at="t",
+        stages=[
+            GuideStage(id="stage-1", title="Act 1 Leveling", min_level=1, max_level=15, auto=True),
+            GuideStage(id="stage-2", title="Endgame Mapping", min_level=16, max_level=100, auto=True),
+        ],
+    )
+    # Exact title match
+    assert resolve_stage(p, level=10, override_id="Endgame Mapping").id == "stage-2"
+    # Case-insensitive and trimmed title match
+    assert resolve_stage(p, level=10, override_id="  endgame mapping  ").id == "stage-2"
+    assert resolve_stage(p, level=80, override_id="act 1 leveling").id == "stage-1"
+
+    # Unknown override falls back to auto stage for character level and logs a warning naming the override
+    with caplog.at_level("WARNING"):
+        resolved = resolve_stage(p, level=10, override_id="Unknown Stage Override")
+    assert resolved.id == "stage-1"
+    assert "Unknown Stage Override" in caplog.text
+
+    # Stage ID match keeps priority over title match
+    p_conflict = GuideProfile(
+        slug="x",
+        name="x",
+        imported_at="t",
+        stages=[
+            GuideStage(id="s1", title="Second Stage", min_level=1, max_level=50, auto=True),
+            GuideStage(id="Second Stage", title="First Stage", min_level=51, max_level=100, auto=True),
+        ],
+    )
+    assert resolve_stage(p_conflict, level=10, override_id="Second Stage").id == "Second Stage"
+
+
 def _stages(titles):
     p = GuideProfile(slug="g", name="G", imported_at="x",
                      stages=[GuideStage(id=str(i), title=t) for i, t in enumerate(titles)])

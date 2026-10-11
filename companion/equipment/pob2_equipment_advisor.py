@@ -333,19 +333,6 @@ class Pob2EquipmentSession:
         self._state_lock = threading.Lock()
         self._latest_candidate_id: int = 0
         self._latest_by_source: dict[str, int] = {}
-        self._displayed_candidate_id: int = 0
-
-    @property
-    def character_desc(self) -> str:
-        """Formatted character description, e.g. 'BOMSHAK — Level 17 Mercenary'."""
-        parts = []
-        if self.level is not None:
-            parts.append(f"Level {self.level}")
-        if self.class_name:
-            parts.append(self.class_name)
-        if parts:
-            return f"{self.character_name} — {' '.join(parts)}"
-        return self.character_name
 
     def initialize(self) -> bool:
         """Initialize PoB2 engine and import target character.
@@ -882,14 +869,16 @@ class Pob2EquipmentSession:
                 )
             except EngineError as exc:
                 log.warning("PoB2 engine error for slot %s: %s", canonical_slot, exc)
-                self.is_healthy = False
-                self.unhealthy_reason = f"Engine error: {exc}"
+                if base_xml is None:
+                    self.is_healthy = False
+                    self.unhealthy_reason = f"Engine error: {exc}"
                 return None
             except Exception as exc:
                 log.warning("PoB2 measurement failed for slot %s: %s", canonical_slot, exc)
                 if "EngineError" in type(exc).__name__:
-                    self.is_healthy = False
-                    self.unhealthy_reason = f"Engine error: {exc}"
+                    if base_xml is None:
+                        self.is_healthy = False
+                        self.unhealthy_reason = f"Engine error: {exc}"
                 return None
             finally:
                 try:
@@ -898,153 +887,6 @@ class Pob2EquipmentSession:
                     log.warning("Failed to restore baseline in PoB2 sandbox: %s", exc)
                     self.is_healthy = False
                     self.unhealthy_reason = f"Baseline restore failed: {exc}"
-
-    def simulate_weapon_plan(
-        self,
-        context: Any,
-    ) -> PobEquipmentDelta | None:
-        """Execute mathematical simulation of a weapon swap plan on hot PoB2 build.
-
-        MATHEMATICAL ONLY:
-        - Receives already-resolved WeaponSimulationContext.
-        - Acquires engine lock, validates staleness before and after lock.
-        - Activates appropriate target weapon set in XML (Set 1 vs Set 2).
-        - Selects intended active skill context if present.
-        - Measures baseline defenses and stats in target context.
-        - Applies clear_slots (e.g. un-equipping conflicting offhand).
-        - Equips candidate in target_slot.
-        - Reads defenses and stats deltas against the context-specific baseline.
-        - Strictly restores original baseline XML in finally block.
-        - Returns PobEquipmentDelta or None if stale/failed.
-        - Does NOT decide EQUIP/REJECT.
-        """
-        candidate_id = context.candidate_id
-        if self.is_stale(candidate_id):
-            return None
-
-        if not self.is_available or self.sandbox_engine is None or not self.xml:
-            return None
-
-        with self._engine_lock:
-            if self.is_stale(candidate_id):
-                return None
-
-            if not self.is_healthy:
-                if not self._recover_session():
-                    return None
-
-            candidate_applied = False
-            try:
-                # 1. Determine target weapon set (Set 1 vs Set 2)
-                from companion.equipment.schema import WeaponSetContext
-                target_set = getattr(context, "target_set", None)
-                target_slot_str = str(getattr(context, "target_slot", "")).lower()
-                set_num = 2 if (target_set == WeaponSetContext.WEAPON_SET_2 or "swap" in target_slot_str) else 1
-
-                # 2. Activate target weapon set in XML on sandbox
-                context_xml = _set_weapon_set_in_xml(self.xml, set_num)
-                self.sandbox_engine.call("import_build", xml=context_xml)
-
-                # 3. Select active skill context if specified
-                skill_context = getattr(context, "skill_context", None)
-                group_idx = self.find_socket_group_for_skill(skill_context)
-                if group_idx is not None:
-                    try:
-                        self.sandbox_engine.call("set_main_skill", group=group_idx)
-                    except Exception:
-                        pass
-
-                # 4. Measure baseline defenses and stats in this exact context
-                def_before = self.sandbox_engine.call("get_defenses")
-                stats_before = self.sandbox_engine.call("calc_stats")
-
-                # 5. If topology requires clearing slots (e.g. offhand unequipped for 2H):
-                clear_slots = getattr(getattr(context, "topology_plan", None), "clear_slots", ())
-                if clear_slots:
-                    cleared_xml = _clear_slots_in_xml(context_xml, clear_slots)
-                    if cleared_xml != context_xml:
-                        self.sandbox_engine.call("import_build", xml=cleared_xml)
-                        if group_idx is not None:
-                            try:
-                                self.sandbox_engine.call("set_main_skill", group=group_idx)
-                            except Exception:
-                                pass
-
-                # 6. Equip candidate item in target slot
-                candidate_applied = True
-                self.sandbox_engine.call("equip_item", slot=context.target_slot, raw=context.raw_candidate)
-                if group_idx is not None:
-                    try:
-                        self.sandbox_engine.call("set_main_skill", group=group_idx)
-                    except Exception:
-                        pass
-
-                # 7. Read post-equip defenses and stats
-                def_after = self.sandbox_engine.call("get_defenses")
-                stats_after = self.sandbox_engine.call("calc_stats")
-
-                # 8. Reset sandbox for next simulation
-                self.sandbox_engine.call("import_build", xml=self.xml)
-                candidate_applied = False
-
-                # 9. Staleness check
-                if self.is_stale(candidate_id):
-                    return None
-
-                return self._build_delta(
-                    canonical_slot=context.target_slot,
-                    candidate_id=candidate_id,
-                    candidate_name=context.candidate_name,
-                    def_after=def_after,
-                    stats_after=stats_after,
-                    def_before=def_before,
-                    stats_before=stats_before,
-                )
-            except EngineError as exc:
-                logging.getLogger(__name__).warning("PoB2 engine error during weapon plan simulation: %s", exc)
-                self.is_healthy = False
-                self.unhealthy_reason = f"Engine error: {exc}"
-                return None
-            except Exception as exc:
-                logging.getLogger(__name__).warning("PoB2 weapon plan simulation failed: %s", exc)
-                if isinstance(exc, EngineError) or "EngineError" in type(exc).__name__:
-                    self.is_healthy = False
-                    self.unhealthy_reason = f"Engine error: {exc}"
-                return None
-            finally:
-                try:
-                    self.sandbox_engine.call("import_build", xml=self.xml)
-                except Exception as exc:
-                    logging.getLogger(__name__).warning("Failed to restore sandbox in weapon plan simulation: %s", exc)
-                    self.is_healthy = False
-                    self.unhealthy_reason = f"Baseline restore failed: {exc}"
-
-    def display_recommendation(
-        self,
-        delta: PobEquipmentDelta | None,
-        policy_evaluator: Callable[[PobEquipmentDelta], Any],
-    ) -> str | None:
-        """Format and return final recommendation text if candidate is fresh.
-
-        STALE RESULTS MUST NOT PRINT A FINAL VERDICT.
-        Returns formatted text if fresh, or None if stale/discarded.
-        """
-        if delta is None:
-            return None
-
-        with self._state_lock:
-            # Stale candidate check
-            if delta.candidate_id < self._latest_candidate_id:
-                return None
-            # Do not re-display older candidate than already displayed
-            if delta.candidate_id <= self._displayed_candidate_id:
-                return None
-            self._displayed_candidate_id = delta.candidate_id
-
-        rec = policy_evaluator(delta)
-        if hasattr(rec, "formatted_output"):
-            return rec.formatted_output
-        return str(rec)
 
     def close(self) -> None:
         """Clean up both PoB engines (baseline + sandbox)."""

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import re
 
 from companion.builds.guide import GuideProfile, GuideStage
+
+logger = logging.getLogger(__name__)
 
 _ACTS = {1: (1, 15), 2: (16, 29), 3: (30, 44), 4: (45, 55)}
 _INTERLUDE = (56, 64)
@@ -122,6 +125,14 @@ def resolve_stage(profile: GuideProfile, level: int | None, override_id: str | N
         for s in profile.stages:
             if s.id == override_id:
                 return s
+        target = override_id.strip().casefold()
+        for s in profile.stages:
+            if s.title.strip().casefold() == target:
+                return s
+        logger.warning(
+            "Stage override %r did not match any stage id or title; falling back to level-based stage",
+            override_id,
+        )
     if level is None:
         return profile.stages[0]
     autos = [s for s in profile.stages if s.auto]

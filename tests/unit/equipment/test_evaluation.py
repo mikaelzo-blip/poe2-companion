@@ -346,3 +346,19 @@ def test_fubgun_lvl60_bow_rejected_off_guide(tmp_path):
     assert r.verdict == "REJECT"
     assert "Senjata tidak dipakai guide (Bow)" in r.reasons
 
+
+def test_evaluate_stage_override_by_title(tmp_path, positive_pob_stub):
+    _install(tmp_path, FUB, char="BOMSHAK", level=20)
+    # At level 20, auto stage is "lvl 15-32". Override with real title "Endgame" differing from auto.
+    r = evaluate(
+        BOOTS_TEXT,
+        "BOMSHAK",
+        runtime_dir=tmp_path,
+        pob_session=positive_pob_stub,
+        source="manual",
+        stage_override="Endgame",
+    )
+    assert r.guide is not None
+    assert r.guide.stage_title == "Endgame"
+
+

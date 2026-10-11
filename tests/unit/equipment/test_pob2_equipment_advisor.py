@@ -430,6 +430,32 @@ def test_measure_engine_error_marks_unhealthy():
     assert import_calls[-1] == session.xml
 
 
+def test_measure_guide_sim_engine_error_leaves_session_healthy():
+    """EngineError on equip_item with base_xml provided returns None, leaves session healthy, and restores baseline."""
+    session, _main_engine, sandbox_engine = _create_session()
+    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW)
+    sandbox_engine.calls.clear()
+
+    orig_call = sandbox_engine.call
+
+    def call_with_engine_error(action: str, **kwargs: Any) -> dict[str, Any]:
+        if action == "equip_item":
+            raise EngineError("PoB process crashed on equip during guide sim")
+        return orig_call(action, **kwargs)
+
+    sandbox_engine.call = call_with_engine_error
+
+    delta = session.measure("Helmet", KRAKEN_DOME_RAW, candidate_id, base_xml=session.xml)
+
+    assert delta is None
+    assert session.is_healthy is True
+    assert session.unhealthy_reason is None
+
+    import_calls = [kw["xml"] for action, kw in sandbox_engine.calls if action == "import_build"]
+    assert len(import_calls) >= 2
+    assert import_calls[-1] == session.xml
+
+
 def test_measure_recovers_unhealthy_session():
     """An unhealthy session triggers auto-recovery during measure, returning delta and restoring health."""
     session, _main_engine, sandbox_engine = _create_session()

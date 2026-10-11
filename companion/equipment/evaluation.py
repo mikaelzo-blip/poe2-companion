@@ -151,7 +151,8 @@ def evaluate(
     profile, stage = _resolve_guide(runtime_dir, character_id, level, stage_override)
 
     item_class = item_class_of(raw_text)
-    plans, slot_reason = resolve_slots(candidate, item_class, stage, locked_slot)
+    weapon_veto = weapon_not_in_guide(item_class, profile)
+    plans, slot_reason = resolve_slots(candidate, item_class, stage, locked_slot if not weapon_veto else None)
     mods = [m.raw_text for m in candidate.modifiers]
     pob_ok = pob_session is not None and bool(getattr(pob_session, "is_available", False))
     state = {"pob_ok": pob_ok, "reason": None if pob_ok else "PoB2 tidak tersedia", "cid": None}
@@ -179,12 +180,11 @@ def evaluate(
             logger.warning("PoB2 measurement failed for %s", plan.slot, exc_info=True)
             return None
 
-    weapon_veto = weapon_not_in_guide(item_class, profile)
     unmet = _unmet_requirements(candidate, level, baseline)
     results: list[SlotResult] = []
     signals: dict[str, PrioritySignal | None] = {}
     vetoed: set[str] = set()
-    heuristic_used = False
+    pob_slots: set[str] = set()
     for plan in plans:
         slot = plan.slot
         signals[slot] = priority_signal(stage.items.get(slot), mods)
@@ -211,11 +211,12 @@ def evaluate(
         delta = None
         if state["pob_ok"]:
             delta = measure_pob(plan)
-            if delta is None:
+            if delta is not None:
+                pob_slots.add(slot)
+            else:
                 state["pob_ok"], state["reason"] = False, _FALLBACK_REASON
                 empty = current_raw(slot) == ""
         if delta is None:
-            heuristic_used = True
             if slot in _WEAPON_SLOTS:
                 results.append(insufficient(slot, "Tanpa PoB2 senjata tidak bisa dinilai"))
                 continue
@@ -248,7 +249,7 @@ def evaluate(
     current_name = get_current_item_info(runtime_dir, character_id, chosen.slot, pob_session if pob_ok else None)[0]
     return EvaluationResult(
         verdict=verdict,
-        engine="heuristic" if heuristic_used or not pob_ok else "pob2",
+        engine="pob2" if chosen.slot in pob_slots else "none" if len(vetoed) == len(plans) else "heuristic",
         engine_reason=state["reason"], slot=chosen.slot, slot_reason=slot_reason, per_slot=results, dims=dims,
         guide=None if profile is None else GuideSignal(
             name=profile.name, stage_title=stage.title, priority_match=sig.ratio if sig else None,

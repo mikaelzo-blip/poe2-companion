@@ -883,6 +883,24 @@ def test_weapon_class_absent_from_guide_is_rejected(fub: Path) -> None:
     assert res["safety"] and res["is_weapon"] is True
 
 
+def test_weapon_veto_wins_over_lock_mismatch(fub: Path) -> None:
+    res = evaluate_item_payload(_payload(BOW, slot="main_hand"), runtime_dir=fub, pob_session=Stub())
+    assert res["verdict"] == "REJECT" and "Senjata tidak dipakai guide" in res["reason"]
+
+
+def test_all_plans_vetoed_reports_no_engine(fub: Path) -> None:
+    res = evaluate_item_payload(_payload(BOW), runtime_dir=fub, pob_session=Stub())
+    assert res["engine"] == "none"
+
+
+def test_crossbow_without_lock_resolves_to_guide_swap_slot(tmp_path: Path) -> None:
+    _install(tmp_path, FUB, char="BOMSHAK", level=60)
+    res = evaluate_item_payload(_payload(CROSSBOW), runtime_dir=tmp_path, pob_session=Tracking())
+    assert "error" not in res and res["slot"] == "set2_main_hand" and res["pob_slot"] == "Weapon 1 Swap"
+    # a UI guess in the wrong weapon set is rejected server-side, so compare.js no longer sends one
+    assert "error" in evaluate_item_payload(_payload(CROSSBOW, slot="main_hand"), runtime_dir=tmp_path, pob_session=Tracking())
+
+
 def test_weapon_class_in_guide_is_measured(fub: Path) -> None:
     res = evaluate_item_payload(_payload(CROSSBOW), runtime_dir=fub, pob_session=Tracking())
     assert res["engine"] == "pob2" and res["safety"] == [] and res["is_weapon"] is True

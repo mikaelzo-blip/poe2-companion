@@ -82,3 +82,10 @@ def test_non_equippable_item_raises(fub60):
     assert item_class_of(CHARM) == "Charm"
     with pytest.raises(ValueError, match="tidak bisa dipasang"):
         resolve_slots(parse_item_text(CHARM), item_class_of(CHARM), fub60)
+
+
+def test_weapon_slot_lock_respects_guide_set(fub60):
+    cb = parse_item_text(CROSSBOW)
+    assert [p.slot for p in resolve_slots(cb, "Crossbow", fub60, locked_slot="set2_main_hand")[0]] == ["Weapon 1 Swap"]
+    with pytest.raises(ValueError, match="tidak cocok"):
+        resolve_slots(cb, "Crossbow", fub60, locked_slot="main_hand")

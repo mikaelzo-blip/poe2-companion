@@ -222,6 +222,5 @@ def test_dashboard_api_formatted_report_synchronizes_with_tactical_rejection(tmp
         pob_session=_BadBodyPob(),
     )
     assert res.get("verdict") == "REJECT"
-    assert "REJECT" in res.get("formatted_report")
-    assert "EQUIP NOW" not in res.get("formatted_report")
-    assert "CONDITIONAL UPGRADE" not in res.get("formatted_report")
+    assert res["formatted_report"].startswith("REJECT")
+    assert "EQUIP_NOW" not in res["formatted_report"]

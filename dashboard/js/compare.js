@@ -480,6 +480,8 @@ export function setupCompareSubtabs() {
   renderCompareForSlot(appState.selectedSlot || 'helmet');
 }
 
+const WEAPON_UI_SLOTS = ['main_hand', 'off_hand', 'set2_main_hand', 'set2_off_hand'];
+
 export async function simulateVersusComparison(rawText, container, explicitSlot = null) {
   const targetSlot = explicitSlot || detectSlotFromItemText(rawText, appState.selectedSlot);
   const targetLabel = SLOT_LABELS[targetSlot] || targetSlot.toUpperCase();
@@ -494,7 +496,8 @@ export async function simulateVersusComparison(rawText, container, explicitSlot 
       body: JSON.stringify({
         raw_text: rawText,
         character_id: appState.activeCharId || "BOMSHAK",
-        slot: targetSlot
+        // Weapon slots are not sent: the server picks the weapon set from the guide.
+        ...(WEAPON_UI_SLOTS.includes(targetSlot) ? {} : { slot: targetSlot })
       })
     });
 
@@ -502,14 +505,15 @@ export async function simulateVersusComparison(rawText, container, explicitSlot 
       const data = await res.json();
       data.raw_text = rawText;
       if (!data.slot) data.slot = targetSlot;
+      const slot = data.slot;
 
-      recordSlotComparison(targetSlot, rawText, data);
-      logToTerminal('EVAL', `${data.item_name || 'Item'} (${targetSlot}) -> ${data.verdict || 'OK'}`);
+      recordSlotComparison(slot, rawText, data);
+      logToTerminal('EVAL', `${data.item_name || 'Item'} (${slot}) -> ${data.verdict || 'OK'}`);
 
-      if (appState.selectedSlot !== targetSlot) {
-        selectSlot(targetSlot);
+      if (appState.selectedSlot !== slot) {
+        selectSlot(slot);
       } else {
-        renderCompareForSlot(targetSlot);
+        renderCompareForSlot(slot);
       }
       return;
     } else {

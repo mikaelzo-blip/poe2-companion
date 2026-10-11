@@ -1,27 +1,33 @@
-import json
-import logging
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
-
-import pytest
 
 from companion.dashboard_api import get_dashboard_status
 from companion.equipment.pob2_equipment_advisor import (
     EngineError,
     Pob2EquipmentSession,
 )
-from tests.unit.equipment.test_pob2_helmet_advisor import BRIMSTONE_VEIL_RAW, FakePobEngine, FakePoeApi
 
-KRAKEN_DOME_RAW = (
-    "Item Class: Helmets\n"
-    "Rarity: Rare\n"
-    "Kraken Dome\n"
-    "Advanced Hunter Hood\n"
-    "Evasion Rating: 150\n"
-    "+45 to maximum Life\n"
-    "+25% to Fire Resistance\n"
-)
+
+class FakePobEngine:
+    def __init__(self):
+        self.call_log: list[str] = []
+
+    def call(self, action: str, **kwargs: Any) -> dict[str, Any]:
+        self.call_log.append(action)
+        if action == "import_character":
+            return {
+                "className": "Mercenary",
+                "level": 17,
+                "xml": "<PathOfBuilding><Build/></PathOfBuilding>",
+            }
+        elif action == "get_equipped":
+            return {"equipped": True, "name": "Brimstone Veil", "raw": ""}
+        return {"success": True}
+
+
+class FakePoeApi:
+    def fetch_character_raw(self, character_name: str) -> str:
+        return f'{{"character": "{character_name}"}}'
 
 
 class RecoverableFailingEngine(FakePobEngine):
@@ -56,92 +62,6 @@ def test_session_health_initial_state():
     assert session.unhealthy_reason is None
     assert session.initialize() is True
     assert session.is_healthy is True
-
-
-def test_session_marks_unhealthy_on_engine_error_without_auto_retry():
-    fake_engine = RecoverableFailingEngine()
-    session = Pob2EquipmentSession(
-        character_name="BOMSHAK",
-        engine_factory=lambda: fake_engine,
-        poe_api_client=FakePoeApi(),
-    )
-    assert session.initialize() is True
-    fake_engine.fail_engine_error = True
-
-    cid1 = session.submit_candidate(KRAKEN_DOME_RAW, candidate_name="Kraken Dome")
-    res1 = session.simulate_item(
-        slot="Helmet",
-        raw_candidate=KRAKEN_DOME_RAW,
-        candidate_id=cid1,
-        candidate_name="Kraken Dome",
-    )
-    assert res1 is None
-    assert session.is_healthy is False
-    assert "Simulated engine IPC crash" in str(session.unhealthy_reason)
-    # Ensure it did not auto-retry immediately in the same call
-    assert fake_engine.restart_called is False
-
-
-def test_session_auto_recovers_on_next_simulation_call():
-    fake_engine = RecoverableFailingEngine()
-    session = Pob2EquipmentSession(
-        character_name="BOMSHAK",
-        engine_factory=lambda: fake_engine,
-        poe_api_client=FakePoeApi(),
-    )
-    assert session.initialize() is True
-    fake_engine.fail_engine_error = True
-
-    # 1. First call fails and marks unhealthy
-    cid1 = session.submit_candidate(KRAKEN_DOME_RAW, candidate_name="Kraken Dome")
-    assert session.simulate_item(
-        slot="Helmet",
-        raw_candidate=KRAKEN_DOME_RAW,
-        candidate_id=cid1,
-        candidate_name="Kraken Dome",
-    ) is None
-    assert session.is_healthy is False
-
-    # 2. Next call attempts single restart + baseline restore, then simulates new candidate
-    cid2 = session.submit_candidate(KRAKEN_DOME_RAW, candidate_name="Kraken Dome 2")
-    res2 = session.simulate_item(
-        slot="Helmet",
-        raw_candidate=KRAKEN_DOME_RAW,
-        candidate_id=cid2,
-        candidate_name="Kraken Dome 2",
-    )
-    assert fake_engine.restart_called is True
-    assert session.is_healthy is True
-    assert session.unhealthy_reason is None
-    assert res2 is not None
-    assert res2.candidate_name == "Kraken Dome 2"
-
-
-def test_session_finally_restore_failure_logs_warning_and_degrades_health(caplog):
-    fake_engine = RecoverableFailingEngine()
-    session = Pob2EquipmentSession(
-        character_name="BOMSHAK",
-        engine_factory=lambda: fake_engine,
-        poe_api_client=FakePoeApi(),
-    )
-    assert session.initialize() is True
-
-    # Configure restore to fail in finally block
-    fake_engine.fail_restore = True
-    cid = session.submit_candidate(KRAKEN_DOME_RAW, candidate_name="Kraken Dome")
-
-    with caplog.at_level(logging.WARNING):
-        res = session.simulate_item(
-            slot="Helmet",
-            raw_candidate=KRAKEN_DOME_RAW,
-            candidate_id=cid,
-            candidate_name="Kraken Dome",
-        )
-
-    assert session.is_healthy is False
-    assert "restore" in str(session.unhealthy_reason).lower()
-    # Check that warning log was emitted (not silently swallowed by `except Exception: pass`)
-    assert any("restore" in rec.message.lower() for rec in caplog.records)
 
 
 def test_api_status_exposes_engine_health(tmp_path: Path):

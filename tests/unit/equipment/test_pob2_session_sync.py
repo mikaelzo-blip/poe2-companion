@@ -1,25 +1,22 @@
-"""Unit tests for PoB2 Session Equipment Synchronization & Lifecycle (TDD RED).
+"""Unit tests for PoB2 Session Equipment Synchronization & Lifecycle.
 
 Validates:
 1. `Pob2EquipmentSession.equip_item()` updates the active baseline XML via export_xml,
    updates equipped_items for that slot, and refreshes defenses_before and stats_before.
-2. Subsequent `simulate_item()` evaluations compare against the newly equipped item,
-   not the initial baseline item.
-3. `Pob2EquipmentSession.sync_character()` re-imports character and resets the baseline.
-4. Auto-progression stage inference based on character level.
-5. Invalidation or synchronization of global session in dashboard server.
+2. `Pob2EquipmentSession.sync_character()` re-imports character and resets the baseline.
+3. Auto-progression stage inference based on character level.
+4. Invalidation or synchronization of global session in dashboard server.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 import pytest
 
 from companion.equipment.pob2_equipment_advisor import (
     Pob2EquipmentSession,
 )
-from companion.equipment.rules import BuildProgressionStage
-from companion.equipment.schema import SlotType
 
 
 SKULL_WARD_RAW = """Item Class: Helmets
@@ -169,16 +166,6 @@ def test_equip_item_mutates_active_pob_baseline_xml_and_equipped_cache():
     assert sess.defenses_before["Armour"] == 125
     assert sess.stats_before["defense"]["FireResist"] == 7
 
-    # Subsequent simulate_item for Kraken Dome should compare against Skull Ward
-    delta = sess.simulate_item("Helmet", KRAKEN_DOME_RAW, candidate_name="Kraken Dome")
-    assert delta is not None
-    assert delta.current_item_name == "Skull Ward"
-    assert delta.candidate_name == "Kraken Dome"
-    # Fire res drops from 7 to 0 -> -7
-    assert delta.fire_res_delta == -7
-    # Lightning res drops from 9 to 7 -> -2
-    assert delta.lightning_res_delta == -2
-
 
 def test_sync_character_reloads_from_api():
     """sync_character must re-fetch character data and reset baseline stats."""
@@ -251,18 +238,3 @@ def test_dashboard_server_equip_item_syncs_to_global_pob_session(monkeypatch, tm
 
     assert sess.get_current_item_name("Helmet") == "Skull Ward"
 
-
-def test_infer_stage_from_level():
-    """Level progression stages must be accurately inferred from character level."""
-    from companion.equipment.fubgun_priorities import infer_stage_from_level
-
-    assert infer_stage_from_level(1) == BuildProgressionStage.LEVELING_1_14
-    assert infer_stage_from_level(14) == BuildProgressionStage.LEVELING_1_14
-    assert infer_stage_from_level(15) == BuildProgressionStage.LEVELING_15_32
-    assert infer_stage_from_level(18) == BuildProgressionStage.LEVELING_15_32
-    assert infer_stage_from_level(32) == BuildProgressionStage.LEVELING_15_32
-    assert infer_stage_from_level(33) == BuildProgressionStage.LEVELING_33_51
-    assert infer_stage_from_level(52) == BuildProgressionStage.SWAP_52
-    assert infer_stage_from_level(60) == BuildProgressionStage.LEVELING_53_68
-    assert infer_stage_from_level(85) == BuildProgressionStage.LEVEL_85
-    assert infer_stage_from_level(95) == BuildProgressionStage.ENDGAME

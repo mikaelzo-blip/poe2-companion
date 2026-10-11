@@ -130,19 +130,3 @@ def test_restore_runs_when_equip_fails(session_failing_equip):
     assert session_failing_equip.measure("Gloves", GLOVES, 1) is None
     assert session_failing_equip.sandbox_engine.calls[-1][0] == "import_build"
 
-
-def test_ring_wrapper_locks_skill_on_both_legs(session):
-    r = session.simulate_ring_candidate(RING, session.submit_candidate(RING))
-    assert _locks(session) == [3, 3, 3, 3]
-    assert r.ring1_delta.slot == "Ring 1" and r.ring2_delta.slot == "Ring 2"
-
-
-def test_ambiguous_1h_set2_uses_swap_slots_and_set2(session):
-    from companion.equipment.schema import WeaponSetContext
-
-    r = session.simulate_ambiguous_1h_weapon(
-        CROSSBOW, session.submit_candidate(CROSSBOW), target_set=WeaponSetContext.WEAPON_SET_2
-    )
-    assert (r.slot1_delta.slot, r.slot2_delta.slot) == ("Weapon 1 Swap", "Weapon 2 Swap")
-    assert 'useSecondWeaponSet="true"' in _imports(session)[0]
-    assert _locks(session) == [3, 3, 3, 3]

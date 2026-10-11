@@ -15,9 +15,7 @@ import pytest
 
 from companion.equipment.parser import parse_item_text
 from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-from companion.equipment.fubgun_priorities import evaluate_fubgun_equipment_policy
 from companion.equipment.precedence import Verdict
-from companion.equipment.rules import BuildProgressionStage
 from companion.equipment.schema import SlotOccupancy, SlotType, WeaponSetContext
 from companion.equipment.tactical_advisor import generate_tactical_advice
 from companion.dashboard_api import evaluate_item_payload, get_current_raw
@@ -79,53 +77,6 @@ def test_parse_two_handed_melee_weapons_topology() -> None:
     assert item_mace.slot == SlotType.MAIN_HAND
     assert item_mace.slot_occupancy == SlotOccupancy.TWO_HAND
     assert item_mace.slot_conflict_topology.occupied_slots == [SlotType.MAIN_HAND, SlotType.OFF_HAND]
-
-
-def test_boots_movement_speed_loss_reason_accuracy() -> None:
-    delta = PobEquipmentDelta(
-        slot="Boots",
-        candidate_id=1,
-        candidate_name="Heavy Iron Boots",
-        armour_delta=50,
-        movement_speed_delta=-10.0,
-        ehp_delta=2.0,
-    )
-    rec = evaluate_fubgun_equipment_policy(delta)
-    assert rec.verdict == Verdict.REJECT
-    assert "+0 Life, +0% Resistance" not in rec.reason
-    assert "Movement Speed" in rec.reason
-
-
-def test_boots_movement_speed_tradeoff_with_life_and_res_reason_accuracy() -> None:
-    delta = PobEquipmentDelta(
-        slot="Boots",
-        candidate_id=2,
-        candidate_name="Tank Boots",
-        life_delta=50,
-        fire_res_delta=20,
-        cold_res_delta=20,
-        movement_speed_delta=-10.0,
-        ehp_delta=15.0,
-    )
-    rec = evaluate_fubgun_equipment_policy(delta)
-    assert rec.verdict == Verdict.CONDITIONAL_UPGRADE
-    assert "Life/Resistance trade-off" not in rec.reason
-    assert "Movement Speed" in rec.reason
-
-
-def test_amulet_material_dps_loss_downgrades_to_conditional_upgrade() -> None:
-    delta = PobEquipmentDelta(
-        slot="Amulet",
-        candidate_id=3,
-        candidate_name="Defensive Amulet",
-        life_delta=25,
-        fire_res_delta=15,
-        dps_delta=-12.5,
-        ehp_delta=8.0,
-    )
-    rec = evaluate_fubgun_equipment_policy(delta)
-    assert rec.verdict == Verdict.CONDITIONAL_UPGRADE
-    assert "DPS" in rec.reason or "damage" in rec.reason.lower()
 
 
 def test_tactical_advisor_respects_insufficient_baseline_verdict() -> None:

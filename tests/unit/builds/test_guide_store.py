@@ -80,3 +80,31 @@ def test_corrupt_assignments_file_returns_empty(tmp_path):
     save_guide(tmp_path, _profile())
     (tmp_path / "guides" / "_assignments.json").write_text("{oops", encoding="utf-8")
     assert get_assignment(tmp_path, "c1") == (None, None)
+
+
+@pytest.mark.parametrize("content", ["[1, 2]", '{"c1": "g"}', '{"c1": null}'])
+def test_wrong_shape_assignments_do_not_raise(tmp_path, content):
+    save_guide(tmp_path, _profile())
+    (tmp_path / "guides" / "_assignments.json").write_text(content, encoding="utf-8")
+    assert get_assignment(tmp_path, "c1") == (None, None)
+    set_assignment(tmp_path, "c2", "g", None)
+    assert get_assignment(tmp_path, "c2") == ("g", None)
+
+
+def test_bom_files_are_read(tmp_path):
+    save_guide(tmp_path, _profile())
+    gdir = tmp_path / "guides"
+    (gdir / "g.json").write_text("﻿" + (gdir / "g.json").read_text(encoding="utf-8"), encoding="utf-8")
+    (gdir / "_assignments.json").write_text('﻿{"c1": {"guide_slug": "g", "stage_override": null}}', encoding="utf-8")
+    assert load_guide(tmp_path, "g") is not None
+    set_assignment(tmp_path, "c2", "g", None)
+    assert get_assignment(tmp_path, "c1") == ("g", None)  # BOM file not wiped by the write
+
+
+def test_unreadable_assignments_kept_as_backup_before_overwrite(tmp_path):
+    save_guide(tmp_path, _profile())
+    path = tmp_path / "guides" / "_assignments.json"
+    path.write_text("{oops", encoding="utf-8")
+    set_assignment(tmp_path, "c1", "g", None)
+    assert get_assignment(tmp_path, "c1") == ("g", None)
+    assert (tmp_path / "guides" / "_assignments.json.corrupt").read_text(encoding="utf-8") == "{oops"

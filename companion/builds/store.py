@@ -43,7 +43,7 @@ def load_guide(runtime_dir: Path, slug: str) -> GuideProfile | None:
     if not path.exists():
         return None
     try:
-        return GuideProfile.model_validate_json(path.read_text(encoding="utf-8"))
+        return GuideProfile.model_validate_json(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError) as exc:  # pydantic ValidationError is a ValueError
         logger.warning("Skipping unreadable guide %s: %s", path.name, exc)
         return None
@@ -108,20 +108,29 @@ def _set_breaker_rules_locked(runtime_dir: Path, slug: str, rules: list[BreakerR
     return profile
 
 
-def _read_assignments(runtime_dir: Path) -> dict:
-    path = _dir(runtime_dir) / _ASSIGNMENTS
+def _assignments_path(runtime_dir: Path) -> Path:
+    return _dir(runtime_dir) / _ASSIGNMENTS
+
+
+def _read_assignments(runtime_dir: Path) -> dict | None:
+    """Assignments by character id; None when the file exists but is unreadable or not an object."""
+    path = _assignments_path(runtime_dir)
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         logger.warning("Corrupt assignments file %s; ignoring", path, exc_info=True)
-        return {}
+        return None
+    if not isinstance(data, dict):
+        logger.warning("Assignments file %s is not a JSON object; ignoring", path)
+        return None
+    return data
 
 
 def get_assignment(runtime_dir: Path, character_id: str) -> tuple[str | None, str | None]:
-    entry = _read_assignments(runtime_dir).get(character_id)
-    if not entry or load_guide(runtime_dir, entry.get("guide_slug") or "") is None:
+    entry = (_read_assignments(runtime_dir) or {}).get(character_id)
+    if not isinstance(entry, dict) or load_guide(runtime_dir, entry.get("guide_slug") or "") is None:
         return None, None
     return entry["guide_slug"], entry.get("stage_override")
 
@@ -129,11 +138,14 @@ def get_assignment(runtime_dir: Path, character_id: str) -> tuple[str | None, st
 def _set_assignment_locked(
     runtime_dir: Path, character_id: str, guide_slug: str | None, stage_override: str | None
 ) -> None:
+    path = _assignments_path(runtime_dir)
     data = _read_assignments(runtime_dir)
+    if data is None:
+        # Keep the unreadable file for manual recovery instead of silently overwriting it.
+        path.replace(path.with_name(_ASSIGNMENTS + ".corrupt"))
+        data = {}
     data[character_id] = {"guide_slug": guide_slug, "stage_override": stage_override}
-    atomic_write_file(
-        _dir(runtime_dir) / _ASSIGNMENTS, json.dumps(data, indent=2).encode("utf-8")
-    )
+    atomic_write_file(path, json.dumps(data, indent=2).encode("utf-8"))
 
 
 def save_guide(runtime_dir: Path, profile: GuideProfile, pob_xml: str | None = None) -> GuideProfile:

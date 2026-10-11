@@ -291,3 +291,26 @@ Phase 2–4 mengganti jalur compare dengan satu pipeline (`companion/equipment/e
 - Verifikasi live untuk 3 (lock pembuatan sesi), 4 (teks PoB2), 7 (Set 2), 9, 12, 13, 14: butuh Docker dan login OAuth MCP (status saat cek: `WAITING_FOR_USER`).
 - 12: default kelas `"Mercenary"` saat payload tanpa kelas.
 - 17: `weapon_projection.py` (+3 file test) bisa dihapus.
+
+---
+
+## Verifikasi live (2026-10-12, `main` @ 1cf85ae)
+
+Dashboard (`companion.cli dashboard --port 8799`), Docker, token OAuth MCP valid (`oauth_status.json` status `SUCCESS`). Karakter: BOMSHAK (Mercenary3, lvl 56) dan DaisyofWar (Witch3, lvl 71). Runtime dicadangkan sebelum uji; perubahan uji (level, slot hantu, assignment guide) dikembalikan sesudahnya.
+
+| # | Hasil | Bukti |
+|---|---|---|
+| 3 | Terverifikasi live | BOMSHAK: 4x `fetch-public-profile`, 2 container sebelum dan sesudah tiap sync. Pilih DaisyofWar: naik ke 4 (2 per karakter). Pilih karakter bolak-balik dan pilih ganda: tetap 4. Init sesi Daisy yang gagal karena 429: tidak menambah container. Server dihentikan: 0. |
+| 4 | Terverifikasi live, dengan catatan | Setelah sync, `raw_text` 10 slot BOMSHAK berasal dari PoB2: Requirements tanpa `Str/Dex/Int`, staff membawa `Grants Skill: Level 13 Solar Orb (implicit)` yang tidak ada di teks GGG. Semua slot lolos `parse_item_text`. Catatan: (a) teks PoB2 tidak membawa properti senjata (`Physical Damage`, `Attacks per Second`, `Critical Hit Chance`), yang ada di teks GGG; (b) `Level` req staff 16 di PoB2 vs 36 di GGG; (c) slot tetap berlabel `source: GGG_OFFICIAL_API` walau teksnya dari PoB2; (d) nama berdiakritik beda (`Maelström Span` GGG vs `Maelstrom Span` PoB2), jadi tiap sync dianggap ganti item (revisi naik, fakta ditandai STALE). |
+| 7 | Mekanisme terverifikasi; compare dashboard tetap 0 (lihat 19) | Compare crossbow lebih kuat ke `set2_main_hand` (kunci slot): `pob_slot: Weapon 1 Swap`, `dps_delta: 0.0`. Uji langsung di engine dengan XML BOMSHAK: group 7 (Oil Grenade) DPS 0 di set 1, 20.6 → 36.5 di set 2 setelah crossbow dipasang. Aktivasi set 2 di `measure()` bekerja. Delta 0 berasal dari main skill yang dikunci (temuan 19). |
+| 9 | Terverifikasi live | Level di `runtime/characters/BOMSHAK.json` dinaikkan 56 → 57, lalu `GET /api/status`: sesi di-sync sekali (baseline ditulis ulang 03:15:55); poll berikutnya tidak memicu ulang. Sebelum level berubah, sesi berumur 5 menit tidak di-refresh. |
+| 12 | Terverifikasi live (kecuali kelas) | Baseline DaisyofWar terisi dari PoB2 (`DERIVED_CALCULATION`, `evidence_ref: pob2`, life 1152, ES 880, res). Baseline BOMSHAK seluruhnya `MANUAL_USER_INPUT`: tidak ditimpa, ditandai STALE (sesuai desain). Slot hantu: crossbow disuntik ke `weapon_set_2.main_hand` Daisy, refresh via level, slot kembali kosong. Kelas: file karakter Daisy berisi `character_class: Witch3`, `ascendancy: Gemling Legionnaire` (default palsu). |
+| 13 | Terverifikasi live | `GET /api/account-characters`: `source: api`, 7 karakter akun dari GGG (plus `Cli Hero` dari file lokal tes). |
+| 14 | Terverifikasi live | Sync beruntun memberi `{"error": "GGG_API_ERROR", "message": "rate limited (429) — wait a bit and retry"}`; nama karakter salah memberi `not found (404) — wrong character/realm`. UI menampilkan `message` lewat alert. |
+| Phase 4 | Terverifikasi live | DaisyofWar sementara di-assign guide Navira, stage `Late Endgame` (= `pob_stage_id` guide). Helmet ES: `verdict EQUIP_NOW`, `guide.target_fit = {dps_pct: 0.0, ehp_pct: -0.093}` (diukur di XML guide). |
+
+## 19. Main skill hasil import GGG selalu group 1 (Tinggi, baru)
+
+Import karakter dari GGG ke PoB2 menetapkan `mainSocketGroup = 1`. Untuk BOMSHAK, group 1 adalah Virtuous Barrier (buff, DPS 0). `measure()` mengunci main skill ke `self.main_group` sebelum before/after, jadi `dps_delta` BOMSHAK selalu 0 untuk semua slot. Akibatnya senjata dan item ofensif tidak pernah melewati ambang DPS. Skill yang relevan ada di XML (Flameblast group 5, Oil Grenade group 7), tetapi tidak dipilih.
+
+**Perbaikan yang mungkin**: pilih main skill dari guide aktif (mis. skill utama per stage), atau dari group dengan DPS tertinggi saat baseline. Opsi kedua bisa memilih skill dari item (Solar Orb dari staff, 282 DPS), jadi skill dari guide lebih tepat bila tersedia.

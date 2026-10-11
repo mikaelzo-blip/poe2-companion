@@ -163,3 +163,73 @@ def test_special_mechanic_enters_build_mechanic_modifiers_with_unknown_verificat
     assert contrib.build_mechanic_modifiers[0].verification_state == VerificationState.UNKNOWN
     assert len(contrib.unknown_modifiers) == 0
     assert len(contrib.global_modifiers) == 0
+
+
+def test_contribution_all_elemental_resistance():
+    item = ItemCandidate(
+        item_id="ring_all_res",
+        name="Prismatic Ring",
+        base_type="Prismatic Ring",
+        slot=SlotType.RING_1,
+        slot_occupancy=SlotOccupancy.SINGLE_SLOT,
+        modifiers=[
+            NormalizedModifier(
+                modifier_type=NormalizedModifierType.ALL_ELEMENTAL_RESISTANCE,
+                scope=ModifierScope.GLOBAL_CHARACTER_STAT,
+                value=10.0,
+                raw_text="+10% to all Elemental Resistances",
+            ),
+        ],
+    )
+    contrib = build_item_contribution(item)
+    assert contrib.fire_res_delta == 10.0
+    assert contrib.cold_res_delta == 10.0
+    assert contrib.lightning_res_delta == 10.0
+    assert contrib.chaos_res_delta == 0.0
+
+
+def test_contribution_all_attributes():
+    item = ItemCandidate(
+        item_id="amulet_all_attr",
+        name="Astramentis",
+        base_type="Onyx Amulet",
+        slot=SlotType.AMULET,
+        slot_occupancy=SlotOccupancy.SINGLE_SLOT,
+        modifiers=[
+            NormalizedModifier(
+                modifier_type=NormalizedModifierType.ALL_ATTRIBUTES,
+                scope=ModifierScope.GLOBAL_CHARACTER_STAT,
+                value=8.0,
+                raw_text="+8 to all Attributes",
+            ),
+        ],
+    )
+    contrib = build_item_contribution(item)
+    assert contrib.str_delta == 8
+    assert contrib.dex_delta == 8
+    assert contrib.int_delta == 8
+
+
+def test_contribution_conditional_all_elemental_resistance_adds_nothing():
+    item = ItemCandidate(
+        item_id="ring_cond_res",
+        name="Conditional Ring",
+        base_type="Two-Stone Ring",
+        slot=SlotType.RING_1,
+        slot_occupancy=SlotOccupancy.SINGLE_SLOT,
+        modifiers=[
+            NormalizedModifier(
+                modifier_type=NormalizedModifierType.ALL_ELEMENTAL_RESISTANCE,
+                scope=ModifierScope.CONDITIONAL,
+                value=10.0,
+                raw_text="+10% to all Elemental Resistances while on Full Energy Shield",
+            ),
+        ],
+    )
+    contrib = build_item_contribution(item)
+    assert contrib.fire_res_delta == 0.0
+    assert contrib.cold_res_delta == 0.0
+    assert contrib.lightning_res_delta == 0.0
+    assert contrib.chaos_res_delta == 0.0
+    assert len(contrib.unknown_modifiers) == 1
+

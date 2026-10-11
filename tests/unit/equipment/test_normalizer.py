@@ -7,7 +7,11 @@ from companion.equipment.schema import (
     NormalizedModifierType,
     SlotType,
 )
-from companion.equipment.normalizer import normalize_modifier, normalize_modifier_text
+from companion.equipment.normalizer import (
+    normalize_modifier,
+    normalize_modifier_text,
+    strip_mod_tags,
+)
 
 
 def test_normalize_life():
@@ -153,3 +157,34 @@ def test_normalize_stun_and_ailment_threshold_preserved_as_genuine_unknown():
     assert ailment_mod.scope == ModifierScope.UNKNOWN_SCOPE
     assert ailment_mod.verification_state == VerificationState.UNKNOWN
     assert ailment_mod.raw_text == "+45(30-50) to Ailment Threshold"
+
+
+@pytest.mark.parametrize("line,mtype,value", [
+    ("+12% to all Elemental Resistances", NormalizedModifierType.ALL_ELEMENTAL_RESISTANCE, 12.0),
+    ("+12(10-15)% to all Elemental Resistances", NormalizedModifierType.ALL_ELEMENTAL_RESISTANCE, 12.0),
+    ("+8 to all Attributes", NormalizedModifierType.ALL_ATTRIBUTES, 8.0),
+    ("Gain 10% of Damage as Extra Fire Damage", NormalizedModifierType.EXTRA_FIRE_DAMAGE, 10.0),
+    ("+1 to Level of all Fire Spell Skills", NormalizedModifierType.FIRE_SPELL_LEVEL, 1.0),
+    ("+2 to Level of all Spell Skills", NormalizedModifierType.ALL_SPELL_LEVEL, 2.0),
+    ("+20% to Fire Resistance (rune)", NormalizedModifierType.FIRE_RESISTANCE, 20.0),
+])
+def test_poe2_wordings(line, mtype, value):
+    mod = normalize_modifier(line)
+    assert (mod.modifier_type, mod.value) == (mtype, value)
+    assert mod.raw_text == line
+
+
+def test_all_res_is_global_unless_conditional():
+    assert normalize_modifier("+10% to all Elemental Resistances").scope == ModifierScope.GLOBAL_CHARACTER_STAT
+    assert normalize_modifier("+10% to all Elemental Resistances while on Full Energy Shield").scope == ModifierScope.CONDITIONAL
+
+
+def test_flat_maximum_energy_shield_local_only_on_defence_slots():
+    assert normalize_modifier("+30 to maximum Energy Shield", slot=SlotType.HELMET).modifier_type == NormalizedModifierType.LOCAL_ENERGY_SHIELD
+    assert normalize_modifier("+30 to maximum Energy Shield", slot=SlotType.RING).modifier_type != NormalizedModifierType.LOCAL_ENERGY_SHIELD
+
+
+def test_strip_mod_tags():
+    assert strip_mod_tags("Adds 1 to 4 Physical Damage to Attacks (implicit)") == "Adds 1 to 4 Physical Damage to Attacks"
+    assert strip_mod_tags("+20 to Spirit (Rune)") == "+20 to Spirit"
+

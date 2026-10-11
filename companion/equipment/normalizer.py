@@ -34,7 +34,7 @@ RE_LOCAL_ARMOUR_FLAT = re.compile(r"^\+?(\d+)\s+to\s+Armour", re.IGNORECASE)
 RE_LOCAL_EVA_INC = re.compile(r"^\+?(\d+)%\s+increased\s+Evasion(\s+Rating)?", re.IGNORECASE)
 RE_LOCAL_EVA_FLAT = re.compile(r"^\+?(\d+)\s+to\s+Evasion(\s+Rating)?", re.IGNORECASE)
 RE_LOCAL_ES_INC = re.compile(r"^\+?(\d+)%\s+increased\s+Energy\s+Shield", re.IGNORECASE)
-RE_LOCAL_ES_FLAT = re.compile(r"^\+?(\d+)\s+to\s+Energy\s+Shield", re.IGNORECASE)
+RE_LOCAL_ES_FLAT = re.compile(r"^\+?(\d+)\s+to\s+(?:maximum\s+)?Energy\s+Shield", re.IGNORECASE)
 
 RE_LOCAL_PHYS_INC = re.compile(r"^\+?(\d+)%\s+increased\s+Physical\s+Damage", re.IGNORECASE)
 
@@ -45,14 +45,14 @@ RE_FLAT_FIRE_SPELL = re.compile(
     r"^Adds\s+(\d+)\s+to\s+(\d+)\s+Fire\s+Damage\s+to\s+Spells", re.IGNORECASE
 )
 RE_EXTRA_FIRE = re.compile(
-    r"^Gain\s+(\d+)%\s+of\s+Physical\s+Damage\s+as\s+Extra\s+Fire\s+Damage", re.IGNORECASE
+    r"^Gain\s+(\d+)%\s+of\s+(?:Physical\s+)?Damage\s+as\s+Extra\s+Fire\s+Damage", re.IGNORECASE
 )
 RE_INC_FIRE = re.compile(r"^(\d+)%\s+increased\s+Fire\s+Damage", re.IGNORECASE)
 RE_FIRE_SPELL_LEVEL = re.compile(
-    r"^\+?(\d+)\s+to\s+Level\s+of\s+all\s+Fire\s+Spell\s+Skill\s+Gems", re.IGNORECASE
+    r"^\+?(\d+)\s+to\s+Level\s+of\s+all\s+Fire\s+Spell\s+Skill(?:\s+Gem)?s", re.IGNORECASE
 )
 RE_ALL_SPELL_LEVEL = re.compile(
-    r"^\+?(\d+)\s+to\s+Level\s+of\s+all\s+Spell\s+Skill\s+Gems", re.IGNORECASE
+    r"^\+?(\d+)\s+to\s+Level\s+of\s+all\s+Spell\s+Skill(?:\s+Gem)?s", re.IGNORECASE
 )
 
 RE_CONDITIONAL = re.compile(
@@ -62,6 +62,11 @@ RE_CONDITIONAL = re.compile(
 
 RE_MODIFIER_ANNOTATION = re.compile(
     r"^\{\s*(?:(?:Unique|Implicit|Prefix|Suffix|Crafted|Corrupted|Rune|Enchant|Fractured)\s+)?Modifier(?:\b[^}]*)?\s*\}$",
+    re.IGNORECASE,
+)
+
+RE_MOD_TAGS = re.compile(
+    r"\s*\((implicit|augmented|fractured|enchant|rune|crafted|desecrated)\)",
     re.IGNORECASE,
 )
 
@@ -75,6 +80,11 @@ RE_SPECIAL_KEYSTONES = re.compile(
 def is_modifier_annotation(text: str) -> bool:
     """Return True if text is a structural modifier category annotation line (e.g. { Unique Modifier })."""
     return bool(RE_MODIFIER_ANNOTATION.match(text.strip()))
+
+
+def strip_mod_tags(text: str) -> str:
+    """Strip item modifier classification tags like (implicit) or (rune)."""
+    return RE_MOD_TAGS.sub("", text).strip()
 
 
 DEFENSE_SLOTS = {
@@ -102,7 +112,7 @@ def normalize_modifier(
         return None
 
     # Strip PoE tags like (implicit) or (enchant)
-    stripped = re.sub(r"\s*\((implicit|augmented|fractured|enchant)\)", "", clean_text, flags=re.IGNORECASE).strip()
+    stripped = strip_mod_tags(clean_text)
 
     # Clean roll range annotations like 45(30-50)% -> 45% for pattern matching
     clean_for_match = re.sub(r"(\d+(?:\.\d+)?)\s*\(\s*\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?\s*\)", r"\1", stripped)
@@ -162,6 +172,16 @@ def normalize_modifier(
             is_implicit=is_implicit,
         )
 
+    m = RE_ALL_RES.search(clean_for_match)
+    if m:
+        return NormalizedModifier(
+            modifier_type=NormalizedModifierType.ALL_ELEMENTAL_RESISTANCE,
+            scope=ModifierScope.CONDITIONAL if is_conditional else ModifierScope.GLOBAL_CHARACTER_STAT,
+            value=float(m.group(1)),
+            raw_text=clean_text,
+            is_implicit=is_implicit,
+        )
+
     # Attributes
     m = RE_STR.search(clean_for_match)
     if m:
@@ -187,6 +207,16 @@ def normalize_modifier(
     if m:
         return NormalizedModifier(
             modifier_type=NormalizedModifierType.INTELLIGENCE,
+            scope=ModifierScope.CONDITIONAL if is_conditional else ModifierScope.GLOBAL_CHARACTER_STAT,
+            value=float(m.group(1)),
+            raw_text=clean_text,
+            is_implicit=is_implicit,
+        )
+
+    m = RE_ALL_ATTR.search(clean_for_match)
+    if m:
+        return NormalizedModifier(
+            modifier_type=NormalizedModifierType.ALL_ATTRIBUTES,
             scope=ModifierScope.CONDITIONAL if is_conditional else ModifierScope.GLOBAL_CHARACTER_STAT,
             value=float(m.group(1)),
             raw_text=clean_text,

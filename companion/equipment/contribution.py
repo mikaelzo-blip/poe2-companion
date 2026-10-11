@@ -89,11 +89,19 @@ def build_item_contribution(
                 light_res += mod.value
             elif mod.modifier_type == NormalizedModifierType.CHAOS_RESISTANCE:
                 chaos_res += mod.value
+            elif mod.modifier_type == NormalizedModifierType.ALL_ELEMENTAL_RESISTANCE:
+                fire_res += mod.value
+                cold_res += mod.value
+                light_res += mod.value
             elif mod.modifier_type == NormalizedModifierType.STRENGTH:
                 str_val += int(mod.value)
             elif mod.modifier_type == NormalizedModifierType.DEXTERITY:
                 dex_val += int(mod.value)
             elif mod.modifier_type == NormalizedModifierType.INTELLIGENCE:
+                int_val += int(mod.value)
+            elif mod.modifier_type == NormalizedModifierType.ALL_ATTRIBUTES:
+                str_val += int(mod.value)
+                dex_val += int(mod.value)
                 int_val += int(mod.value)
             elif mod.modifier_type == NormalizedModifierType.MOVEMENT_SPEED:
                 ms_val += mod.value

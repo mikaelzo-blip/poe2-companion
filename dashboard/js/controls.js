@@ -9,7 +9,7 @@ function fillSelect(sel, firstLabel, items, selected) {
     opt.textContent = it.label;
     sel.appendChild(opt);
   });
-  sel.value = selected || '';
+  sel.value = items.some(i => i.value === selected) ? selected : '';
 }
 
 function showGuideError(msg) {
@@ -32,7 +32,6 @@ export async function refreshGuideControls() {
     const cur = guides.find(g => g.slug === guideSelect.value);
     fillSelect(stageSelect, 'Auto (berdasarkan level)',
       (cur ? cur.stages : []).map(st => ({ value: st.id, label: st.title })), active.stage_override);
-    showGuideError('');
   } catch (err) {
     console.warn('Failed to load guides:', err);
     showGuideError('Gagal memuat daftar guide');
@@ -162,7 +161,7 @@ export async function setupCharacterAndGuideControls() {
 
   if (stageSelect) {
     stageSelect.addEventListener('change', async () => {
-      await saveGuideAssignment(guideSelect?.value, stageSelect.value);
+      if (!(await saveGuideAssignment(guideSelect?.value, stageSelect.value))) await refreshGuideControls();
       await fetchHttpRuntime();
     });
   }

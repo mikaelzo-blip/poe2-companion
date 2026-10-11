@@ -485,7 +485,7 @@ export async function simulateVersusComparison(rawText, container, explicitSlot 
   const targetLabel = SLOT_LABELS[targetSlot] || targetSlot.toUpperCase();
 
   container.style.display = 'block';
-  container.innerHTML = `<div style="color: var(--accent-gold); font-size: 12px; font-family: var(--font-mono); padding: 12px;">⏳ Mengevaluasi calon untuk slot ${esc(targetLabel)} dengan PoB2 Engine & Fubgun Rules...</div>`;
+  container.innerHTML = `<div style="color: var(--accent-gold); font-size: 12px; font-family: var(--font-mono); padding: 12px;">⏳ Mengevaluasi calon untuk slot ${esc(targetLabel)} dengan PoB2 & aturan guide...</div>`;
 
   try {
     const res = await fetch('/api/evaluate-item', {

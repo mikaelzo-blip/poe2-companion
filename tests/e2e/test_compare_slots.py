@@ -260,3 +260,10 @@ def test_detect_slot_uses_item_class_table(dashboard_page: Page) -> None:
         "async () => { const { detectSlotFromItemText } = await import('/js/compare.js'); return detectSlotFromItemText('Item Class: Rings'); }"
     )
     assert r3 == "ring1"
+
+
+def test_detect_slot_talisman_without_item_class_is_weapon(dashboard_page: Page) -> None:
+    detect = "async (t) => { const { detectSlotFromItemText } = await import('/js/compare.js'); return detectSlotFromItemText(t[0], t[1]); }"
+    text = "Rarity: Rare\nGrim Bite\nRoaring Talisman\n--------"
+    assert dashboard_page.evaluate(detect, [text, None]) == "main_hand"
+    assert dashboard_page.evaluate(detect, [text, "set2_main_hand"]) == "set2_main_hand"

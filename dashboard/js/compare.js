@@ -145,6 +145,10 @@ export function detectSlotFromItemText(rawText, fallbackSlot = null) {
     return slotFromClass;
   }
 
+  // Talismans are two-handed weapons; checked first so "ring" in "Roaring Talisman" cannot match.
+  if (itemClass.includes('talisman') || baseType.includes('talisman')) {
+    return fallbackSlot === 'set2_main_hand' ? 'set2_main_hand' : 'main_hand';
+  }
   if (itemClass.includes('helmet') || itemClass.includes('helm') || baseType.includes('helm') || baseType.includes('circlet') || baseType.includes('crown')) {
     return 'helmet';
   }
@@ -157,7 +161,7 @@ export function detectSlotFromItemText(rawText, fallbackSlot = null) {
   if (itemClass.includes('belt') || baseType.includes('belt') || baseType.includes('sash') || baseType.includes('cord') || baseType.includes('girdle')) {
     return 'belt';
   }
-  if (itemClass.includes('amulet') || itemClass.includes('talisman') || baseType.includes('amulet') || baseType.includes('talisman') || baseType.includes('pendant') || baseType.includes('medallion')) {
+  if (itemClass.includes('amulet') || baseType.includes('amulet') || baseType.includes('pendant') || baseType.includes('medallion')) {
     return 'amulet';
   }
   if (itemClass.includes('ring') || baseType.includes('ring') || baseType.includes('band') || baseType.includes('spiral')) {

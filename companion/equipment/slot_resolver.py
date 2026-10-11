@@ -27,7 +27,7 @@ UI_SLOT_KEYS: dict[str, str] = {
 }
 _FROM_UI = {v: k for k, v in UI_SLOT_KEYS.items()}
 _EXTRA_ALIASES = {"swap_main_hand": "Weapon 1 Swap", "swap_off_hand": "Weapon 2 Swap"}
-_NON_EQUIPPABLE = ("Jewel", "Flask", "Charm", "Waystone")
+_NON_EQUIPPABLE = ("Jewel", "Flask", "Charm", "Waystone", "Currency")
 _ITEM_CLASS_RE = re.compile(r"^Item Class:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
 _SET_CONTEXT = {1: WeaponSetContext.WEAPON_SET_1, 2: WeaponSetContext.WEAPON_SET_2}
 

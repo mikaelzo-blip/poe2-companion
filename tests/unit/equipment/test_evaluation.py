@@ -202,3 +202,25 @@ def test_already_equipped_detects_same_rare_but_not_magic(tmp_path):
     _seed_boots_and_life(tmp_path, "A", magic)
     r = evaluate(magic, "A", runtime_dir=tmp_path, pob_session=None, source="manual")
     assert r.verdict != "ALREADY_EQUIPPED"
+
+
+class LethalResDrop(Stub):
+    """Clearly EQUIP_NOW by policy (+5% DPS, +3% EHP, no cap breach) but loses fire res in a fire-lethal zone."""
+
+    def measure(self, slot, raw, candidate_id, **kw):
+        return super().measure(slot, raw, candidate_id, **kw).model_copy(update={"fire_res_delta": -10})
+
+
+def test_tactical_zone_veto_downgrades_equip_now_to_reject(tmp_path):
+    _write_char(tmp_path, "X", level=19)
+    r = evaluate(BOOTS_TEXT, "X", runtime_dir=tmp_path, pob_session=LethalResDrop(), source="manual", zone="G2_1")
+    assert r.per_slot[0].verdict == "EQUIP_NOW"  # policy alone would equip
+    assert r.verdict == "REJECT"
+    assert r.tactical_advice["tactical_headline"] in r.reasons
+
+
+def test_already_equipped_has_indonesian_reason(tmp_path):
+    _write_char(tmp_path, "A", level=30)
+    _seed_boots_and_life(tmp_path, "A", BOOTS_TEXT)
+    r = evaluate(BOOTS_TEXT, "A", runtime_dir=tmp_path, pob_session=None, source="manual")
+    assert r.reasons == ["Item ini sudah terpasang di Boots"]

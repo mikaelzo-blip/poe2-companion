@@ -984,3 +984,13 @@ def test_check_auto_clipboard_reevaluates_on_context_change(fub: Path, monkeypat
     assert d_api.check_auto_clipboard(fub, char_id="BOMSHAK", stage_str="auto", pob_session=Stub())["has_new_item"] is True
     assert d_api.check_auto_clipboard(fub, char_id="BOMSHAK", stage_str="auto", pob_session=Stub())["has_new_item"] is False
     assert d_api.check_auto_clipboard(fub, char_id="Varashta", stage_str="auto", pob_session=Stub())["has_new_item"] is True
+
+
+def test_evaluate_item_payload_unexpected_failure_returns_error(fub: Path, monkeypatch: Any) -> None:
+    import companion.dashboard_api as d_api
+
+    def boom(*a, **kw):
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr(d_api, "evaluate", boom)
+    assert d_api.evaluate_item_payload(_payload(BOOTS), runtime_dir=fub) == {"error": "Evaluation error: kaboom"}

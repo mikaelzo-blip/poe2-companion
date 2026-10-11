@@ -205,7 +205,7 @@ def evaluate(
                 return EvaluationResult(
                     verdict="ALREADY_EQUIPPED", engine="pob2" if pob_ok else "heuristic",
                     engine_reason=state["reason"], slot=slot, slot_reason=slot_reason, per_slot=[],
-                    item_name=candidate.name or candidate.base_type, base_type=candidate.base_type,
+                    reasons=[f"Item ini sudah terpasang di {slot}"], item_name=candidate.name or candidate.base_type, base_type=candidate.base_type,
                     current_item_name=parsed.name or parsed.base_type,
                 )
         delta = None

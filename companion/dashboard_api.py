@@ -91,6 +91,9 @@ def evaluate_item_payload(
         )
     except ValueError as exc:
         return {"error": str(exc)}
+    except Exception as exc:
+        logger.exception("Evaluation failed for %r", char_id)
+        return {"error": f"Evaluation error: {exc}"}
     base_type = get_current_item_info(runtime_dir, char_id, r.slot, pob_session)[1]
     return _stamp_evaluated(flatten_result(r, base_type))
 
@@ -126,6 +129,7 @@ def check_auto_clipboard(
         try:
             pob_session = pob_session_resolver()
         except Exception:
+            logger.warning("PoB2 session resolver failed; evaluating without PoB2", exc_info=True)
             pob_session = None
 
     result = evaluate_item_payload(

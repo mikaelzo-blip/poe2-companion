@@ -7,7 +7,11 @@ import re
 from pydantic import BaseModel
 
 from companion.builds.guide import StageItem
-from companion.equipment.normalizer import NormalizedModifierType, normalize_modifier
+from companion.equipment.normalizer import (
+    NormalizedModifierType,
+    normalize_modifier,
+    strip_mod_tags,
+)
 
 _NUMBER = re.compile(r"[+-]?\d+(?:\.\d+)?(?:\s*\(\s*[+-]?\d+(?:\.\d+)?\s*-\s*[+-]?\d+(?:\.\d+)?\s*\))?%?")
 
@@ -16,7 +20,8 @@ def mod_family(line: str) -> str:
     mod = normalize_modifier(line)
     if mod is not None and mod.modifier_type != NormalizedModifierType.UNKNOWN_MODIFIER:
         return mod.modifier_type.value
-    return " ".join(_NUMBER.sub("#", line.lower()).split())
+    clean = strip_mod_tags(line)
+    return " ".join(_NUMBER.sub("#", clean.lower()).split())
 
 
 class PrioritySignal(BaseModel):

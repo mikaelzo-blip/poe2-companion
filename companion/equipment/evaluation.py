@@ -258,9 +258,11 @@ def evaluate(
             cur_parsed = parse_item_text(cur_text)
         except Exception:
             logger.warning("Current item in %s unparseable", chosen.slot, exc_info=True)
-    info_name, info_base = get_current_item_info(runtime_dir, character_id, chosen.slot, pob_session if pob_ok else None)
-    current_name = (cur_parsed.name or cur_parsed.base_type) if cur_parsed else (None if info_name == "Slot Kosong" else info_name)
-    current_base = (cur_parsed.base_type if cur_parsed else "") or info_base or ""
+    if cur_parsed:
+        current_name, current_base = cur_parsed.name or cur_parsed.base_type, cur_parsed.base_type
+    else:
+        info_name, current_base = get_current_item_info(runtime_dir, character_id, chosen.slot, pob_session if pob_ok else None)
+        current_name = None if info_name == "Slot Kosong" else info_name
     return EvaluationResult(
         verdict=verdict,
         engine="pob2" if chosen.slot in pob_slots else "none" if len(vetoed) == len(plans) else "heuristic",

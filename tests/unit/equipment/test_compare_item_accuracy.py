@@ -15,9 +15,8 @@ import pytest
 
 from companion.equipment.parser import parse_item_text
 from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-from companion.equipment.precedence import Verdict
 from companion.equipment.schema import SlotOccupancy, SlotType, WeaponSetContext
-from companion.equipment.tactical_advisor import generate_tactical_advice
+from companion.equipment.tactical_advisor import Verdict, generate_tactical_advice
 from companion.dashboard_api import evaluate_item_payload, get_current_raw
 from companion.equipment.loadout import EquippedLoadout
 from companion.equipment.loadout_cli import save_loadout

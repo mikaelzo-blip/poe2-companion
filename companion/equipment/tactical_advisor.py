@@ -6,12 +6,20 @@ and attribute requirement checks to provide bold, actionable tactical advice.
 
 from __future__ import annotations
 
+from enum import Enum
 import re
 from typing import Any
 from pydantic import BaseModel, Field
 
-from companion.equipment.precedence import Verdict
 from companion.equipment.zone_threats import ZoneThreatProfile, get_zone_threat_profile
+
+
+class Verdict(str, Enum):
+    EQUIP_NOW = "EQUIP_NOW"
+    CONDITIONAL_UPGRADE = "CONDITIONAL_UPGRADE"
+    KEEP_FOR_LATER = "KEEP_FOR_LATER"
+    REJECT = "REJECT"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
 
 
 class TacticalAdvice(BaseModel):

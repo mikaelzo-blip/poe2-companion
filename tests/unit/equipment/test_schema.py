@@ -141,7 +141,7 @@ def test_item_candidate_model():
 
 
 def test_public_verdict_contract_exact_members():
-    from companion.equipment.precedence import Verdict
+    from companion.equipment.tactical_advisor import Verdict
 
     expected_members = {
         "EQUIP_NOW",

@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 
 from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-from companion.equipment.precedence import Verdict
 from companion.equipment.tactical_advisor import (
     TacticalAdvice,
+    Verdict,
     generate_tactical_advice,
 )
 

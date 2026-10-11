@@ -1,8 +1,6 @@
 import pytest
 
-from companion.equipment.precedence import Verdict as PrecedenceVerdict
-from companion.equipment.recommendation import Verdict as RecVerdict
-from companion.equipment.tactical_advisor import merge_verdicts
+from companion.equipment.tactical_advisor import Verdict, merge_verdicts
 
 
 @pytest.mark.parametrize(
@@ -18,12 +16,10 @@ from companion.equipment.tactical_advisor import merge_verdicts
         ("REJECT", "EQUIP_NOW", "REJECT"),
         ("REJECT", "CONDITIONAL_UPGRADE", "REJECT"),
         ("REJECT", "REJECT", "REJECT"),
-        # Enums from precedence and recommendation
-        (PrecedenceVerdict.EQUIP_NOW, PrecedenceVerdict.REJECT, "REJECT"),
-        (RecVerdict.EQUIP_NOW, RecVerdict.REJECT, "REJECT"),
-        (PrecedenceVerdict.REJECT, PrecedenceVerdict.EQUIP_NOW, "REJECT"),
-        (RecVerdict.REJECT, RecVerdict.EQUIP_NOW, "REJECT"),
-        (RecVerdict.CONDITIONAL_UPGRADE, RecVerdict.EQUIP_NOW, "CONDITIONAL_UPGRADE"),
+        # Verdict enum members
+        (Verdict.EQUIP_NOW, Verdict.REJECT, "REJECT"),
+        (Verdict.REJECT, Verdict.EQUIP_NOW, "REJECT"),
+        (Verdict.CONDITIONAL_UPGRADE, Verdict.EQUIP_NOW, "CONDITIONAL_UPGRADE"),
         # None and whitespace handling
         ("EQUIP_NOW", None, "EQUIP_NOW"),
         ("REJECT", None, "REJECT"),

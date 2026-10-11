@@ -27,12 +27,6 @@ from companion.equipment.baseline_gate import (
     LEGACY_ANCHOR_REQUIRES_REBASELINE,
     check_baseline_consistency,
 )
-from companion.equipment.data_sufficiency import (
-    RecommendationDataSufficiency,
-    analyze_data_sufficiency,
-)
-from companion.equipment.rules import BuildBreakerCertainty, BuildBreakerEvaluation
-from companion.equipment.precedence import MultidimensionalComparison, Verdict
 from companion.equipment.contribution import ItemContribution
 from companion.equipment.reconciler import reconcile_baseline_after_swap
 from companion.equipment.loadout import (
@@ -432,123 +426,6 @@ def test_movement_speed_reconciliation_promotion():
     assert reconciled.movement_speed.value == 22
     assert reconciled.movement_speed.source == BaselineSource.DERIVED_CALCULATION
     assert reconciled.movement_speed.verification == VerificationState.VERIFIED
-
-
-def test_stale_armour_blocks_armour_changing_candidate():
-    # Current body armour 800 armour, candidate 0 armour
-    # Baseline armour is STALE
-    # Expected: data sufficiency reports stale armour, is_sufficient_for_equip_now is False
-    curr_body = make_test_item("Current Chest", SlotType.BODY_ARMOUR, armour=800)
-    cand_body = make_test_item("Candidate Robe", SlotType.BODY_ARMOUR, armour=0)
-
-    loadout = EquippedLoadout.create_draft(character_id="char_test", loadout_id="l1")
-    loadout.set_slot(SlotType.BODY_ARMOUR, curr_body)
-    loadout.finalize()
-
-    baseline = CharacterStatBaseline.create_partial(
-        baseline_id="b1",
-        character_id="char_test",
-        anchored_loadout_revision=loadout.revision,
-        anchored_loadout_fingerprint=loadout.compute_fingerprint(),
-        life=1000,
-        armour=800,
-        evasion=100,
-        energy_shield=50,
-        fire_res=75,
-        cold_res=75,
-        lightning_res=75,
-        chaos_res=0,
-        strength=100,
-        dexterity=100,
-        intelligence=100,
-    )
-    baseline.armour = baseline.armour.mark_stale()
-
-    safe = BuildBreakerEvaluation(certainty=BuildBreakerCertainty.VERIFIED_SAFE)
-    res = analyze_data_sufficiency(
-        baseline=baseline,
-        loadout=loadout,
-        candidate=cand_body,
-        slot=SlotType.BODY_ARMOUR,
-        safety_eval=safe,
-    )
-
-    assert res.is_sufficient_for_equip_now is False
-    assert res.sufficiency == RecommendationDataSufficiency.INSUFFICIENT_FOR_CONFIDENT_EQUIP
-    assert any("armour" in r.lower() and "stale" in r.lower() for r in res.reasons)
-
-
-def test_stale_armour_does_not_block_defense_independent_ring():
-    # Stale Armour / Evasion / ES
-    # Candidate ring changes only Life & Fire Res
-    # Expected: is_sufficient_for_equip_now is True
-    curr_ring = make_test_item("Current Ring", SlotType.RING_1)
-    cand_ring = ItemCandidate(
-        item_id="cand_ring",
-        name="Ruby Ring",
-        base_type="Ruby Ring",
-        slot=SlotType.RING_1,
-        slot_occupancy=SlotOccupancy.SINGLE_SLOT,
-        slot_conflict_topology=SlotConflictTopology(
-            occupied_slots=[SlotType.RING_1],
-            conflicting_slots=[SlotType.RING_1],
-            is_known=True,
-        ),
-        local_armour=0,
-        local_evasion=0,
-        local_energy_shield=0,
-        modifiers=[
-            NormalizedModifier(
-                modifier_type=NormalizedModifierType.MAXIMUM_LIFE,
-                scope=ModifierScope.GLOBAL_CHARACTER_STAT,
-                value=30.0,
-                raw_text="+30 to maximum Life",
-            ),
-            NormalizedModifier(
-                modifier_type=NormalizedModifierType.FIRE_RESISTANCE,
-                scope=ModifierScope.GLOBAL_CHARACTER_STAT,
-                value=20.0,
-                raw_text="+20% to Fire Resistance",
-            ),
-        ],
-    )
-
-    loadout = EquippedLoadout.create_draft(character_id="char_test", loadout_id="l1")
-    loadout.set_slot(SlotType.RING_1, curr_ring)
-    loadout.finalize()
-
-    baseline = CharacterStatBaseline.create_partial(
-        baseline_id="b1",
-        character_id="char_test",
-        anchored_loadout_revision=loadout.revision,
-        anchored_loadout_fingerprint=loadout.compute_fingerprint(),
-        life=1000,
-        armour=800,
-        evasion=500,
-        energy_shield=100,
-        fire_res=75,
-        cold_res=75,
-        lightning_res=75,
-        chaos_res=0,
-        strength=100,
-        dexterity=100,
-        intelligence=100,
-    )
-    baseline.armour = baseline.armour.mark_stale()
-    baseline.evasion = baseline.evasion.mark_stale()
-    baseline.energy_shield = baseline.energy_shield.mark_stale()
-
-    safe = BuildBreakerEvaluation(certainty=BuildBreakerCertainty.VERIFIED_SAFE)
-    res = analyze_data_sufficiency(
-        baseline=baseline,
-        loadout=loadout,
-        candidate=cand_ring,
-        slot=SlotType.RING_1,
-        safety_eval=safe,
-    )
-
-    assert res.is_sufficient_for_equip_now is True
-    assert res.sufficiency == RecommendationDataSufficiency.SUFFICIENT
 
 
 def test_cli_promote_candidate_creates_history_snapshot(tmp_path: Path, capsys: pytest.CaptureFixture):

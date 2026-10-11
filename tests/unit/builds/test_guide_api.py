@@ -204,3 +204,17 @@ def test_import_fubgun_fixture_gets_default_rule(tmp_path):
 
     import_guide_payload({"text": _text(NAMES[0])}, tmp_path)
     assert load_guide(tmp_path, NAMES[0]).breaker_rules[0].from_level == 52
+
+
+def test_mobalytics_import_pob_stage_matches_active_set(tmp_path):
+    from companion.builds.store import load_guide
+
+    slug = "naviras-fracturing-varashta-league-starter"
+    res = import_guide_payload({"text": _text(slug)}, tmp_path)
+    assert res["success"] is True
+    guide = load_guide(tmp_path, slug)
+    assert guide is not None
+    late_stage = next(s for s in guide.stages if s.title == "Late Endgame")
+    assert guide.pob_stage_id == late_stage.id
+    assert guide.pob_stage_id != guide.stages[-1].id
+

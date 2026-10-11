@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from companion.builds.pob_code import decode_share_code, fetch_pobb_code, parse_pob_xml
+from companion.builds.pob_code import active_item_set_title, decode_share_code, fetch_pobb_code, parse_pob_xml
 from companion.equipment.parser import parse_item_text
 
 HELMET = """Rarity: RARE
@@ -40,6 +40,19 @@ XML = f"""<PathOfBuilding2>
 
 def _code(xml):
     return base64.urlsafe_b64encode(zlib.compress(xml.encode())).decode().rstrip("=")
+
+
+def test_active_item_set_title():
+    xml = (
+        '<PathOfBuilding2><Items activeItemSet="2">'
+        '<ItemSet id="1" title="Leveling"/>'
+        '<ItemSet id="2" title="Late Endgame"/>'
+        '</Items></PathOfBuilding2>'
+    )
+    assert active_item_set_title(xml) == "Late Endgame"
+    assert active_item_set_title('<PathOfBuilding2><Items><ItemSet id="1" title="A"/></Items></PathOfBuilding2>') is None
+    assert active_item_set_title('<PathOfBuilding2><Items activeItemSet="2"><ItemSet id="1" title="A"/></Items></PathOfBuilding2>') is None
+    assert active_item_set_title("<invalid>") is None
 
 
 def test_roundtrip_and_parse():

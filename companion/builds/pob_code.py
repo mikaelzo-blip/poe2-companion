@@ -39,6 +39,23 @@ def decode_share_code(code: str) -> str:
         raise ValueError("Kode PoB2 tidak valid") from exc
 
 
+def active_item_set_title(xml: str) -> str | None:
+    try:
+        root = ET.fromstring(xml)
+    except (ET.ParseError, ValueError, TypeError):
+        return None
+    items = root if root.tag == "Items" else root.find("Items")
+    if items is None:
+        return None
+    active_id = items.get("activeItemSet")
+    if not active_id:
+        return None
+    for s in items.findall("ItemSet"):
+        if s.get("id") == active_id:
+            return s.get("title")
+    return None
+
+
 def fetch_pobb_code(url: str, opener=urllib.request.urlopen) -> str:
     m = _POBB.match(url.strip())
     if not m:

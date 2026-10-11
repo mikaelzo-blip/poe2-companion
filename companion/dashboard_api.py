@@ -786,6 +786,16 @@ def import_guide_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str
                 except ValueError as exc:
                     warnings.append(f"Kode PoB2 dilewati: {exc}")
                     profile = profile.model_copy(update={"has_pob": False})
+                else:
+                    active_title = pob_code.active_item_set_title(xml)
+                    if active_title and active_title.strip():
+                        norm = active_title.strip().casefold()
+                        matched = next(
+                            (s.id for s in profile.stages if (s.title or "").strip().casefold() == norm),
+                            None,
+                        )
+                        if matched is not None:
+                            profile = profile.model_copy(update={"pob_stage_id": matched})
         else:
             if text.startswith("https://pobb.in/"):
                 try:

@@ -166,7 +166,7 @@ export async function setupCharacterAndGuideControls() {
   if (stageSelect) {
     stageSelect.addEventListener('change', async () => {
       const err = await saveGuideAssignment(guideSelect?.value, stageSelect.value);
-      if (err) await refreshGuideControls();
+      await refreshGuideControls();
       showGuideError(err || '');
       await fetchHttpRuntime();
     });

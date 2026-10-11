@@ -813,8 +813,13 @@ def run_live_watcher(
                                     candidate_name=candidate.name,
                                 )
                                 if dual_result is not None:
-                                    empty1 = pob_advisor.is_slot_empty("Ring 1")
-                                    empty2 = pob_advisor.is_slot_empty("Ring 2")
+                                    try:
+                                        empty1 = pob_advisor.is_slot_empty("Ring 1")
+                                        empty2 = pob_advisor.is_slot_empty("Ring 2")
+                                    except Exception as exc:
+                                        # Engine lookup failed: assume occupied so a hiccup never fakes an empty slot.
+                                        output_writer(f"Ring slot lookup failed: {exc}")
+                                        empty1 = empty2 = False
                                     advice = evaluate_dual_ring_policy(
                                         dual_result.ring1_delta,
                                         dual_result.ring2_delta,

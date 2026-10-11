@@ -91,11 +91,6 @@ export function loadDataIntoUI(status, character, objective, loadout, baseline =
       if (bInt) bInt.style.width = Math.min(100, (i / 120) * 100) + '%';
     }
 
-    if (character.build_progression) {
-      document.getElementById('sb-build-target').textContent = character.build_progression.target_build;
-      document.getElementById('sb-build-stage').textContent = `Stage: ${character.build_progression.active_stage}`;
-    }
-
     // Update Level 52 Transition Milestone readiness
     const transPctEl = document.getElementById('transition-pct');
     const reqStatusLvl = document.getElementById('req-status-level');

@@ -32,6 +32,10 @@ export async function refreshGuideControls() {
     const cur = guides.find(g => g.slug === guideSelect.value);
     fillSelect(stageSelect, 'Auto (berdasarkan level)',
       (cur ? cur.stages : []).map(st => ({ value: st.id, label: st.title })), active.stage_override);
+    const tgt = document.getElementById('sb-build-target');
+    const stg = document.getElementById('sb-build-stage');
+    if (tgt) tgt.textContent = cur ? cur.name : 'Karakter saja';
+    if (stg) stg.textContent = (cur && cur.stages.find(st => st.id === stageSelect.value)?.title) || 'Auto';
     showGuideError('');
   } catch (err) {
     console.warn('Failed to load guides:', err);

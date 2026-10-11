@@ -19,7 +19,6 @@ Level: 45
 """
 
 
-@pytest.mark.skip(reason="retired in Phase 4 Task 4")
 def test_cli_gear_loadout_and_baseline_lifecycle(tmp_path: Path, capsys):
     runtime_dir = str(tmp_path / "runtime")
     char_id = "cli_char"
@@ -46,14 +45,14 @@ def test_cli_gear_loadout_and_baseline_lifecycle(tmp_path: Path, capsys):
     assert "2000" in captured.out
 
     # 5. Evaluate file
-    code = main(["gear", "evaluate", "--file", str(item_file), "--slot", "boots", "--runtime", runtime_dir, "--character-id", char_id])
+    code = main(["gear", "evaluate", "--file", str(item_file), "--slot", "boots", "--no-pob", "--runtime", runtime_dir, "--character-id", char_id])
     assert code == 0
     captured = capsys.readouterr()
-    assert "EQUIPMENT INTELLIGENCE EVALUATION" in captured.out
+    assert captured.out.startswith("ALREADY_EQUIPPED — Loath Trail")
 
     # 6. Inspect clipboard
     with patch("companion.equipment.clipboard._read_os_clipboard", return_value=BOOTS_TEXT):
-        code = main(["gear", "inspect-clipboard", "--slot", "boots", "--runtime", runtime_dir, "--character-id", char_id])
+        code = main(["gear", "inspect-clipboard", "--slot", "boots", "--no-pob", "--runtime", runtime_dir, "--character-id", char_id])
         assert code == 0
         captured = capsys.readouterr()
-        assert "EQUIPMENT INTELLIGENCE EVALUATION" in captured.out
+        assert captured.out.startswith("ALREADY_EQUIPPED — Loath Trail")

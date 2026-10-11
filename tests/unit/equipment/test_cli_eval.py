@@ -199,3 +199,19 @@ def test_evaluate_once_locked_slot_mismatch(tmp_path: Path) -> None:
     assert code == 1
     assert "Slot terkunci tidak cocok dengan item" in text
 
+
+
+def test_live_survives_unexpected_error(tmp_path, monkeypatch):
+    import companion.equipment.cli_eval as ce
+
+    def boom(*_a, **_k):
+        raise RuntimeError("engine exploded")
+
+    monkeypatch.setattr(ce, "evaluate", boom)
+    out: list[str] = []
+    item = _item("Boots", "Wool Shoes", ["+10 to maximum Life"])
+    texts = iter([item, item + "x"])
+    code = ce.run_live(tmp_path, "BOMSHAK", pob_session=None, poll_interval=0,
+                       clipboard_reader=lambda: next(texts), output_writer=out.append, max_polls=2)
+    assert code == 0
+    assert out == ["Evaluasi gagal: engine exploded"] * 2

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 import time
 from typing import Any, Callable
@@ -11,6 +12,8 @@ from companion.dashboard_api import flatten_result
 from companion.equipment.clipboard import get_clipboard_text
 from companion.equipment.evaluation import evaluate
 from companion.equipment.pob2_equipment_advisor import Pob2EquipmentSession
+
+logger = logging.getLogger(__name__)
 
 
 def _format_pct(val: float | None) -> str:
@@ -156,21 +159,14 @@ def run_live(
                 last_text = raw
                 if "Rarity:" in raw and "Item Class:" in raw:
                     try:
-                        res = evaluate(
-                            raw_text=raw,
-                            character_id=character_id,
-                            runtime_dir=runtime_dir,
-                            pob_session=pob_session,
-                            source="cli",
-                            stage_override=stage_override,
+                        code, out = evaluate_once(
+                            raw, runtime_dir, character_id, pob_session=pob_session,
+                            stage_override=stage_override, as_json=as_json,
                         )
-                        flat = flatten_result(res)
-                        if as_json:
-                            output_writer(json.dumps(flat))
-                        else:
-                            output_writer(format_result(flat))
-                    except ValueError as exc:
-                        output_writer(f"Item dilewati: {exc}")
+                    except Exception as exc:  # keep the watcher alive on engine/parser bugs
+                        logger.warning("CLI live evaluation failed", exc_info=True)
+                        code, out = 2, f"Evaluasi gagal: {exc}"
+                    output_writer(f"Item dilewati: {out}" if code == 1 else out)
 
             if max_polls is not None and polls >= max_polls:
                 break

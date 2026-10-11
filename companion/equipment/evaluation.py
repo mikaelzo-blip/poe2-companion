@@ -119,7 +119,7 @@ def _read_char(runtime_dir: Path, char_id: str) -> dict[str, Any]:
         return {}
 
 
-def _resolve_guide(runtime_dir: Path, char_id: str, level: int | None, stage_override: str | None):
+def _resolve_guide(runtime_dir: Path, char_id: str, level: int | None, stage_override: str | None = None):
     slug, stored_override = get_assignment(runtime_dir, char_id)
     profile = load_guide(runtime_dir, slug) if slug else None
     if profile is None or not profile.stages:

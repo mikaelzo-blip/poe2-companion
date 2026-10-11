@@ -12,7 +12,7 @@ from typing import Any
 from companion.builds.store import get_assignment
 from companion.equipment.clipboard import get_clipboard_text
 from companion.equipment.current_item import character_level_and_zone, get_current_item_info, get_current_raw
-from companion.equipment.evaluation import EvaluationResult, evaluate
+from companion.equipment.evaluation import EvaluationResult, _resolve_guide, evaluate
 from companion.equipment.parser import parse_item_text
 from companion.equipment.pob2_equipment_advisor import load_pob_mcp_modules
 from companion.equipment.slot_resolver import UI_SLOT_KEYS
@@ -337,7 +337,6 @@ def _update_character_stats_payload_locked(payload: dict[str, Any], runtime_dir:
 
     from companion.state.schema import CharacterState, ProvenancedField
     from companion.state.store import CharacterStateStore
-    from companion.equipment.fubgun_priorities import infer_stage_from_level
 
     store = CharacterStateStore(runtime_dir=runtime_dir)
     try:
@@ -360,17 +359,12 @@ def _update_character_stats_payload_locked(payload: dict[str, Any], runtime_dir:
     if payload.get("level") is not None:
         lvl_val = int(payload["level"])
         state.level = ProvenancedField[int].create(lvl_val, source="USER_IN_GAME_SYNC")
-        stage_enum = infer_stage_from_level(lvl_val)
-        display_map = {
-            "LEVELING_1_14": "lvl 1-14",
-            "LEVELING_15_32": "lvl 15-32",
-            "LEVELING_33_51": "lvl 33-51",
-            "SWAP_52": "lvl 52 Swap",
-            "LEVELING_53_68": "lvl 53-68",
-            "LEVEL_85": "lvl 85",
-            "ENDGAME": "Endgame",
-        }
-        state.build_progression["active_stage"] = display_map.get(getattr(stage_enum, "value", str(stage_enum)), "lvl 33-51")
+
+    current_level = state.level.value if getattr(state, "level", None) is not None else None
+    _, stage = _resolve_guide(runtime_dir, char_id, current_level)
+    if state.build_progression is None:
+        state.build_progression = {}
+    state.build_progression["active_stage"] = stage.title
 
 
     # Attributes

@@ -641,8 +641,8 @@ def test_update_character_stats_payload_updates_state_and_baseline(tmp_path: Pat
     assert char.get("attributes", {}).get("strength", {}).get("value") == 48
     assert char.get("attributes", {}).get("dexterity", {}).get("value") == 85
     assert char.get("attributes", {}).get("intelligence", {}).get("value") == 53
-    # Check stage automatically advanced to lvl 33-51 for level 37
-    assert char.get("build_progression", {}).get("active_stage") == "lvl 33-51"
+    # Without guide assignment, active_stage is "Karakter saja"
+    assert char.get("build_progression", {}).get("active_stage") == "Karakter saja"
 
     base = status.get("baseline", {})
     assert base.get("life", {}).get("value") == 723
@@ -1130,3 +1130,29 @@ def test_evaluate_item_payload_unexpected_failure_returns_error(fub: Path, monke
 
     monkeypatch.setattr(d_api, "evaluate", boom)
     assert d_api.evaluate_item_payload(_payload(BOOTS), runtime_dir=fub) == {"error": "Evaluation error: kaboom"}
+
+
+def test_update_stats_stage_from_guide(tmp_path: Path) -> None:
+    from companion.dashboard_api import get_dashboard_status, update_character_stats_payload
+    from companion.builds.store import load_guide
+    from companion.builds.stages import resolve_stage
+
+    # 1. With Fubgun fixture assigned: level 37 resolves to Fubgun stage title for 37
+    _install(tmp_path, FUB, char="BOMSHAK", level=20)
+    profile = load_guide(tmp_path, FUB)
+    assert profile is not None
+    expected_stage_title = resolve_stage(profile, 37).title
+
+    update_character_stats_payload({"character_id": "BOMSHAK", "level": 37}, runtime_dir=tmp_path)
+    status = get_dashboard_status(runtime_dir=tmp_path, char_id="BOMSHAK")
+    char = status.get("character", {})
+    assert char.get("build_progression", {}).get("active_stage") == expected_stage_title
+
+    # 2. With no guide assignment -> "Karakter saja"
+    no_guide_dir = tmp_path / "no_guide"
+    no_guide_dir.mkdir()
+    update_character_stats_payload({"character_id": "BOMSHAK", "level": 37}, runtime_dir=no_guide_dir)
+    status_no_guide = get_dashboard_status(runtime_dir=no_guide_dir, char_id="BOMSHAK")
+    char_no_guide = status_no_guide.get("character", {})
+    assert char_no_guide.get("build_progression", {}).get("active_stage") == "Karakter saja"
+

@@ -262,11 +262,13 @@ def evaluate(
         and chosen.slot in pob_slots
         and verdict not in ("REJECT", "ALREADY_EQUIPPED")
     ):
-        guide_xml = load_guide_xml(runtime_dir, profile.slug)
-        if guide_xml:
-            chosen_plan = next((p for p in plans if p.slot == chosen.slot), None)
-            clear_slots = chosen_plan.clear_slots if chosen_plan else ()
-            try:
+        chosen_plan = next((p for p in plans if p.slot == chosen.slot), None)
+        clear_slots = chosen_plan.clear_slots if chosen_plan else ()
+        try:
+            guide_xml = load_guide_xml(runtime_dir, profile.slug)
+            if not guide_xml:
+                logger.warning("Guide %s has_pob but its PoB XML is missing", profile.slug)
+            else:
                 g_delta = pob_session.measure(
                     chosen.slot,
                     raw_text,
@@ -283,8 +285,8 @@ def evaluate(
                     }
                 else:
                     logger.warning("Guide PoB2 measurement returned None for slot %s", chosen.slot)
-            except Exception:
-                logger.warning("Guide PoB2 measurement failed for slot %s", chosen.slot, exc_info=True)
+        except Exception:
+            logger.warning("Guide PoB2 measurement failed for slot %s", chosen.slot, exc_info=True)
 
     sig = signals.get(chosen.slot)
     cur_text = current_raw(chosen.slot)

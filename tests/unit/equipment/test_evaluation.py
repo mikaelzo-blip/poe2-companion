@@ -295,3 +295,21 @@ def test_target_fit_failure_keeps_verdict(tmp_path, positive_pob_stub):
     assert [s.model_dump() for s in r_raise.per_slot] == [s.model_dump() for s in r_baseline.per_slot]
 
 
+
+
+
+def test_target_fit_none_when_guide_xml_unreadable(tmp_path, positive_pob_stub, monkeypatch):
+    import companion.equipment.evaluation as ev
+
+    _install(tmp_path, FUB, char="BOMSHAK", level=60)
+    profile = load_guide(tmp_path, FUB)
+    save_guide(tmp_path, profile, pob_xml="<PathOfBuilding><ItemSet id='1'/></PathOfBuilding>")
+
+    def boom(*_a, **_k):
+        raise OSError("disk read failed")
+
+    monkeypatch.setattr(ev, "load_guide_xml", boom)
+    r = evaluate(BOOTS_TEXT, "BOMSHAK", runtime_dir=tmp_path, pob_session=positive_pob_stub,
+                 source="manual", stage_override=profile.pob_stage_id)
+    assert r.verdict == "EQUIP_NOW"
+    assert r.guide.target_fit is None

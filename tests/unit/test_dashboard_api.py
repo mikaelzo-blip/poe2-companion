@@ -85,249 +85,24 @@ Level: 14
 +15% to All Elemental Resistances"""
 
 
-def test_evaluate_item_payload_boots_success(tmp_path: Path) -> None:
-    # Use isolated test runtime dir
-    runtime_dir = tmp_path
-    payload = {
-        "raw_text": SAMPLE_BOOTS_TEXT,
-        "character_id": "BOMSHAK",
-        "stage": "lvl 1-14",
-    }
-    result = evaluate_item_payload(payload, runtime_dir=runtime_dir)
-    assert result.get("success") is True
-    assert result.get("item_name") == "Brimstone Greaves"
-    assert result.get("base_type") == "Iron Greaves"
-    assert result.get("slot") == "boots"
-    assert "verdict" in result
-    assert result.get("verdict") in ("INSUFFICIENT_DATA", "EQUIP_NOW", "CONDITIONAL_UPGRADE", "REJECT")
-    assert "reason" in result
-    assert isinstance(result.get("gains"), list)
-    assert len(result.get("gains")) > 0
-    assert any("+18 Life" in g for g in result["gains"])
-    assert isinstance(result.get("trade_offs"), list)
-    assert result.get("formatted_report") is not None
 
 
-def test_evaluate_item_payload_weapon_success() -> None:
-    runtime_dir = PROJECT_ROOT / "runtime"
-    payload = {
-        "raw_text": SAMPLE_WEAPON_TEXT,
-        "character_id": "BOMSHAK",
-        "stage": "lvl 1-14",
-    }
-    result = evaluate_item_payload(payload, runtime_dir=runtime_dir)
-    assert result.get("success") is True
-    assert result.get("item_name") == "Dire Core"
-    assert "verdict" in result
-    assert result.get("is_weapon") is True
 
 
-def test_evaluate_item_payload_ring_success() -> None:
-    runtime_dir = PROJECT_ROOT / "runtime"
-    payload = {
-        "raw_text": SAMPLE_RING_TEXT,
-        "character_id": "BOMSHAK",
-        "stage": "lvl 1-14",
-    }
-    result = evaluate_item_payload(payload, runtime_dir=runtime_dir)
-    assert result.get("success") is True
-    assert result.get("item_name") == "Gold Ring"
-    assert "verdict" in result
-    assert "Ring 1" in result.get("formatted_report", "")
 
 
-def test_evaluate_item_payload_respects_requested_slot() -> None:
-    runtime_dir = PROJECT_ROOT / "runtime"
-    payload_ring2 = {
-        "raw_text": SAMPLE_RING_TEXT,
-        "character_id": "BOMSHAK",
-        "stage": "lvl 1-14",
-        "slot": "ring2",
-    }
-    result_ring2 = evaluate_item_payload(payload_ring2, runtime_dir=runtime_dir)
-    assert result_ring2.get("success") is True
-    assert result_ring2.get("slot") == "ring2"
-
-    payload_set2 = {
-        "raw_text": SAMPLE_WEAPON_TEXT,
-        "character_id": "BOMSHAK",
-        "stage": "lvl 1-14",
-        "slot": "set2_main_hand",
-    }
-    result_set2 = evaluate_item_payload(payload_set2, runtime_dir=runtime_dir)
-    assert result_set2.get("success") is True
-    assert result_set2.get("slot") == "set2_main_hand"
 
 
-def test_evaluate_item_payload_routes_set2_weapons_to_swap_slots(tmp_path: Path) -> None:
-    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-
-    class TrackingPobSession:
-        is_available = True
-
-        def __init__(self) -> None:
-            self.submitted_slots: list[str] = []
-            self.simulated_slots: list[str] = []
-
-        def submit_candidate(self, raw_text: str, candidate_name: str, slot: str) -> int:
-            self.submitted_slots.append(slot)
-            return 1
-
-        def simulate_item(self, slot: str, raw_candidate: str, candidate_id: int, candidate_name: str):
-            self.simulated_slots.append(slot)
-            return PobEquipmentDelta(
-                slot=slot,
-                candidate_id=candidate_id,
-                candidate_name=candidate_name,
-                dps_delta=5.0,
-            )
-
-    session = TrackingPobSession()
-    result = evaluate_item_payload(
-        {
-            "raw_text": SAMPLE_WEAPON_TEXT,
-            "character_id": "BOMSHAK",
-            "stage": "lvl 1-14",
-            "slot": "set2_main_hand",
-        },
-        runtime_dir=tmp_path,
-        pob_session=session,
-    )
-
-    assert result.get("success") is True
-    assert session.submitted_slots == ["Weapon 1 Swap"]
-    assert session.simulated_slots == ["Weapon 1 Swap"]
 
 
-def test_evaluate_item_payload_routes_off_hand_to_weapon_2(tmp_path: Path) -> None:
-    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-
-    class TrackingPobSession:
-        is_available = True
-
-        def __init__(self) -> None:
-            self.submitted_slots: list[str] = []
-            self.simulated_slots: list[str] = []
-
-        def submit_candidate(self, raw_text: str, candidate_name: str, slot: str) -> int:
-            self.submitted_slots.append(slot)
-            return 1
-
-        def simulate_item(self, slot: str, raw_candidate: str, candidate_id: int, candidate_name: str):
-            self.simulated_slots.append(slot)
-            return PobEquipmentDelta(
-                slot=slot,
-                candidate_id=candidate_id,
-                candidate_name=candidate_name,
-                dps_delta=2.0,
-            )
-
-    session = TrackingPobSession()
-    result = evaluate_item_payload(
-        {
-            "raw_text": SAMPLE_WEAPON_TEXT,
-            "character_id": "BOMSHAK",
-            "stage": "lvl 1-14",
-            "slot": "off_hand",
-        },
-        runtime_dir=tmp_path,
-        pob_session=session,
-    )
-
-    assert result.get("success") is True
-    assert session.submitted_slots == ["Weapon 2"]
-    assert session.simulated_slots == ["Weapon 2"]
 
 
-def test_evaluate_item_payload_pob2_dual_ring_recommendation(tmp_path: Path) -> None:
-    from companion.equipment.pob2_equipment_advisor import DualRingSimulationResult, PobEquipmentDelta
-
-    class RingPobSession:
-        is_available = True
-
-        def submit_candidate(self, raw_text: str, candidate_name: str, slot: str) -> int:
-            return 1
-
-        def simulate_ring_candidate(self, raw_candidate: str, candidate_id: int, candidate_name: str):
-            return DualRingSimulationResult(
-                candidate_id=candidate_id,
-                candidate_name=candidate_name,
-                ring1_delta=PobEquipmentDelta(
-                    slot="Ring 1",
-                    candidate_id=candidate_id,
-                    candidate_name=candidate_name,
-                    life_delta=25,
-                    cold_res_delta=15,
-                    ehp_delta=30.0,
-                ),
-                ring2_delta=PobEquipmentDelta(
-                    slot="Ring 2",
-                    candidate_id=candidate_id,
-                    candidate_name=candidate_name,
-                    life_delta=-30,
-                    fire_res_delta=-20,
-                    ehp_delta=-40.0,
-                ),
-            )
-
-        def is_slot_empty(self, slot: str) -> bool:
-            return False
-
-    session = RingPobSession()
-    result = evaluate_item_payload(
-        {
-            "raw_text": SAMPLE_RING_TEXT,
-            "character_id": "BOMSHAK",
-            "stage": "lvl 1-14",
-            "slot": "ring1",
-        },
-        runtime_dir=tmp_path,
-        pob_session=session,
-    )
-
-    assert result.get("success") is True
-    assert result.get("verdict") == "EQUIP_NOW"
-    assert result.get("recommended_slot") == "Ring 1"
-    assert "Recommended placement: Ring 1" in result.get("reason", "")
-    assert "Vs Ring 1" in result.get("formatted_report", "")
 
 
-def test_evaluate_item_payload_body_armour_and_amulet() -> None:
-    runtime_dir = PROJECT_ROOT / "runtime"
-    payload_body = {
-        "raw_text": SAMPLE_BODY_ARMOUR_TEXT,
-        "character_id": "BOMSHAK",
-        "stage": "lvl 1-14",
-        "slot": "body_armour",
-    }
-    result_body = evaluate_item_payload(payload_body, runtime_dir=runtime_dir)
-    assert result_body.get("success") is True
-    assert result_body.get("item_name") == "Dragon Carapace"
-    assert result_body.get("slot") == "body_armour"
-
-    payload_amulet = {
-        "raw_text": SAMPLE_AMULET_TEXT,
-        "character_id": "BOMSHAK",
-        "stage": "lvl 1-14",
-        "slot": "amulet",
-    }
-    result_amulet = evaluate_item_payload(payload_amulet, runtime_dir=runtime_dir)
-    assert result_amulet.get("success") is True
-    assert result_amulet.get("item_name") == "Beast Medallion"
-    assert result_amulet.get("slot") == "amulet"
 
 
-def test_evaluate_item_payload_empty_input() -> None:
-    runtime_dir = PROJECT_ROOT / "runtime"
-    result = evaluate_item_payload({"raw_text": ""}, runtime_dir=runtime_dir)
-    assert "error" in result
-    assert "empty" in result["error"].lower()
 
 
-def test_evaluate_item_payload_malformed_input() -> None:
-    runtime_dir = PROJECT_ROOT / "runtime"
-    result = evaluate_item_payload({"raw_text": "Random gibberish that is not an item"}, runtime_dir=runtime_dir)
-    assert "error" in result
 
 
 def test_import_character_payload(tmp_path: Path) -> None:
@@ -667,200 +442,12 @@ def test_import_character_payload_persists_baseline_and_state(tmp_path: Path) ->
     assert state.character_class == "Mercenary"
 
 
-def test_evaluate_item_payload_pob2_rejects_incompatible_bow(tmp_path: Path) -> None:
-    class MockAvailablePobSession:
-        is_available = True
-        xml = "<PathOfBuilding></PathOfBuilding>"
-        engine = MagicMock()
-
-        def submit_candidate(self, raw_text: str, candidate_name: str, slot: str) -> int:
-            return 42
-
-        def get_current_item_name(self, slot: str) -> str:
-            return ""
-
-    bow_text = """Item Class: Bows
-Rarity: Rare
-Pain Branch
-Short Bow
---------
-Physical Damage: 12-24
-Attacks per Second: 1.30
---------
-Requirements:
-Level: 10
-Dex: 25
---------
-Adds 2 to 5 Physical Damage"""
-
-    session = MockAvailablePobSession()
-    res = evaluate_item_payload(
-        {
-            "raw_text": bow_text,
-            "character_id": "BOMSHAK",
-            "stage": "lvl 1-14",
-        },
-        runtime_dir=tmp_path,
-        pob_session=session,
-    )
-
-    assert res.get("success") is True
-    assert res.get("verdict") == "REJECT"
-    assert "bow" in res.get("reason", "").lower() or "incompatible" in res.get("reason", "").lower()
 
 
-def test_evaluate_item_payload_includes_zone_aware_tactical_advice(tmp_path: Path) -> None:
-    class MockAvailablePobSession:
-        is_available = True
-        xml = "<PathOfBuilding></PathOfBuilding>"
-        engine = MagicMock()
-        level = 19
-
-        def submit_candidate(self, raw_text: str, candidate_name: str, slot: str) -> int:
-            return 99
-
-        def simulate_item(self, slot: str, raw_candidate: str, candidate_id: int, candidate_name: str):
-            from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-            return PobEquipmentDelta(
-                slot="Body Armour",
-                candidate_id=candidate_id,
-                candidate_name="Maelström Keep",
-                current_item_name="Glyph Pelt",
-                life_delta=-7,
-                fire_res_delta=-15,
-                lightning_res_delta=-4,
-                armour_delta=82,
-                ehp_delta=-16.80,
-            )
-
-        def get_current_item_name(self, slot: str) -> str:
-            return "Glyph Pelt"
-
-    session = MockAvailablePobSession()
-    res = evaluate_item_payload(
-        {
-            "raw_text": "Item Class: Body Armours\nRarity: Rare\nMaelström Keep\nShrouded Vest\nEvasion Rating: 209\n5.8 Life Regeneration per second\n",
-            "character_id": "BOMSHAK",
-            "stage": "lvl 15-32",
-            "zone": "G2_1",
-        },
-        runtime_dir=tmp_path,
-        pob_session=session,
-    )
-
-    assert res.get("success") is True
-    assert res.get("verdict") == "REJECT"
-    assert "tactical_advice" in res
-    t_adv = res["tactical_advice"]
-    assert "🛑" in t_adv["verdict_badge"] or "TAHAN" in t_adv["verdict_badge"]
-    assert "Vastiri" in t_adv["zone_name"] or "G2_1" in t_adv["zone_name"]
-    assert "5.8" in t_adv["sustain_evaluation"] or "Regen" in t_adv["sustain_evaluation"]
-    assert len(t_adv["actionable_recommendation"]) > 0
 
 
-def test_auto_clipboard_resolves_character_zone_from_file(tmp_path: Path) -> None:
-    from companion.dashboard_api import check_auto_clipboard
-    char_dir = tmp_path / "characters"
-    char_dir.mkdir(parents=True, exist_ok=True)
-    (char_dir / "BOMSHAK.json").write_text(
-        json.dumps({
-            "character_id": "BOMSHAK",
-            "level": {"value": 19},
-            "current_zone": {"value": "G2_1"},
-        }),
-        encoding="utf-8",
-    )
-
-    class MockPobSession:
-        is_available = True
-        xml = "<PathOfBuilding></PathOfBuilding>"
-        engine = MagicMock()
-        level = 19
-
-        def submit_candidate(self, raw_text: str, candidate_name: str, slot: str) -> int:
-            return 1
-
-        def simulate_item(self, slot: str, raw_candidate: str, candidate_id: int, candidate_name: str):
-            from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-            return PobEquipmentDelta(
-                slot="Body Armour",
-                candidate_id=candidate_id,
-                candidate_name="Maelström Keep",
-                current_item_name="Glyph Pelt",
-                life_delta=-7,
-                fire_res_delta=-15,
-                lightning_res_delta=-4,
-                armour_delta=82,
-                ehp_delta=-16.80,
-            )
-
-        def get_current_item_name(self, slot: str) -> str:
-            return "Glyph Pelt"
-
-    item_text = "Item Class: Body Armours\nRarity: Rare\nMaelström Keep\nShrouded Vest\nEvasion Rating: 209\n"
-    with patch("companion.dashboard_api.get_clipboard_text", return_value=item_text):
-        # Reset last seen
-        import companion.dashboard_api
-        companion.dashboard_api._LAST_SEEN_CLIPBOARD = ""
-
-        res = check_auto_clipboard(
-            runtime_dir=tmp_path,
-            char_id="BOMSHAK",
-            stage_str="lvl 15-32",
-            pob_session=MockPobSession(),
-        )
-
-        assert res.get("has_new_item") is True
-        assert res.get("verdict") == "REJECT"
-        assert "tactical_advice" in res
-        assert "Vastiri" in res["tactical_advice"]["zone_name"]
 
 
-def test_evaluate_weapon_and_ring_include_tactical_advice(tmp_path: Path) -> None:
-    """Verify that weapon and ring evaluations also contain tactical_advice across the board."""
-    char_file = tmp_path / "characters" / "BOMSHAK.json"
-    char_file.parent.mkdir(parents=True, exist_ok=True)
-    char_file.write_text(
-        json.dumps({
-            "character_id": "BOMSHAK",
-            "level": {"value": 19},
-            "current_zone": {"value": "G2_1"},
-        }),
-        encoding="utf-8",
-    )
-
-    class MockPobWeaponSession:
-        is_available = True
-        xml = "<PathOfBuilding></PathOfBuilding>"
-        level = 19
-
-        def submit_candidate(self, raw_text: str, candidate_name: str, slot: str) -> int:
-            return 1
-
-        def simulate_item(self, slot: str, raw_candidate: str, candidate_id: int, candidate_name: str):
-            from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-            return PobEquipmentDelta(
-                slot="Weapon 1",
-                candidate_id=candidate_id,
-                candidate_name="Inferior Bow",
-                current_item_name="Current Crossbow",
-                dps_delta=-12.5,
-                life_delta=0,
-            )
-
-        def get_current_item_name(self, slot: str) -> str:
-            return "Current Crossbow"
-
-    payload = {
-        "raw_text": "Item Class: Bows\nRarity: Magic\nInferior Bow\nPhysical Damage: 5-10\n",
-        "character_id": "BOMSHAK",
-        "stage": "lvl 15-32",
-    }
-    res = evaluate_item_payload(payload, runtime_dir=tmp_path, pob_session=MockPobWeaponSession())
-    assert res.get("success") is True
-    assert res.get("verdict") == "REJECT"
-    assert "tactical_advice" in res
-    assert "senjata" in res["tactical_advice"]["tactical_headline"].lower()
 
 
 def test_account_characters_merge_api_and_local(tmp_path, monkeypatch):
@@ -974,69 +561,6 @@ def test_select_character_payload(tmp_path: Path) -> None:
     assert active_data.get("active_character_id") == "DaisyofWar"
 
 
-def test_evaluate_item_payload_generic_pob2_allows_non_fubgun_weapon(tmp_path: Path) -> None:
-    from companion.dashboard_api import evaluate_item_payload
-
-    # Create a Witch character profile
-    char_dir = tmp_path / "characters"
-    char_dir.mkdir(parents=True, exist_ok=True)
-    (char_dir / "DaisyofWar.json").write_text(
-        json.dumps({
-            "character_id": "DaisyofWar",
-            "character_name": "DaisyofWar",
-            "character_class": "Witch",
-            "level": {"value": 71},
-        }),
-        encoding="utf-8",
-    )
-
-    class MockWitchPobSession:
-        is_available = True
-        character_name = "DaisyofWar"
-        level = 71
-
-        def submit_candidate(self, raw_text: str, candidate_name: str, slot: str) -> int:
-            return 1
-
-        def simulate_item(self, slot: str, raw_candidate: str, candidate_id: int, candidate_name: str):
-            from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-            return PobEquipmentDelta(
-                slot="Weapon 1",
-                candidate_id=candidate_id,
-                candidate_name="Arcane Wand",
-                current_item_name="Old Wand",
-                dps_delta=250.0,
-                life_delta=20.0,
-                ehp_delta=150.0,
-            )
-
-        def get_current_item_name(self, slot: str) -> str:
-            return "Old Wand"
-
-    wand_raw = """Item Class: Wands
-Rarity: Rare
-Arcane Wand
-Bone Wand
---------
-Requirements:
-Level: 65
-Int: 140
---------
-Adds 20 to 45 Fire Damage to Spells
-+30 to maximum Life
-+1 to Level of all Fire Spell Skill Gems
-"""
-    payload = {
-        "raw_text": wand_raw,
-        "character_id": "DaisyofWar",
-        "guide": "generic_pob2",
-    }
-    res = evaluate_item_payload(payload, runtime_dir=tmp_path, pob_session=MockWitchPobSession())
-    assert res.get("success") is True
-    # In generic PoB2 mode, dps_delta=+250 should NOT be rejected by Fubgun crossbow router!
-    assert res.get("verdict") in ("EQUIP_NOW", "CONDITIONAL_UPGRADE")
-    assert res.get("verdict") != "REJECT"
-    assert "Fubgun" not in res.get("policy_verdict", "")
 
 
 def test_get_dashboard_status_respects_explicit_char_id(tmp_path: Path) -> None:
@@ -1075,204 +599,14 @@ def test_get_dashboard_status_reads_active_character_json_when_none(tmp_path: Pa
     assert res["character"].get("character_class") == "Sorceress"
 
 
-def test_evaluate_item_payload_stamps_evaluated_at(tmp_path: Path) -> None:
-    payload = {
-        "raw_text": SAMPLE_BOOTS_TEXT,
-        "character_id": "BOMSHAK",
-        "stage": "lvl 1-14",
-    }
-    result = evaluate_item_payload(payload, runtime_dir=tmp_path)
-    assert result.get("success") is True
-    assert "evaluated_at" in result
-    assert isinstance(result["evaluated_at"], str)
-    assert len(result["evaluated_at"]) > 10
 
 
-def test_check_auto_clipboard_passes_zone(monkeypatch: Any, tmp_path: Path) -> None:
-    from companion.dashboard_api import check_auto_clipboard
-    import companion.dashboard_api as d_api
-
-    # Reset seen clipboard
-    d_api._LAST_SEEN_CLIPBOARD = ""
-    monkeypatch.setattr(d_api, "get_clipboard_text", lambda: SAMPLE_BOOTS_TEXT)
-
-    captured_zone = []
-    orig_eval = d_api.evaluate_item_payload
-
-    def mock_eval(payload: dict[str, Any], runtime_dir: Path, pob_session: Any | None = None) -> dict[str, Any]:
-        captured_zone.append(payload.get("zone"))
-        return orig_eval(payload, runtime_dir=runtime_dir, pob_session=pob_session)
-
-    monkeypatch.setattr(d_api, "evaluate_item_payload", mock_eval)
-
-    res = check_auto_clipboard(
-        runtime_dir=tmp_path,
-        char_id="BOMSHAK",
-        stage_str="lvl 1-14",
-        zone="vastiri_outskirts",
-    )
-    assert res.get("has_new_item") is True
-    assert captured_zone == ["vastiri_outskirts"]
 
 
-def test_evaluate_item_payload_navira_varashta_allows_sorc_weapon(tmp_path: Path) -> None:
-    from companion.dashboard_api import evaluate_item_payload
-    from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-
-    char_dir = tmp_path / "characters"
-    char_dir.mkdir(parents=True, exist_ok=True)
-    (char_dir / "StormWeaver.json").write_text(
-        json.dumps({
-            "character_id": "StormWeaver",
-            "character_name": "StormWeaver",
-            "character_class": "Sorceress",
-            "level": {"value": 45},
-        }),
-        encoding="utf-8",
-    )
-
-    class MockSorcPobSession:
-        is_available = True
-        character_name = "StormWeaver"
-        level = 45
-
-        def submit_candidate(self, raw_text: str, candidate_name: str, slot: str) -> int:
-            return 1
-
-        def simulate_item(self, slot: str, raw_candidate: str, candidate_id: int, candidate_name: str):
-            return PobEquipmentDelta(
-                slot="Weapon 1",
-                candidate_id=candidate_id,
-                candidate_name=candidate_name,
-                current_item_name="Basic Staff",
-                dps_delta=18.5,
-                life_delta=0.0,
-                ehp_delta=40.0,
-            )
-
-        def get_current_item_name(self, slot: str) -> str:
-            return "Basic Staff"
-
-    sorc_staff = """Item Class: Staves
-Rarity: Rare
-Storm Pillar
-Chiming Staff
---------
-Requirements:
-Level: 45
-Int: 110
---------
-Adds 15 to 35 Lightning Damage to Spells
-+42% to Global Critical Strike Multiplier
-+1 to Level of all Lightning Spell Skill Gems
-"""
-    payload = {
-        "raw_text": sorc_staff,
-        "character_id": "StormWeaver",
-        "guide": "navira_varashta",
-        "stage": "Act 4 to Endgame",
-    }
-    res = evaluate_item_payload(payload, runtime_dir=tmp_path, pob_session=MockSorcPobSession())
-    assert res.get("success") is True
-    assert res.get("verdict") in ("EQUIP_NOW", "CONDITIONAL_UPGRADE")
-    assert "Crossbow" not in res.get("reason", "")
 
 
-def test_evaluate_item_payload_navira_varashta_rejects_crossbow(tmp_path: Path) -> None:
-    from companion.dashboard_api import evaluate_item_payload
-
-    char_dir = tmp_path / "characters"
-    char_dir.mkdir(parents=True, exist_ok=True)
-    (char_dir / "StormWeaver.json").write_text(
-        json.dumps({
-            "character_id": "StormWeaver",
-            "character_name": "StormWeaver",
-            "character_class": "Sorceress",
-            "level": {"value": 45},
-        }),
-        encoding="utf-8",
-    )
-
-    xbow_text = """Item Class: Crossbows
-Rarity: Rare
-Doom Fletch
-Gemini Crossbow
---------
-Physical Damage: 35-70
---------
-Requirements:
-Level: 40
-Dex: 95
-"""
-    payload = {
-        "raw_text": xbow_text,
-        "character_id": "StormWeaver",
-        "guide": "navira_varashta",
-        "stage": "Act 4 to Endgame",
-    }
-    res = evaluate_item_payload(payload, runtime_dir=tmp_path)
-    assert res.get("success") is True
-    assert res.get("verdict") == "REJECT"
-    assert "Sorceress" in (res.get("reason") or res.get("actionable_recommendation") or "")
 
 
-def test_evaluate_item_payload_resolves_real_current_item_name(tmp_path: Path) -> None:
-    """Verify that evaluate_item_payload resolves current_item_name and current_item_base_type from the loadout."""
-    from companion.equipment.loadout import EquippedLoadout
-    from companion.equipment.loadout_cli import save_loadout
-    from companion.equipment.parser import parse_item_text
-    from companion.equipment.schema import SlotType
-
-    runtime_dir = tmp_path
-    equipped_gloves = parse_item_text("""Item Class: Gloves
-Rarity: Rare
-Plague Claw
-Spined Bracers
---------
-Armour: 40
---------
-Requirements:
-Level: 20
-Str: 15
---------
-+30 to Armour
-+10% to Cold Resistance""", target_slot=SlotType.GLOVES)
-    loadout = EquippedLoadout.create_draft(character_id="BOMSHAK")
-    loadout.transition_slot(SlotType.GLOVES, equipped_gloves)
-    loadout.finalize(loadout_id="test")
-    save_loadout(runtime_dir, loadout)
-    gloves_sample = """Item Class: Gloves
-Rarity: Rare
-Horror Grip
-Stocky Mitts
---------
-Armour: 43
---------
-Requirements:
-Level: 15
-Str: 14
-Dex: 8
---------
-+43 to Armour
-+18% to Fire Resistance
-+8 to Dexterity"""
-
-    payload = {
-        "raw_text": gloves_sample,
-        "character_id": "BOMSHAK",
-        "stage": "lvl 15-32",
-        "zone": "G2_1",
-    }
-    result = evaluate_item_payload(payload, runtime_dir=runtime_dir)
-    assert result.get("success") is True
-    assert result.get("item_name") == "Horror Grip"
-    assert result.get("current_item_name") == "Plague Claw"
-    assert result.get("current_item_base_type") == "Spined Bracers"
-    # Tactical advice should also mention Plague Claw, not generic "Current Item"
-    tac = result.get("tactical_advice")
-    assert tac is not None
-    assert "Plague Claw" in tac.get("tactical_headline", "")
-    assert "Current Item" not in tac.get("tactical_headline", "")
 
 
 def test_update_character_stats_payload_updates_state_and_baseline(tmp_path: Path) -> None:
@@ -1318,44 +652,6 @@ def test_update_character_stats_payload_updates_state_and_baseline(tmp_path: Pat
     assert base.get("effective_cold_res", {}).get("value") == -3
 
 
-def test_check_auto_clipboard_reevaluates_on_context_change(tmp_path: Path, monkeypatch: Any) -> None:
-    from companion.dashboard_api import check_auto_clipboard
-    import companion.dashboard_api as d_api
-    from companion.equipment.schema import SlotType
-    from companion.equipment.parser import parse_slot_topology_for_base
-
-    d_api._LAST_SEEN_CLIPBOARD = ""
-    item_raw = (
-        "Item Class: Sceptres\n"
-        "Rarity: Rare\n"
-        "Doom Chant\n"
-        "Bone Sceptre\n"
-        "--------\n"
-        "+15 to maximum Life\n"
-    )
-    monkeypatch.setattr("companion.dashboard_api.get_clipboard_text", lambda: item_raw)
-
-    # 1. First evaluation for BOMSHAK
-    res1 = check_auto_clipboard(tmp_path, char_id="BOMSHAK", stage_str="lvl 1-14")
-    assert res1["has_new_item"] is True
-
-    # 2. Polling again without change -> no new item
-    res2 = check_auto_clipboard(tmp_path, char_id="BOMSHAK", stage_str="lvl 1-14")
-    assert res2["has_new_item"] is False
-
-    # 3. Switching character -> re-evaluates even if clipboard text is identical
-    res3 = check_auto_clipboard(tmp_path, char_id="Varashta", stage_str="lvl 1-14")
-    assert res3["has_new_item"] is True
-
-    # Verify parser identifies sceptre, spear, and claw as weapons
-    slot_sceptre, _, _ = parse_slot_topology_for_base("Sceptres", "Bone Sceptre")
-    assert slot_sceptre == SlotType.MAIN_HAND
-
-    slot_spear, _, _ = parse_slot_topology_for_base("Spears", "War Spear")
-    assert slot_spear == SlotType.MAIN_HAND
-
-    slot_claw, _, _ = parse_slot_topology_for_base("Claws", "Feral Claw")
-    assert slot_claw == SlotType.MAIN_HAND
 
 
 
@@ -1371,41 +667,8 @@ def test_check_auto_clipboard_reevaluates_on_context_change(tmp_path: Path, monk
 
 
 
-def test_evaluate_item_payload_pob2_failure_falls_back_with_engine_tag(tmp_path: Path, caplog) -> None:
-    broken = MagicMock(is_available=True, level=None)
-    broken.submit_candidate.side_effect = RuntimeError("PoB2 crashed")
-    payload = {"raw_text": SAMPLE_BOOTS_TEXT, "character_id": "BOMSHAK", "stage": "auto"}
-
-    with caplog.at_level("WARNING", logger="companion.dashboard_api"):
-        result = evaluate_item_payload(payload, runtime_dir=tmp_path, pob_session=broken)
-
-    assert result.get("success") is True
-    assert result.get("engine") == "heuristic"
-    assert "PoB2 evaluation failed" in caplog.text
 
 
-@pytest.mark.parametrize(
-    "dps, ehp, verdict, gains, trade_offs",
-    [
-        (4.0, 0.0, "EQUIP_NOW", ["+4.0% DPS"], []),
-        (4.0, -10.0, "CONDITIONAL_UPGRADE", ["+4.0% DPS"], ["-10.0 EHP"]),
-        (-3.0, 0.0, "REJECT", [], ["-3.0% DPS"]),
-        (0.0, 0.0, "CONDITIONAL_UPGRADE", [], []),
-    ],
-)
-def test_generic_pob2_weapon_verdicts(tmp_path: Path, dps, ehp, verdict, gains, trade_offs) -> None:
-    from types import SimpleNamespace
-
-    sess = MagicMock(is_available=True, level=None)
-    sess.simulate_item.return_value = SimpleNamespace(dps_delta=dps, life_delta=0.0, ehp_delta=ehp)
-    payload = {"raw_text": SAMPLE_WEAPON_TEXT, "character_id": "BOMSHAK", "stage": "auto", "guide": "generic_pob2"}
-
-    result = evaluate_item_payload(payload, runtime_dir=tmp_path, pob_session=sess)
-
-    assert result["engine"] == "pob2"
-    assert result["verdict"] == verdict
-    assert result["gains"] == gains
-    assert result["trade_offs"] == trade_offs
 
 
 def _inv_item(inv_id: str, type_line: str) -> dict:
@@ -1518,3 +781,206 @@ def test_get_current_raw_falls_back_to_loadout_on_bad_pob_text(tmp_path: Path) -
     sess = MagicMock()
     sess.get_equipped_item.return_value = {"equipped": True, "raw": "garbage"}
     assert "Brimstone Greaves" in get_current_raw(tmp_path, "T", "helmet", sess)
+
+
+# --- evaluate_item_payload on the guide-aware pipeline (evaluation.evaluate) ---------------------------------
+
+from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta  # noqa: E402
+from tests.unit.equipment.test_evaluation import (  # noqa: E402
+    FUB,
+    Failing,
+    Ring2Empty,
+    Stub,
+    _install,
+    _item,
+    _write_char,
+)
+
+BOOTS = _item("Boots", "Wool Shoes", ["+30 to maximum Life", "+10% to Cold Resistance"], name="Brimstone Greaves")
+RING = _item("Rings", "Iron Ring", ["+30 to maximum Life", "+10% to Cold Resistance"], name="Gold Ring")
+CROSSBOW = _item("Crossbows", "Tense Crossbow", ["+40 to maximum Life"], name="Dire Core")
+WAND = _item("Wands", "Bone Wand", ["+40 to maximum Life"], name="Arcane Wand")
+BOW = _item("Bows", "Short Bow", ["+40 to maximum Life"], name="Pain Branch")
+BODY = _item("Body Armours", "Shrouded Vest", ["+5.8 Life Regeneration per second"], name="Maelstrom Keep")
+
+
+class Tracking(Stub):
+    def __init__(self) -> None:
+        self.measured: list[str] = []
+
+    def measure(self, slot, raw, candidate_id, **kw):
+        self.measured.append(slot)
+        return super().measure(slot, raw, candidate_id, **kw).model_copy(update={"dps_delta": 50.0})
+
+
+class BadBody(Stub):
+    level = 19
+
+    def measure(self, slot, raw, candidate_id, **kw):
+        return PobEquipmentDelta(
+            slot=slot, candidate_id=candidate_id, candidate_name="Maelstrom Keep", life_delta=-7,
+            fire_res_delta=-15, lightning_res_delta=-4, armour_delta=82, ehp_before=1000.0, ehp_after=983.2,
+            dps_before=100.0, dps_after=100.0, res_before={"fire": 75}, res_after={"fire": 60},
+        )
+
+    def get_current_item_name(self, slot):
+        return "Glyph Pelt"
+
+
+def _payload(text, **kw):
+    # "stage"/"guide" are legacy UI fields the server must ignore.
+    return {"raw_text": text, "character_id": "BOMSHAK", "stage": "lvl 1-14", "guide": "ignored", **kw}
+
+
+@pytest.fixture
+def fub(tmp_path: Path) -> Path:
+    _install(tmp_path, FUB, char="BOMSHAK", level=20)
+    return tmp_path
+
+
+def test_evaluate_item_payload_success_shape(fub: Path) -> None:
+    res = evaluate_item_payload(_payload(BOOTS), runtime_dir=fub, pob_session=Stub())
+    assert res["success"] is True
+    assert (res["item_name"], res["base_type"], res["slot"], res["pob_slot"]) == ("Brimstone Greaves", "Wool Shoes", "boots", "Boots")
+    assert res["verdict"] == "EQUIP_NOW" and res["engine"] == "pob2"
+    assert res["is_weapon"] is False and res["recommended_slot"] == "Boots"
+    assert isinstance(res["gains"], list) and isinstance(res["trade_offs"], list)
+    assert res["reason"] and res["formatted_report"].startswith("EQUIP_NOW")
+    assert res["guide"]["stage_title"] == "lvl 15-32" and res["per_slot"] and "delta" not in res["per_slot"][0]
+    json.dumps(res)  # response must be JSON-serialisable
+
+
+def test_evaluate_item_payload_requested_slot_respected(fub: Path) -> None:
+    res = evaluate_item_payload(_payload(RING, slot="ring2"), runtime_dir=fub, pob_session=Stub())
+    assert res["success"] is True and res["slot"] == "ring2" and res["pob_slot"] == "Ring 2"
+
+
+def test_evaluate_item_payload_routes_set2_main_hand(tmp_path: Path) -> None:
+    _write_char(tmp_path, "BOMSHAK", level=20)  # no guide: a one-hand weapon may go to either weapon set
+    sess = Tracking()
+    res = evaluate_item_payload(_payload(WAND, slot="set2_main_hand"), runtime_dir=tmp_path, pob_session=sess)
+    assert res["success"] is True and res["slot"] == "set2_main_hand" and res["is_weapon"] is True
+    assert sess.measured == ["Weapon 1 Swap"]
+
+
+def test_evaluate_item_payload_routes_off_hand_to_weapon_2(tmp_path: Path) -> None:
+    _write_char(tmp_path, "BOMSHAK", level=20)
+    sess = Tracking()
+    res = evaluate_item_payload(_payload(WAND, slot="off_hand"), runtime_dir=tmp_path, pob_session=sess)
+    assert res["success"] is True and res["slot"] == "off_hand"
+    assert sess.measured == ["Weapon 2"]
+
+
+def test_evaluate_item_payload_dual_ring_picks_empty_slot(fub: Path) -> None:
+    res = evaluate_item_payload(_payload(RING), runtime_dir=fub, pob_session=Ring2Empty())
+    assert res["success"] is True and res["pob_slot"] == "Ring 2" and res["slot"] == "ring2"
+    assert {s["slot"] for s in res["per_slot"]} == {"Ring 1", "Ring 2"}
+
+
+def test_weapon_class_absent_from_guide_is_rejected(fub: Path) -> None:
+    res = evaluate_item_payload(_payload(BOW), runtime_dir=fub, pob_session=Stub())
+    assert res["verdict"] == "REJECT" and "Senjata tidak dipakai guide" in res["reason"]
+    assert res["safety"] and res["is_weapon"] is True
+
+
+def test_weapon_class_in_guide_is_measured(fub: Path) -> None:
+    res = evaluate_item_payload(_payload(CROSSBOW), runtime_dir=fub, pob_session=Tracking())
+    assert res["engine"] == "pob2" and res["safety"] == [] and res["is_weapon"] is True
+    assert res["dps_delta"] == pytest.approx(50.0)  # PoB2 absolute DPS gain
+
+
+def test_evaluate_item_payload_includes_zone_aware_tactical_advice(fub: Path) -> None:
+    res = evaluate_item_payload(_payload(BODY, zone="G2_1"), runtime_dir=fub, pob_session=BadBody())
+    assert res["success"] is True and res["verdict"] == "REJECT"
+    t_adv = res["tactical_advice"]
+    assert "TAHAN" in t_adv["verdict_badge"] or "\U0001f6d1" in t_adv["verdict_badge"]
+    assert "Vastiri" in t_adv["zone_name"] or "G2_1" in t_adv["zone_name"]
+    assert len(t_adv["actionable_recommendation"]) > 0
+
+
+def test_evaluate_item_payload_resolves_real_current_item_name(fub: Path) -> None:
+    from companion.equipment.loadout import EquippedLoadout
+    from companion.equipment.loadout_cli import save_loadout
+    from companion.equipment.parser import parse_item_text
+    from companion.equipment.schema import SlotType
+
+    lo = EquippedLoadout.create_draft(character_id="BOMSHAK")
+    lo.transition_slot(SlotType.GLOVES, parse_item_text(
+        "Item Class: Gloves\nRarity: Rare\nPlague Claw\nSpined Bracers\n--------\nArmour: 40\n--------\n+30 to Armour\n",
+        target_slot=SlotType.GLOVES,
+    ))
+    lo.finalize(loadout_id="test")
+    save_loadout(fub, lo)
+    gloves = _item("Gloves", "Stocky Mitts", ["+43 to Armour", "+18% to Fire Resistance"], name="Horror Grip")
+    res = evaluate_item_payload(_payload(gloves, zone="G2_1"), runtime_dir=fub, pob_session=None)
+    assert res["item_name"] == "Horror Grip"
+    assert res["current_item_name"] == "Plague Claw" and res["current_item_base_type"] == "Spined Bracers"
+
+
+def test_evaluate_item_payload_stamps_evaluated_at(fub: Path) -> None:
+    res = evaluate_item_payload(_payload(BOOTS), runtime_dir=fub, pob_session=Stub())
+    assert isinstance(res["evaluated_at"], str) and len(res["evaluated_at"]) > 10
+
+
+def test_evaluate_item_payload_pob2_failure_falls_back_with_engine_tag(fub: Path) -> None:
+    res = evaluate_item_payload(_payload(BOOTS), runtime_dir=fub, pob_session=Failing())
+    assert res["success"] is True and res["engine"] == "heuristic" and res["engine_reason"]
+
+
+def test_evaluate_item_payload_empty_input() -> None:
+    assert "empty" in evaluate_item_payload({"raw_text": ""}, runtime_dir=PROJECT_ROOT / "runtime")["error"].lower()
+
+
+def test_evaluate_item_payload_malformed_input(tmp_path: Path) -> None:
+    assert "error" in evaluate_item_payload({"raw_text": "Random gibberish that is not an item"}, runtime_dir=tmp_path)
+
+
+def test_evaluate_item_payload_bad_locked_slot_is_error(fub: Path) -> None:
+    assert "error" in evaluate_item_payload(_payload(BOOTS, slot="helmet"), runtime_dir=fub, pob_session=Stub())
+
+
+def test_auto_clipboard_resolves_zone_and_source(fub: Path, monkeypatch: Any) -> None:
+    import companion.dashboard_api as d_api
+
+    (fub / "characters" / "BOMSHAK.json").write_text(
+        json.dumps({"level": {"value": 19}, "current_zone": {"value": "G2_1"}}), encoding="utf-8"
+    )
+    d_api._LAST_SEEN_CLIPBOARD = ""
+    monkeypatch.setattr(d_api, "get_clipboard_text", lambda: BODY)
+    seen = []
+    orig = d_api.evaluate
+
+    def spy(*a, **kw):
+        seen.append(kw["source"])
+        return orig(*a, **kw)
+
+    monkeypatch.setattr(d_api, "evaluate", spy)
+    res = d_api.check_auto_clipboard(fub, "BOMSHAK", "auto", pob_session=BadBody())
+    assert res["has_new_item"] is True and res["raw_text"] == BODY.strip() and res["verdict"] == "REJECT"
+    assert "Vastiri" in res["tactical_advice"]["zone_name"] and seen == ["auto"]
+
+
+def test_check_auto_clipboard_passes_zone(fub: Path, monkeypatch: Any) -> None:
+    import companion.dashboard_api as d_api
+
+    d_api._LAST_SEEN_CLIPBOARD = ""
+    monkeypatch.setattr(d_api, "get_clipboard_text", lambda: BOOTS)
+    zones = []
+
+    def spy(*a, **kw):
+        zones.append(kw["zone"])
+        raise ValueError("stop")
+
+    monkeypatch.setattr(d_api, "evaluate", spy)
+    res = d_api.check_auto_clipboard(fub, "BOMSHAK", "auto", zone="vastiri_outskirts")
+    assert zones == ["vastiri_outskirts"] and res["has_new_item"] is True and "error" in res
+
+
+def test_check_auto_clipboard_reevaluates_on_context_change(fub: Path, monkeypatch: Any) -> None:
+    import companion.dashboard_api as d_api
+
+    d_api._LAST_SEEN_CLIPBOARD = ""
+    monkeypatch.setattr(d_api, "get_clipboard_text", lambda: BOOTS)
+    assert d_api.check_auto_clipboard(fub, char_id="BOMSHAK", stage_str="auto", pob_session=Stub())["has_new_item"] is True
+    assert d_api.check_auto_clipboard(fub, char_id="BOMSHAK", stage_str="auto", pob_session=Stub())["has_new_item"] is False
+    assert d_api.check_auto_clipboard(fub, char_id="Varashta", stage_str="auto", pob_session=Stub())["has_new_item"] is True

@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from companion import dashboard_server
-from companion.dashboard_api import _build_eval_context
+from companion.equipment.evaluation import evaluate
 from companion.equipment.pob2_equipment_advisor import Pob2EquipmentSession
 
 SAMPLE_BOOTS_TEXT = """Item Class: Boots
@@ -57,10 +57,11 @@ def test_refresh_sync_failure_keeps_session(monkeypatch):
 
 
 def test_effective_level_prefers_newer_character_file(tmp_path):
-    (tmp_path / "characters").mkdir()
-    (tmp_path / "characters" / "X.json").write_text(json.dumps({"level": {"value": 53}}))
-    ctx = _build_eval_context({"character_id": "X", "stage": "auto"}, SAMPLE_BOOTS_TEXT, tmp_path, MagicMock(level=37))
-    assert ctx.char_level == 53
+    from tests.unit.equipment.test_evaluation import FUB, _install
+
+    _install(tmp_path, FUB, char="X", level=53)  # character file level 53, PoB2 session level 37
+    r = evaluate(SAMPLE_BOOTS_TEXT, "X", runtime_dir=tmp_path, pob_session=MagicMock(level=37, is_available=False), source="manual")
+    assert r.guide.stage_title == "lvl 53-68"
 
 
 def _real_session(level=37):

@@ -23,6 +23,7 @@ from companion.equipment.tactical_advisor import generate_tactical_advice
 from companion.dashboard_api import evaluate_item_payload, get_current_raw
 from companion.equipment.loadout import EquippedLoadout
 from companion.equipment.loadout_cli import save_loadout
+from tests.unit.equipment.test_evaluation import Stub
 
 
 def test_parse_foci_offhand_slot_and_topology() -> None:
@@ -173,6 +174,18 @@ def test_dashboard_api_get_current_raw_resolves_all_loadout_slots(tmp_path: Path
     assert "Crossbow One" in raw_w1
 
 
+class _BadBodyPob(Stub):
+    """PoB2 stub whose body-armour swap loses life and resistances, so the zone tactical veto fires."""
+
+    level = 19
+
+    def measure(self, slot, raw, candidate_id, **kw):
+        return PobEquipmentDelta(
+            slot=slot, candidate_id=candidate_id, candidate_name="Maelstrom Keep", life_delta=-7, fire_res_delta=-15,
+            ehp_before=1000.0, ehp_after=983.2, dps_before=100.0, dps_after=100.0,
+        )
+
+
 def test_dashboard_api_formatted_report_synchronizes_with_tactical_rejection(tmp_path: Path) -> None:
     lo = EquippedLoadout.create_draft(character_id="hero_test", loadout_id="lo_test")
     item_cuirass = parse_item_text(
@@ -206,7 +219,7 @@ def test_dashboard_api_formatted_report_synchronizes_with_tactical_rejection(tmp
     res = evaluate_item_payload(
         {"raw_text": cand_text, "character_id": "hero_test", "slot": "body_armour", "zone": "G2_1"},
         runtime_dir=tmp_path,
-        pob_session=None,
+        pob_session=_BadBodyPob(),
     )
     assert res.get("verdict") == "REJECT"
     assert "REJECT" in res.get("formatted_report")

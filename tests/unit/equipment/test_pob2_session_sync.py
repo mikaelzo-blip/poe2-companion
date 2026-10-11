@@ -207,9 +207,11 @@ def test_sync_character_reloads_from_api():
 
 
 def test_evaluate_item_payload_auto_infers_stage_from_pob_session_level(tmp_path: Path):
-    """evaluate_item_payload should auto-advance stage if character level is higher than default."""
+    """The guide stage follows the PoB2 session level; the legacy stage field is ignored."""
     from companion.dashboard_api import evaluate_item_payload
+    from tests.unit.equipment.test_evaluation import FUB, _install
 
+    _install(tmp_path, FUB, char="BOMSHAK", level=5)
     engine = SyncFakePobEngine()
     api = SyncFakePoeApi()
     sess = Pob2EquipmentSession(
@@ -220,16 +222,10 @@ def test_evaluate_item_payload_auto_infers_stage_from_pob_session_level(tmp_path
     sess.initialize()
     sess.level = 18  # Character is level 18
 
-    # Payload omits stage or passes default lvl 1-14
-    payload = {
-        "raw_text": KRAKEN_DOME_RAW,
-        "character_id": "BOMSHAK",
-        "stage": "lvl 1-14",
-    }
+    payload = {"raw_text": KRAKEN_DOME_RAW, "character_id": "BOMSHAK", "stage": "lvl 1-14"}
     result = evaluate_item_payload(payload, runtime_dir=tmp_path, pob_session=sess)
     assert result.get("success") is True
-    # The formatted report should reflect LEVELING_15_32 rather than LEVELING_1_14
-    assert "LEVELING_15_32" in result.get("formatted_report", "")
+    assert result["guide"]["stage_title"] == "lvl 15-32"
 
 
 def test_dashboard_server_equip_item_syncs_to_global_pob_session(monkeypatch, tmp_path: Path):

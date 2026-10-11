@@ -313,3 +313,40 @@ def test_target_fit_none_when_guide_xml_unreadable(tmp_path, positive_pob_stub, 
                  source="manual", stage_override=profile.pob_stage_id)
     assert r.verdict == "EQUIP_NOW"
     assert r.guide.target_fit is None
+
+
+def test_fubgun_lvl60_crossbow_fire_breaker_rejected_in_set2(tmp_path):
+    _install(tmp_path, FUB, char="BOMSHAK", level=60)
+    xbow = _item("Crossbows", "Makeshift Crossbow", ["Adds 12 to 22 Fire Damage to Attacks", "+40 to maximum Life"])
+    r = evaluate(xbow, "BOMSHAK", runtime_dir=tmp_path, pob_session=None, source="manual")
+    assert r.slot == "Weapon 1 Swap"
+    assert r.verdict == "REJECT"
+    assert any("Oil Grenade" in s for s in r.safety)
+
+
+def test_fubgun_lvl20_preswap_crossbow_routes_to_set1_without_veto(tmp_path, positive_pob_stub):
+    _install(tmp_path, FUB, char="BOMSHAK", level=20)
+    xbow = _item("Crossbows", "Makeshift Crossbow", ["Adds 12 to 22 Fire Damage to Attacks", "+40 to maximum Life"])
+    r = evaluate(xbow, "BOMSHAK", runtime_dir=tmp_path, pob_session=positive_pob_stub, source="manual")
+    assert r.slot == "Weapon 1"
+    assert r.verdict == "EQUIP_NOW"
+    assert r.safety == []
+
+
+def test_fubgun_lvl60_non_attack_fire_ring_not_vetoed(tmp_path, positive_pob_stub):
+    _install(tmp_path, FUB, char="BOMSHAK", level=60)
+    ring = _item("Rings", "Iron Ring", ["25% increased Fire Damage", "Adds 10 to 20 Fire Damage to Spells", "+30 to maximum Life"])
+    r = evaluate(ring, "BOMSHAK", runtime_dir=tmp_path, pob_session=positive_pob_stub, source="manual")
+    assert r.slot == "Ring 1"
+    assert r.verdict == "EQUIP_NOW"
+    assert r.safety == []
+
+
+def test_fubgun_lvl60_bow_rejected_off_guide(tmp_path):
+    _install(tmp_path, FUB, char="BOMSHAK", level=60)
+    bow = _item("Bows", "Short Bow", ["+10 to Dexterity"])
+    r = evaluate(bow, "BOMSHAK", runtime_dir=tmp_path, pob_session=None, source="manual")
+    assert r.slot == "Weapon 1"
+    assert r.verdict == "REJECT"
+    assert "Senjata tidak dipakai guide (Bow)" in r.reasons
+

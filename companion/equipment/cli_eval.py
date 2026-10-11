@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+import sys
 import time
 from typing import Any, Callable
 
@@ -122,10 +123,10 @@ def open_pob_session(character_id: str, enabled: bool) -> Pob2EquipmentSession |
     try:
         ok = session.initialize()
     except Exception as exc:
-        print(f"PoB2 tidak tersedia: {exc}")
+        print(f"PoB2 tidak tersedia: {exc}", file=sys.stderr)
         return None
     if not ok:
-        print(f"PoB2 tidak tersedia: {session.unavailable_reason}")
+        print(f"PoB2 tidak tersedia: {session.unavailable_reason}", file=sys.stderr)
         return None
     return session
 
@@ -142,6 +143,9 @@ def run_live(
     output_writer: Callable[[str], None] = print,
     max_polls: int | None = None,
 ) -> int:
+    if not as_json:
+        output_writer("Memantau clipboard... (Ctrl+C untuk berhenti)")
+
     polls = 0
     last_text: str | None = None
 

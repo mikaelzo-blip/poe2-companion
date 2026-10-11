@@ -20,7 +20,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
-from typing import Sequence
+from typing import Any, Sequence
 
 from companion.notifications.manager import NotificationManager
 from companion.notifications.schema import (
@@ -856,7 +856,21 @@ def handle_journey_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _force_utf8_stdio(*streams: Any) -> None:
+    targets = streams if streams else (sys.stdout, sys.stderr)
+    for stream in targets:
+        if stream is None:
+            continue
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    _force_utf8_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -1172,6 +1186,13 @@ def handle_gear_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _close_pob_session(pob_session: Any | None) -> None:
+    if pob_session is not None:
+        close_fn = getattr(pob_session, "close", None)
+        if callable(close_fn):
+            close_fn()
+
+
 def handle_gear_live(args: argparse.Namespace) -> int:
     from companion.equipment.cli_eval import open_pob_session, run_live
 
@@ -1181,14 +1202,17 @@ def handle_gear_live(args: argparse.Namespace) -> int:
     pob_enabled = not getattr(args, "no_pob", False)
     pob_session = open_pob_session(pob_char, enabled=pob_enabled)
 
-    return run_live(
-        runtime_dir=runtime_dir,
-        character_id=char_id,
-        pob_session=pob_session,
-        poll_interval=getattr(args, "poll_interval", 0.25),
-        as_json=getattr(args, "json", False),
-        stage_override=getattr(args, "stage", None),
-    )
+    try:
+        return run_live(
+            runtime_dir=runtime_dir,
+            character_id=char_id,
+            pob_session=pob_session,
+            poll_interval=getattr(args, "poll_interval", 0.25),
+            as_json=getattr(args, "json", False),
+            stage_override=getattr(args, "stage", None),
+        )
+    finally:
+        _close_pob_session(pob_session)
 
 
 def handle_gear_inspect_clipboard(args: argparse.Namespace) -> int:
@@ -1201,22 +1225,30 @@ def handle_gear_inspect_clipboard(args: argparse.Namespace) -> int:
     pob_enabled = not getattr(args, "no_pob", False)
     pob_session = open_pob_session(pob_char, enabled=pob_enabled)
 
-    raw = get_clipboard_text()
-    code, text = evaluate_once(
-        raw,
-        runtime_dir=runtime_dir,
-        character_id=char_id,
-        pob_session=pob_session,
-        locked_slot=getattr(args, "slot", None),
-        stage_override=getattr(args, "stage", None),
-        as_json=getattr(args, "json", False),
-    )
-    if text:
-        if code != 0:
-            sys.stderr.write(f"Error inspecting clipboard: {text}\n")
-        else:
-            print(text)
-    return code
+    try:
+        raw = get_clipboard_text()
+        try:
+            code, text = evaluate_once(
+                raw,
+                runtime_dir=runtime_dir,
+                character_id=char_id,
+                pob_session=pob_session,
+                locked_slot=getattr(args, "slot", None),
+                stage_override=getattr(args, "stage", None),
+                as_json=getattr(args, "json", False),
+            )
+        except Exception as exc:
+            sys.stderr.write(f"Evaluasi gagal: {exc}\n")
+            return 2
+
+        if text:
+            if code != 0:
+                sys.stderr.write(f"Error inspecting clipboard: {text}\n")
+            else:
+                print(text)
+        return code
+    finally:
+        _close_pob_session(pob_session)
 
 
 def handle_gear_evaluate(args: argparse.Namespace) -> int:
@@ -1239,21 +1271,29 @@ def handle_gear_evaluate(args: argparse.Namespace) -> int:
     pob_enabled = not getattr(args, "no_pob", False)
     pob_session = open_pob_session(pob_char, enabled=pob_enabled)
 
-    code, text = evaluate_once(
-        raw,
-        runtime_dir=runtime_dir,
-        character_id=char_id,
-        pob_session=pob_session,
-        locked_slot=getattr(args, "slot", None),
-        stage_override=getattr(args, "stage", None),
-        as_json=getattr(args, "json", False),
-    )
-    if text:
-        if code != 0:
-            sys.stderr.write(f"Error evaluating candidate file: {text}\n")
-        else:
-            print(text)
-    return code
+    try:
+        try:
+            code, text = evaluate_once(
+                raw,
+                runtime_dir=runtime_dir,
+                character_id=char_id,
+                pob_session=pob_session,
+                locked_slot=getattr(args, "slot", None),
+                stage_override=getattr(args, "stage", None),
+                as_json=getattr(args, "json", False),
+            )
+        except Exception as exc:
+            sys.stderr.write(f"Evaluasi gagal: {exc}\n")
+            return 2
+
+        if text:
+            if code != 0:
+                sys.stderr.write(f"Error evaluating candidate file: {text}\n")
+            else:
+                print(text)
+        return code
+    finally:
+        _close_pob_session(pob_session)
 
 
 def handle_gear_baseline(args: argparse.Namespace) -> int:

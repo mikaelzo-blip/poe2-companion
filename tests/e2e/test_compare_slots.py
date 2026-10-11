@@ -119,6 +119,34 @@ def test_lock_mismatch_shows_error_and_records_nothing(dashboard_page: Page, moc
     assert len(ring2_data.get("history", [])) == 0
 
 
+def test_lock_without_selected_slot_shows_message_and_skips_request(
+    dashboard_page: Page, mock_api: Any
+) -> None:
+    requests = mock_api(dashboard_page, {})
+
+    dashboard_page.locator('.nav-item[data-tab="tab-gear"]').click()
+    dashboard_page.locator("#subtab-view-compare").click()
+
+    # Clear selectedSlot so locking has no slot target
+    dashboard_page.evaluate(
+        "async () => { const { appState } = await import('/js/state.js'); appState.selectedSlot = null; }"
+    )
+    dashboard_page.check("#compare-lock-slot")
+    dashboard_page.fill("#candidate-textarea", RING_ITEM_TEXT)
+    dashboard_page.locator("#btn-run-compare").click()
+
+    # Verify short message is displayed in #compare-verdict-result
+    dashboard_page.wait_for_selector(
+        "#compare-verdict-result:has-text('Pilih slot dulu untuk mengunci.')"
+    )
+    result_text = dashboard_page.locator("#compare-verdict-result").inner_text()
+    assert "Pilih slot dulu untuk mengunci." in result_text
+
+    # Verify no request was sent to /api/evaluate-item
+    eval_calls = [body for path, body in requests if path == "/api/evaluate-item"]
+    assert len(eval_calls) == 0
+
+
 def test_autoscan_records_under_server_slot(dashboard_page: Page, mock_api: Any) -> None:
     dashboard_page.evaluate("import('/js/compare.js').then(m => m.selectSlot('ring1'))")
 

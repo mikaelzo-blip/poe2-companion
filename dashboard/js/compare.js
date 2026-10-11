@@ -577,6 +577,14 @@ export async function simulateVersusComparison(rawText, container, explicitSlot 
   const lockCheckbox = document.getElementById('compare-lock-slot');
   const isLocked = Boolean(lockCheckbox && lockCheckbox.checked);
 
+  if (isLocked && !appState.selectedSlot) {
+    if (container) {
+      container.style.display = 'block';
+      container.innerHTML = `<div style="color: var(--accent-gold); font-size: 12px; font-family: var(--font-mono); padding: 12px;">Pilih slot dulu untuk mengunci.</div>`;
+    }
+    return;
+  }
+
   const targetSlot = isLocked && appState.selectedSlot
     ? appState.selectedSlot
     : (explicitSlot || detectSlotFromItemText(rawText, appState.selectedSlot));

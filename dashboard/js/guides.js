@@ -1,3 +1,4 @@
+import { refreshGuideControls } from './controls.js';
 import { appState, esc } from './state.js';
 
 async function post(url, body) {
@@ -48,6 +49,7 @@ export function setupGuides() {
       show(`✅ ${esc(res.name)}: ${esc(String(res.stages))} stage diimpor.${warns}`, 'var(--accent-green)');
       ta.value = '';
       refreshGuides();
+      refreshGuideControls();
     } catch (e) {
       show(esc(e.message), 'var(--accent-red, #e55)');
     }
@@ -58,5 +60,6 @@ export function setupGuides() {
     if (!b || !confirm(`Hapus guide "${b.dataset.name}"?`)) return;
     await post('/api/guides/delete', { slug: b.dataset.del });
     refreshGuides();
+    refreshGuideControls();
   });
 }

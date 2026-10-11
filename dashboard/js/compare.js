@@ -1,6 +1,6 @@
 import { renderGearSlots, selectSlot } from './overview.js';
 import { fetchHttpRuntime } from './runtime.js';
-import { SLOT_LABELS, addNotification, appState, esc, getEffectiveStage, logToTerminal, showTransientNotification } from './state.js';
+import { SLOT_LABELS, addNotification, appState, esc, logToTerminal, showTransientNotification } from './state.js';
 
 export function getCompareStorageKey() {
   const charId = appState.activeCharId || 'BOMSHAK';
@@ -488,16 +488,12 @@ export async function simulateVersusComparison(rawText, container, explicitSlot 
   container.innerHTML = `<div style="color: var(--accent-gold); font-size: 12px; font-family: var(--font-mono); padding: 12px;">⏳ Mengevaluasi calon untuk slot ${esc(targetLabel)} dengan PoB2 Engine & Fubgun Rules...</div>`;
 
   try {
-    const stage = getEffectiveStage();
-    const guide = appState.selectedGuide || "fubgun_flameblast";
     const res = await fetch('/api/evaluate-item', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         raw_text: rawText,
         character_id: appState.activeCharId || "BOMSHAK",
-        stage: stage,
-        guide: guide,
         slot: targetSlot
       })
     });
@@ -576,10 +572,8 @@ export function startAutoClipboardWatcher() {
 
     try {
       const charId = appState.activeCharId || "BOMSHAK";
-      const stage = getEffectiveStage();
-      const guide = appState.selectedGuide || "fubgun_flameblast";
       const zoneParam = appState.currentZone ? `&zone=${encodeURIComponent(appState.currentZone)}` : '';
-      const query = `?char_id=${encodeURIComponent(charId)}&stage=${encodeURIComponent(stage)}&guide=${encodeURIComponent(guide)}${zoneParam}`;
+      const query = `?char_id=${encodeURIComponent(charId)}${zoneParam}`;
 
       const res = await fetch(`/api/clipboard-poll${query}`);
       if (res.ok) {

@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -37,3 +38,8 @@ def test_fubgun_variants_and_pob():
 
 def test_plant_oracle_has_no_pob():
     assert _load("plant-oracle-druid-leveling-build-guide")["pob_code"] is None
+
+
+def test_bookmarklet_has_no_line_comments():
+    src = (Path(__file__).resolve().parents[3] / "dashboard" / "bookmarklet.js").read_text(encoding="utf-8")
+    assert not re.search(r"(^|\s)//", src, re.M)

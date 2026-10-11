@@ -1,6 +1,6 @@
-// Mobalytics PoE2 guide extractor. Run as a bookmarklet on a guide page; copies
-// JSON (format poe2-companion-guide/1) to the clipboard for pasting in the dashboard.
-// extractGuide(win) is standalone so it can also be run from a browser pane.
+/* Mobalytics PoE2 guide extractor. Run as a bookmarklet on a guide page; copies
+   JSON (format poe2-companion-guide/1) to the clipboard for pasting in the dashboard.
+   extractGuide(win) is standalone so it can also be run from a browser pane. */
 function extractGuide(win) {
   var FORMAT_ERR = "Format halaman tidak dikenal";
   var SLOTS = ["helmet", "body", "gloves", "boots", "amulet", "belt", "leftRing", "rightRing"];

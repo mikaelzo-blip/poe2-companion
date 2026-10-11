@@ -9,12 +9,14 @@ Validates:
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
 import pytest
 
 from companion.equipment.pob2_equipment_advisor import (
     CANONICAL_EQUIPMENT_SLOTS,
+    EngineError,
     POB2_PRODUCTION_SLOTS,
     POB2_PRODUCTION_WEAPON_SLOTS,
     Pob2EquipmentSession,
@@ -156,6 +158,10 @@ class RecordingPobEngine(FakePobEngine):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def restart(self) -> None:
+        self.call_log.append("restart")
+        self.calls.append(("restart", {}))
 
     def call(self, action: str, **kwargs: Any) -> dict[str, Any]:
         self.calls.append((action, kwargs))
@@ -350,3 +356,151 @@ def test_measure_base_xml_uses_guide_xml_and_restores():
     assert 'useSecondWeaponSet="false"' in import_calls[0]
     assert len(skill_locks) == 0
     assert import_calls[-1] == session.xml
+
+
+def _create_session(
+    main_engine: RecordingPobEngine | None = None,
+    sandbox_engine: RecordingPobEngine | None = None,
+) -> tuple[Pob2EquipmentSession, RecordingPobEngine, RecordingPobEngine]:
+    main = main_engine or RecordingPobEngine()
+    sandbox = sandbox_engine or RecordingPobEngine()
+    engine_instances = iter([main, sandbox])
+
+    session = Pob2EquipmentSession(
+        character_name="BOMSHAK",
+        engine_factory=lambda: next(engine_instances),
+        poe_api_client=FakePoeApi(),
+    )
+    assert session.initialize() is True
+    session.main_group = 1
+    return session, main, sandbox
+
+
+def test_measure_superseded_mid_measure_returns_none():
+    """is_stale flips to True between before and after readings; measure returns None and restores baseline."""
+    session, _main_engine, sandbox_engine = _create_session()
+    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW)
+    sandbox_engine.calls.clear()
+
+    orig_call = sandbox_engine.call
+
+    def call_with_supersede(action: str, **kwargs: Any) -> dict[str, Any]:
+        if action == "equip_item":
+            session.submit_candidate(BRIMSTONE_VEIL_RAW)
+        return orig_call(action, **kwargs)
+
+    sandbox_engine.call = call_with_supersede
+
+    delta = session.measure("Helmet", KRAKEN_DOME_RAW, candidate_id)
+
+    assert delta is None
+    assert session.is_healthy is True
+    assert session.unhealthy_reason is None
+
+    import_calls = [kw["xml"] for action, kw in sandbox_engine.calls if action == "import_build"]
+    assert len(import_calls) >= 2
+    assert import_calls[-1] == session.xml
+
+
+def test_measure_engine_error_marks_unhealthy():
+    """EngineError on equip_item marks session unhealthy with 'Engine error: ...' and restores baseline."""
+    session, _main_engine, sandbox_engine = _create_session()
+    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW)
+    sandbox_engine.calls.clear()
+
+    orig_call = sandbox_engine.call
+
+    def call_with_engine_error(action: str, **kwargs: Any) -> dict[str, Any]:
+        if action == "equip_item":
+            raise EngineError("PoB process crashed on equip")
+        return orig_call(action, **kwargs)
+
+    sandbox_engine.call = call_with_engine_error
+
+    delta = session.measure("Helmet", KRAKEN_DOME_RAW, candidate_id)
+
+    assert delta is None
+    assert session.is_healthy is False
+    assert session.unhealthy_reason is not None
+    assert session.unhealthy_reason.startswith("Engine error:")
+    assert "PoB process crashed on equip" in session.unhealthy_reason
+
+    import_calls = [kw["xml"] for action, kw in sandbox_engine.calls if action == "import_build"]
+    assert len(import_calls) >= 2
+    assert import_calls[-1] == session.xml
+
+
+def test_measure_recovers_unhealthy_session():
+    """An unhealthy session triggers auto-recovery during measure, returning delta and restoring health."""
+    session, _main_engine, sandbox_engine = _create_session()
+
+    session.is_healthy = False
+    session.unhealthy_reason = "Engine error: prior crash"
+
+    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW)
+    sandbox_engine.calls.clear()
+
+    delta = session.measure("Helmet", KRAKEN_DOME_RAW, candidate_id)
+
+    assert delta is not None
+    assert session.is_healthy is True
+    assert session.unhealthy_reason is None
+    assert delta.slot == "Helmet"
+
+    actions = [action for action, _kw in sandbox_engine.calls]
+    assert "restart" in actions
+    assert "equip_item" in actions
+
+
+def test_measure_restore_failure_degrades_health(caplog: pytest.LogCaptureFixture):
+    """When baseline restore raises in finally, measure logs a warning and degrades session health."""
+    session, _main_engine, sandbox_engine = _create_session()
+    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW)
+
+    orig_call = sandbox_engine.call
+    restore_attempted = False
+
+    def call_failing_restore(action: str, **kwargs: Any) -> dict[str, Any]:
+        nonlocal restore_attempted
+        if action == "import_build" and any(a == "equip_item" for a, _ in sandbox_engine.calls):
+            restore_attempted = True
+            sandbox_engine.calls.append((action, kwargs))
+            raise EngineError("Simulated baseline restore failure")
+        return orig_call(action, **kwargs)
+
+    sandbox_engine.call = call_failing_restore
+
+    with caplog.at_level(logging.WARNING):
+        delta = session.measure("Helmet", KRAKEN_DOME_RAW, candidate_id)
+
+    assert restore_attempted is True
+    assert session.is_healthy is False
+    assert session.unhealthy_reason is not None
+    assert session.unhealthy_reason.startswith("Baseline restore failed:")
+    assert "Simulated baseline restore failure" in session.unhealthy_reason
+    assert any("Failed to restore baseline in PoB2 sandbox" in rec.message for rec in caplog.records)
+    assert delta is not None
+
+
+def test_measure_never_touches_main_engine():
+    """During measure, only the sandbox engine receives calls; main engine receives none."""
+    session, main_engine, sandbox_engine = _create_session()
+
+    main_engine.calls.clear()
+    main_engine.call_log.clear()
+    sandbox_engine.calls.clear()
+    sandbox_engine.call_log.clear()
+
+    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW)
+    delta = session.measure("Helmet", KRAKEN_DOME_RAW, candidate_id)
+
+    assert delta is not None
+    assert len(main_engine.calls) == 0
+    assert len(main_engine.call_log) == 0
+
+    sandbox_actions = [action for action, _kw in sandbox_engine.calls]
+    assert "import_build" in sandbox_actions
+    assert "equip_item" in sandbox_actions
+    assert "calc_stats" in sandbox_actions
+    assert "get_defenses" in sandbox_actions
+

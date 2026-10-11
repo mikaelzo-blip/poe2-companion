@@ -12,14 +12,14 @@ from pydantic import BaseModel
 from companion.builds.guide import GuideStage
 from companion.builds.priorities import PrioritySignal, priority_signal
 from companion.builds.stages import resolve_stage
-from companion.builds.store import get_assignment, load_guide
+from companion.builds.store import get_assignment, load_guide, load_guide_xml
 from companion.equipment.baseline_cli import load_baseline
 from companion.equipment.current_item import character_level_and_zone, get_current_item_info, get_current_raw
 from companion.equipment.loadout_cli import load_loadout
 from companion.equipment.parser import parse_item_text
 from companion.equipment.partial_projection import project_candidate_on_loadout
 from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-from companion.equipment.policy import VERDICT_RANK, SlotResult, decide, insufficient, rejected
+from companion.equipment.policy import VERDICT_RANK, SlotResult, _pct, decide, insufficient, rejected
 from companion.equipment.safety import breaker_reasons, weapon_not_in_guide
 from companion.equipment.schema import SlotType
 from companion.equipment.slot_resolver import SlotPlan, item_class_of, resolve_slots
@@ -250,6 +250,42 @@ def evaluate(
         "cold_res": d.cold_res_delta, "lightning_res": d.lightning_res_delta, "chaos_res": d.chaos_res_delta,
         "movement_speed": d.movement_speed_delta,
     }
+
+    # Step 7: Guide-build simulation on the guide's PoB stage
+    target_fit: dict[str, float] | None = None
+    if (
+        profile is not None
+        and profile.has_pob
+        and profile.pob_stage_id
+        and stage.id == profile.pob_stage_id
+        and pob_ok
+        and chosen.slot in pob_slots
+        and verdict not in ("REJECT", "ALREADY_EQUIPPED")
+    ):
+        guide_xml = load_guide_xml(runtime_dir, profile.slug)
+        if guide_xml:
+            chosen_plan = next((p for p in plans if p.slot == chosen.slot), None)
+            clear_slots = chosen_plan.clear_slots if chosen_plan else ()
+            try:
+                g_delta = pob_session.measure(
+                    chosen.slot,
+                    raw_text,
+                    state["cid"],
+                    source=source,
+                    clear_slots=clear_slots,
+                    candidate_name=candidate.name or candidate.base_type,
+                    base_xml=guide_xml,
+                )
+                if g_delta is not None:
+                    target_fit = {
+                        "dps_pct": _pct(g_delta.dps_after, g_delta.dps_before),
+                        "ehp_pct": _pct(g_delta.ehp_after, g_delta.ehp_before),
+                    }
+                else:
+                    logger.warning("Guide PoB2 measurement returned None for slot %s", chosen.slot)
+            except Exception:
+                logger.warning("Guide PoB2 measurement failed for slot %s", chosen.slot, exc_info=True)
+
     sig = signals.get(chosen.slot)
     cur_text = current_raw(chosen.slot)
     cur_parsed = None
@@ -271,6 +307,7 @@ def evaluate(
             name=profile.name, stage_title=stage.title, priority_match=sig.ratio if sig else None,
             priority_matched=sig.matched if sig else None, priority_total=sig.total if sig else None,
             must_have_missing=list(sig.must_have_missing) if sig else [],
+            target_fit=target_fit,
         ),
         safety=list(chosen.reasons) if chosen.slot in vetoed else [],
         reasons=reasons, trade_offs=chosen.trade_offs, gains=chosen.gains, tactical_advice=tactical_dump,

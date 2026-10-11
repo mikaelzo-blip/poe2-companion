@@ -37,15 +37,62 @@ class Stub:
     level = None
     dps_gain = 0.05
     ehp_gain = 0.03
+    guide_dps_gain = 0.10
+    guide_ehp_gain = 0.04
     empty_slots: tuple[str, ...] = ()
     fail = False
+    fail_guide = False
+    none_guide = False
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
 
     def submit_candidate(self, raw, candidate_name="", slot="Helmet", source="manual"):
         return 7
 
-    def measure(self, slot, raw, candidate_id, *, source="manual", clear_slots=(), candidate_name=""):
+    def measure(
+        self,
+        slot,
+        raw,
+        candidate_id,
+        *,
+        source="manual",
+        clear_slots=(),
+        candidate_name="",
+        base_xml: str | None = None,
+    ):
+        if not hasattr(self, "calls"):
+            self.calls = []
+        self.calls.append({
+            "slot": slot,
+            "raw": raw,
+            "candidate_id": candidate_id,
+            "source": source,
+            "clear_slots": clear_slots,
+            "candidate_name": candidate_name,
+            "base_xml": base_xml,
+        })
         if self.fail:
             raise RuntimeError("pob exploded")
+        if base_xml is not None:
+            if getattr(self, "fail_guide", False):
+                raise RuntimeError("guide pob exploded")
+            if getattr(self, "none_guide", False):
+                return None
+            return PobEquipmentDelta(
+                slot=slot,
+                candidate_id=candidate_id,
+                candidate_name="x",
+                dps_before=1000.0,
+                dps_after=1000.0 * (1 + self.guide_dps_gain),
+                ehp_before=5000.0,
+                ehp_after=5000.0 * (1 + self.guide_ehp_gain),
+                life_before=1000,
+                life_after=1030,
+                life_delta=30,
+                res_before={"fire": 75},
+                res_after={"fire": 75},
+            )
         return PobEquipmentDelta(
             slot=slot, candidate_id=candidate_id, candidate_name="x",
             dps_before=1000.0, dps_after=1000.0 * (1 + self.dps_gain),

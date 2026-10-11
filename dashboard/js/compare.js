@@ -814,12 +814,10 @@ export function renderEvaluationVerdict(data, container, targetSlot = null) {
   }
 
   let targetFitHtml = '';
-  const tf = data.guide?.target_fit || data.target_fit;
+  const tf = data.guide?.target_fit;
   if (tf && typeof tf === 'object') {
-    const dpsVal = tf.dps_pct ?? tf.dps;
-    const ehpVal = tf.ehp_pct ?? tf.ehp;
-    const dps = formatPctDelta(dpsVal);
-    const ehp = formatPctDelta(ehpVal);
+    const dps = formatPctDelta(tf.dps_pct);
+    const ehp = formatPctDelta(tf.ehp_pct);
     if (dps !== null && ehp !== null) {
       targetFitHtml = `<div class="verdict-target-fit" style="font-size: 11.5px; color: #94a3b8; font-family: var(--font-mono); margin: 4px 0;">Di build target: DPS ${dps} · EHP ${ehp}</div>`;
     }

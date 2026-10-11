@@ -253,3 +253,42 @@ def test_card_target_fit_and_heuristic_engine_reason(
     assert "(kurang:" not in card_text
     assert "Di build target: DPS +8.0% · EHP +3.0%" in card_text
     assert "⚠ Estimasi heuristik (tanpa PoB2) — PoB2 timeout (fallback ke heuristik)" in card_text
+
+
+def test_card_target_fit_ignores_speculative_alias_keys(
+    dashboard_page: Page,
+) -> None:
+    _open_compare_subtab(dashboard_page)
+
+    data = {
+        "verdict": "EQUIP_NOW",
+        "engine": "pob2",
+        "slot": "gloves",
+        "slot_reason": "Sarung tangan upgrade",
+        "dps_pct": 0.05,
+        "ehp_pct": 0.02,
+        "target_fit": {
+            "dps_pct": 0.08,
+            "ehp_pct": 0.03,
+        },
+        "guide": {
+            "name": "Fubgun Deadeye",
+            "stage_title": "Campaign",
+            "target_fit": {
+                "dps": 0.08,
+                "ehp": 0.03,
+            },
+        },
+        "safety": [],
+    }
+
+    dashboard_page.evaluate(
+        """(data) => {
+            const container = document.getElementById('compare-verdict-result');
+            return import('/js/compare.js').then(m => m.renderEvaluationVerdict(data, container));
+        }""",
+        data,
+    )
+    card_text = dashboard_page.locator("#compare-verdict-result").inner_text()
+    assert "Di build target" not in card_text
+

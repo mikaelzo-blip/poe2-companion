@@ -1,5 +1,6 @@
 import pytest
 
+from companion.builds.store import load_guide, save_guide
 from companion.equipment.evaluation import evaluate
 from tests.unit.conftest import (
     FIX,
@@ -171,4 +172,126 @@ def test_current_item_base_type_on_result(tmp_path):
     _seed_boots_and_life(tmp_path, "H", old)
     r = evaluate(BOOTS_TEXT, "H", runtime_dir=tmp_path, pob_session=None, source="manual")
     assert r.current_item_base_type == "Wool Shoes"
+
+
+def test_target_fit_on_pob_stage(tmp_path, positive_pob_stub):
+    _install(tmp_path, FUB, char="BOMSHAK", level=60)
+    profile = load_guide(tmp_path, FUB)
+    save_guide(tmp_path, profile, pob_xml="<PathOfBuilding><ItemSet id='1'/></PathOfBuilding>")
+    pob_stage = profile.pob_stage_id
+    assert pob_stage is not None
+
+    r = evaluate(
+        BOOTS_TEXT,
+        "BOMSHAK",
+        runtime_dir=tmp_path,
+        pob_session=positive_pob_stub,
+        source="manual",
+        stage_override=pob_stage,
+    )
+    assert r.verdict == "EQUIP_NOW"
+    assert r.guide is not None
+    assert r.guide.target_fit == {
+        "dps_pct": pytest.approx(0.10),
+        "ehp_pct": pytest.approx(0.04),
+    }
+
+    # Compare against run without guide XML (verdict unchanged)
+    (tmp_path / "guides" / f"{FUB}.xml").unlink()
+    r_no_xml = evaluate(
+        BOOTS_TEXT,
+        "BOMSHAK",
+        runtime_dir=tmp_path,
+        pob_session=positive_pob_stub,
+        source="manual",
+        stage_override=pob_stage,
+    )
+    assert r.verdict == r_no_xml.verdict
+
+
+def test_no_guide_measure_off_pob_stage(tmp_path, positive_pob_stub):
+    _install(tmp_path, FUB, char="BOMSHAK", level=20)
+    profile = load_guide(tmp_path, FUB)
+    save_guide(tmp_path, profile, pob_xml="<PathOfBuilding><ItemSet id='1'/></PathOfBuilding>")
+    # level 20 resolves to stage "1" (lvl 15-32), not pob_stage_id ("DoT Cap")
+    r = evaluate(
+        BOOTS_TEXT,
+        "BOMSHAK",
+        runtime_dir=tmp_path,
+        pob_session=positive_pob_stub,
+        source="manual",
+    )
+    assert all(c.get("base_xml") is None for c in positive_pob_stub.calls)
+    assert r.guide is not None
+    assert r.guide.target_fit is None
+
+
+def test_target_fit_none_when_guide_xml_missing(tmp_path, positive_pob_stub):
+    _install(tmp_path, FUB, char="BOMSHAK", level=60)
+    profile = load_guide(tmp_path, FUB)
+    pob_stage = profile.pob_stage_id
+    assert profile.has_pob is True
+    # Delete the .xml file
+    (tmp_path / "guides" / f"{FUB}.xml").unlink(missing_ok=True)
+
+    r = evaluate(
+        BOOTS_TEXT,
+        "BOMSHAK",
+        runtime_dir=tmp_path,
+        pob_session=positive_pob_stub,
+        source="manual",
+        stage_override=pob_stage,
+    )
+    assert r.guide is not None
+    assert r.guide.target_fit is None
+    assert r.verdict == "EQUIP_NOW"
+
+
+def test_target_fit_failure_keeps_verdict(tmp_path, positive_pob_stub):
+    _install(tmp_path, FUB, char="BOMSHAK", level=60)
+    profile = load_guide(tmp_path, FUB)
+    save_guide(tmp_path, profile, pob_xml="<PathOfBuilding><ItemSet id='1'/></PathOfBuilding>")
+    pob_stage = profile.pob_stage_id
+
+    # Baseline run
+    r_baseline = evaluate(
+        BOOTS_TEXT,
+        "BOMSHAK",
+        runtime_dir=tmp_path,
+        pob_session=positive_pob_stub,
+        source="manual",
+        stage_override=pob_stage,
+    )
+
+    # 1. Stub returns None for base_xml
+    positive_pob_stub.none_guide = True
+    r_none = evaluate(
+        BOOTS_TEXT,
+        "BOMSHAK",
+        runtime_dir=tmp_path,
+        pob_session=positive_pob_stub,
+        source="manual",
+        stage_override=pob_stage,
+    )
+    assert r_none.guide is not None
+    assert r_none.guide.target_fit is None
+    assert r_none.verdict == r_baseline.verdict
+    assert [s.model_dump() for s in r_none.per_slot] == [s.model_dump() for s in r_baseline.per_slot]
+
+    # 2. Stub raises exception for base_xml
+    positive_pob_stub.none_guide = False
+    positive_pob_stub.fail_guide = True
+    r_raise = evaluate(
+        BOOTS_TEXT,
+        "BOMSHAK",
+        runtime_dir=tmp_path,
+        pob_session=positive_pob_stub,
+        source="manual",
+        stage_override=pob_stage,
+    )
+    assert r_raise.guide is not None
+    assert r_raise.guide.target_fit is None
+    assert r_raise.verdict == r_baseline.verdict
+    assert [s.model_dump() for s in r_raise.per_slot] == [s.model_dump() for s in r_baseline.per_slot]
+
 

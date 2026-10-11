@@ -927,3 +927,47 @@ def test_sandbox_engine_isolation_ring_simulation():
     assert "equip_item" not in main_engine.call_log, (
         f"Main engine was mutated during ring simulation! Calls: {main_engine.call_log}"
     )
+
+
+class RecordingPobEngine(FakePobEngine):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def call(self, action: str, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append((action, kwargs))
+        if action == "list_skills":
+            return {"mainSocketGroup": 1, "groups": []}
+        return super().call(action, **kwargs)
+
+
+def test_measure_base_xml_uses_guide_xml_and_restores():
+    """When base_xml is given, measure uses it without locking main skill and restores session baseline."""
+    main_engine = RecordingPobEngine()
+    sandbox_engine = RecordingPobEngine()
+    engine_instances = iter([main_engine, sandbox_engine])
+
+    session = Pob2EquipmentSession(
+        character_name="BOMSHAK",
+        engine_factory=lambda: next(engine_instances),
+        poe_api_client=FakePoeApi(),
+    )
+    assert session.initialize() is True
+    session.main_group = 1
+
+    guide_xml = "<PathOfBuilding><GuideBuild/></PathOfBuilding>"
+    candidate_id = session.submit_candidate(KRAKEN_DOME_RAW)
+    sandbox_engine.calls.clear()
+
+    delta = session.measure("Helmet", KRAKEN_DOME_RAW, candidate_id, base_xml=guide_xml)
+    assert delta is not None
+
+    import_calls = [kw["xml"] for action, kw in sandbox_engine.calls if action == "import_build"]
+    skill_locks = [kw for action, kw in sandbox_engine.calls if action == "set_main_skill"]
+
+    assert len(import_calls) >= 2
+    assert "GuideBuild" in import_calls[0]
+    assert 'useSecondWeaponSet="false"' in import_calls[0]
+    assert len(skill_locks) == 0
+    assert import_calls[-1] == session.xml
+

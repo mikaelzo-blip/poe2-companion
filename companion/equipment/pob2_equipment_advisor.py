@@ -852,6 +852,7 @@ class Pob2EquipmentSession:
         source: str = "manual",
         clear_slots: tuple[str, ...] = (),
         candidate_name: str = "",
+        base_xml: str | None = None,
     ) -> PobEquipmentDelta | None:
         """Measure one candidate in one slot against its own context-specific baseline.
 
@@ -876,11 +877,12 @@ class Pob2EquipmentSession:
             group = self.main_group
 
             def lock_skill() -> None:
-                if group is not None:
+                if base_xml is None and group is not None:
                     engine.call("set_main_skill", group=group)
 
             try:
-                xml_set = _set_weapon_set_in_xml(self.xml, 2 if canonical_slot.endswith("Swap") else 1)
+                base_to_use = base_xml if base_xml is not None else self.xml
+                xml_set = _set_weapon_set_in_xml(base_to_use, 2 if canonical_slot.endswith("Swap") else 1)
                 engine.call("import_build", xml=xml_set)
                 lock_skill()
                 def_before = engine.call("get_defenses")

@@ -260,3 +260,34 @@ Engine heuristic dan `_build_eval_context` selalu menjalankan `FubgunOilGrenadeF
 Dashboard + Docker + token MCP valid. Karakter BOMSHAK, 3x `POST /api/fetch-public-profile`: jumlah container PoB2 tetap 4 sebelum dan sesudah tiap sync (tidak bertambah). Angka 4 berarti dua sesi (satu `docker run` per engine, dua engine per sesi): sisa dari race pembuatan sesi serentak, yang baru ditutup di fix wave. Setelah server dihentikan, container turun ke 0.
 
 Catatan koreksi: `runtime/loadouts/BOMSHAK.json` helmet `raw_text` yang diperiksa (`Item Level: 40`, `Evasion Rating: 37`, `Energy Shield: 18`) adalah teks hasil adapter GGG, bukan teks PoB2. Pengecekan ini memverifikasi temuan 4 sisi GGG saja.
+
+---
+
+## Cek ulang terhadap kode (2026-10-12, `main` @ 1979149)
+
+Phase 2–4 mengganti jalur compare dengan satu pipeline (`companion/equipment/evaluation.py`) dan menghapus modul Fubgun (`fubgun_rules.py`, `fubgun_weapon_router.py`, `engine.py`). Status tiap temuan dibaca dari kode saat ini:
+
+| # | Status sekarang | Bukti |
+|---|---|---|
+| 1 | Diperbaiki | `evaluate()` menjalankan `breaker_reasons` (`safety.py`) per slot plan **sebelum** PoB2/heuristic, untuk semua engine dan slot |
+| 2 | Diperbaiki | Tactical hanya lewat `merge_verdicts` (veto-only: REJECT dari mana pun menang; tactical tidak pernah mempromosikan) |
+| 3 | Diperbaiki | `invalidate_pob_session` menyimpan sesi dan hanya `sync_character()`; sesi basi di `get_or_create_pob_session` di-`close()` |
+| 4 | Sebagian | Teks GGG lengkap (properti, requirements, desecrated/mutated). Teks PoB2 → clipboard belum diverifikasi live |
+| 5 | Diperbaiki | `compare.js` hanya mengirim `slot` saat "kunci slot" dicentang; UI memakai `data.slot` dari server |
+| 6 | Tidak berlaku lagi | Cabang 1H ambigu / `DualWeaponRecommendation` dihapus; `resolve_slots` memberi slot plan |
+| 7 | Diperbaiki di kode, belum live | `measure()` mengaktifkan weapon set 2 untuk slot `* Swap` (`_set_weapon_set_in_xml`) |
+| 8 | Diperbaiki | `measure()` mengunci main skill sebelum before dan after, di sandbox yang sama, untuk semua slot |
+| 9 | Diperbaiki (unit test) | lihat catatan di atas |
+| 10 | Diperbaiki | `policy.py` memakai ambang relatif (`DPS_UP=0.01`, `EHP_UP=0.02`, dst.) dan persen dari nilai before |
+| 11 | Diperbaiki | `auto_equip_ok = verdict == "EQUIP_NOW" and slot_empty` dihitung server; UI hanya memasang jika true |
+| 12 | Sebagian | Default kelas `"Mercenary"` masih ada (`dashboard_api.py:291`, `:348`, `:696`, `state/schema.py:43`); kelas hanya untuk tampilan |
+| 13, 14 | Diperbaiki (unit test) | lihat catatan di atas |
+| 15 | Diperbaiki | Aturan breaker adalah data per guide (`GuideProfile.breaker_rules`); tanpa guide tidak ada aturan |
+| 16 | Diperbaiki | Staleness per `source` (`_latest_by_source`) |
+| 17 | Diperbaiki (perilaku) | Tanpa PoB2, slot senjata → `INSUFFICIENT_DATA` ("Tanpa PoB2 senjata tidak bisa dinilai"). `weapon_projection.py` masih dead code (hanya dipakai test) |
+| 18 | Diperbaiki | Tabel eksplisit `ITEM_CLASS_TO_SLOT`; fallback talisman diperbaiki di f57b176 |
+
+**Sisa terbuka**
+- Verifikasi live untuk 3 (lock pembuatan sesi), 4 (teks PoB2), 7 (Set 2), 9, 12, 13, 14: butuh Docker dan login OAuth MCP (status saat cek: `WAITING_FOR_USER`).
+- 12: default kelas `"Mercenary"` saat payload tanpa kelas.
+- 17: `weapon_projection.py` (+3 file test) bisa dihapus.

@@ -1523,7 +1523,8 @@ def import_guide_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str
 
     from companion.builds import pob_code
     from companion.builds.mobalytics import parse_mobalytics_guide
-    from companion.builds.store import load_guide, save_guide
+    from companion.builds.known_rules import default_rules_for
+    from companion.builds.store import load_guide, save_guide, set_breaker_rules
 
     text = str(payload.get("text") or "").strip()
     if not text:
@@ -1559,6 +1560,10 @@ def import_guide_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str
                 profile = profile.model_copy(update={"slug": f"{base}-{n}"})
         replaced = load_guide(runtime_dir, profile.slug) is not None
         saved = save_guide(runtime_dir, profile, pob_xml=xml)
+        if not saved.breaker_rules:
+            defaults = default_rules_for(saved.source_url)
+            if defaults:
+                saved = set_breaker_rules(runtime_dir, saved.slug, defaults)
         if replaced:
             warnings.append(
                 f"Guide '{saved.name}' yang sudah ada ditimpa (aturan breaker dipertahankan)")

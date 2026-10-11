@@ -197,3 +197,10 @@ def test_bad_pob_code_sets_has_pob_false_and_removes_stale_xml(tmp_path):
     assert res["success"] and any("PoB2 dilewati" in w for w in res["warnings"])
     assert load_guide(tmp_path, slug).has_pob is False
     assert load_guide_xml(tmp_path, slug) is None
+
+
+def test_import_fubgun_fixture_gets_default_rule(tmp_path):
+    from companion.builds.store import load_guide
+
+    import_guide_payload({"text": _text(NAMES[0])}, tmp_path)
+    assert load_guide(tmp_path, NAMES[0]).breaker_rules[0].from_level == 52

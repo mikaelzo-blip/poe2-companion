@@ -39,6 +39,12 @@ class StageItem(BaseModel):
     raw_text: str | None = None
 
 
+CANONICAL_SLOTS = frozenset({
+    "Helmet", "Body Armour", "Gloves", "Boots", "Amulet", "Belt", "Ring 1", "Ring 2",
+    "Weapon 1", "Weapon 2", "Weapon 1 Swap", "Weapon 2 Swap",
+})
+
+
 class BreakerRule(BaseModel):
     pattern: str
     from_level: int = 1
@@ -52,6 +58,21 @@ class BreakerRule(BaseModel):
             re.compile(v)
         except re.error as exc:
             raise ValueError(f"invalid regex: {exc}") from exc
+        return v
+
+    @field_validator("from_level")
+    @classmethod
+    def _valid_level(cls, v: int) -> int:
+        if not 1 <= v <= 100:
+            raise ValueError("from_level must be in 1-100")
+        return v
+
+    @field_validator("exclude_slots")
+    @classmethod
+    def _canonical_slots(cls, v: list[str]) -> list[str]:
+        bad = [s for s in v if s not in CANONICAL_SLOTS]
+        if bad:
+            raise ValueError(f"unknown slots: {bad}")
         return v
 
 

@@ -181,7 +181,7 @@ def test_all_res_is_global_unless_conditional():
 
 def test_flat_maximum_energy_shield_local_only_on_defence_slots():
     assert normalize_modifier("+30 to maximum Energy Shield", slot=SlotType.HELMET).modifier_type == NormalizedModifierType.LOCAL_ENERGY_SHIELD
-    assert normalize_modifier("+30 to maximum Energy Shield", slot=SlotType.RING).modifier_type != NormalizedModifierType.LOCAL_ENERGY_SHIELD
+    assert normalize_modifier("+30 to maximum Energy Shield", slot=SlotType.RING_1).modifier_type != NormalizedModifierType.LOCAL_ENERGY_SHIELD
 
 
 def test_strip_mod_tags():

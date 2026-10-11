@@ -19,7 +19,6 @@ class SlotType(str, Enum):
     AMULET = "amulet"
     RING_1 = "ring1"
     RING_2 = "ring2"
-    RING = "ring1"
     BELT = "belt"
     MAIN_HAND = "main_hand"
     OFF_HAND = "off_hand"

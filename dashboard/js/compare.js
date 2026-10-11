@@ -758,6 +758,16 @@ export function startAutoClipboardWatcher() {
   }, 800);
 }
 
+export function formatPctDelta(v) {
+  if (typeof v !== 'number' || isNaN(v)) return null;
+  const pct = v * 100;
+  const fixed = Math.abs(pct).toFixed(1);
+  if (fixed === '0.0') {
+    return '+0.0%';
+  }
+  return pct < 0 ? `−${fixed}%` : `+${fixed}%`;
+}
+
 export function renderEvaluationVerdict(data, container, targetSlot = null) {
   container.style.display = 'block';
   if (data.error) {
@@ -772,8 +782,53 @@ export function renderEvaluationVerdict(data, container, targetSlot = null) {
   const badgeClass = isEquip ? 'badge-green' : (isConditional ? 'badge-gold' : (isInsufficient ? 'badge-gray' : 'badge-red'));
   const boxClass = isEquip ? 'verdict-equip-now' : (isConditional ? 'verdict-conditional' : (isInsufficient ? 'verdict-insufficient' : 'verdict-reject'));
 
-  const slotLabel = SLOT_LABELS[currentSlot] || currentSlot.toUpperCase().replace('_', ' ');
-  const slotBadgeHtml = `<div style="font-size: 11px; color: var(--accent-gold); font-family: var(--font-mono); margin-bottom: 4px;">🎯 Slot Evaluasi: ${esc(slotLabel.toUpperCase())}</div>`;
+  const effectiveSlot = data.slot || targetSlot || appState.selectedSlot || 'equipment';
+  const slotLabel = (data.slot && SLOT_LABELS[data.slot]) || SLOT_LABELS[effectiveSlot] || effectiveSlot;
+  const slotReasonPart = data.slot_reason ? ` — ${esc(data.slot_reason)}` : '';
+  const slotBadgeHtml = `<div class="verdict-slot-line" style="font-size: 11px; color: var(--accent-gold); font-family: var(--font-mono); margin-bottom: 4px;">🎯 Slot: ${esc(slotLabel)}${slotReasonPart}</div>`;
+
+  let deltasHtml = '';
+  if (data.engine === 'pob2' || data.engine === 'heuristic') {
+    const dps = formatPctDelta(data.dps_pct);
+    const ehp = formatPctDelta(data.ehp_pct);
+    if (dps !== null && ehp !== null) {
+      deltasHtml = `<div class="verdict-deltas" style="font-size: 12px; font-weight: 700; font-family: var(--font-mono); color: #f1f5f9; margin: 4px 0;">DPS ${dps} · EHP ${ehp}</div>`;
+    }
+  }
+
+  let priorityHtml = '';
+  if (data.guide && data.guide.priority_total) {
+    const matched = Number(data.guide.priority_matched) || 0;
+    const total = Number(data.guide.priority_total);
+    const missingArr = Array.isArray(data.guide.must_have_missing) ? data.guide.must_have_missing.filter(Boolean) : [];
+    const missingPart = missingArr.length > 0 ? ` (kurang: ${missingArr.map(m => esc(String(m))).join(', ')})` : '';
+    priorityHtml = `<div class="verdict-priority-line" style="font-size: 11.5px; color: var(--accent-gold, #f59e0b); margin: 4px 0;">Prioritas guide ${matched}/${total}${missingPart}</div>`;
+  }
+
+  let targetFitHtml = '';
+  const tf = data.guide?.target_fit || data.target_fit;
+  if (tf && typeof tf === 'object') {
+    const dpsVal = tf.dps_pct ?? tf.dps;
+    const ehpVal = tf.ehp_pct ?? tf.ehp;
+    const dps = formatPctDelta(dpsVal);
+    const ehp = formatPctDelta(ehpVal);
+    if (dps !== null && ehp !== null) {
+      targetFitHtml = `<div class="verdict-target-fit" style="font-size: 11.5px; color: #94a3b8; font-family: var(--font-mono); margin: 4px 0;">Di build target: DPS ${dps} · EHP ${ehp}</div>`;
+    }
+  }
+
+  let safetyBadgesHtml = '';
+  if (Array.isArray(data.safety) && data.safety.length > 0) {
+    safetyBadgesHtml = data.safety.map(reason => `
+      <div class="verdict-safety-badge" style="background: rgba(239, 68, 68, 0.18); border: 1px solid var(--accent-red, #ef4444); color: #fca5a5; padding: 6px 12px; border-radius: 4px; font-size: 11.5px; font-weight: 600; margin: 4px 0;">⛔ ${esc(reason)}</div>
+    `).join('');
+  }
+
+  let heuristicBadgeHtml = '';
+  if (data.engine === 'heuristic') {
+    const reasonSuffix = data.engine_reason ? ` — ${esc(data.engine_reason)}` : '';
+    heuristicBadgeHtml = `<span title="PoB2 tidak tersedia / gagal; hasil dari estimasi stat lokal" style="font-size: 10.5px; font-family: var(--font-mono); color: #fbbf24; background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.4); padding: 2px 8px; border-radius: 4px;">⚠ Estimasi heuristik (tanpa PoB2)${reasonSuffix}</span>`;
+  }
 
   let gainsHtml = '';
   if (data.gains && data.gains.length > 0) {
@@ -856,9 +911,18 @@ export function renderEvaluationVerdict(data, container, targetSlot = null) {
     ? '<span class="matchup-outcome-badge outcome-keep">👑 TAHAN (LEBIH BAGUS)</span>'
     : (isWinnerCandidate ? '<span class="matchup-outcome-badge outcome-reject">🔄 DIGANTIKAN</span>' : '');
 
-  const candidateOutcomeBadge = isWinnerCandidate
-    ? '<span class="matchup-outcome-badge outcome-equip">👑 PASANG (UPGRADE)</span>'
-    : (isWinnerCurrent ? '<span class="matchup-outcome-badge outcome-reject">🛑 DITOLAK</span>' : '<span class="matchup-outcome-badge outcome-keep">⚠️ KONDISIONAL</span>');
+  let candidateOutcomeBadge = '';
+  if (isWinnerCandidate) {
+    candidateOutcomeBadge = '<span class="matchup-outcome-badge outcome-equip">👑 PASANG (UPGRADE)</span>';
+  } else if (isWinnerCurrent) {
+    candidateOutcomeBadge = '<span class="matchup-outcome-badge outcome-reject">🛑 DITOLAK</span>';
+  } else if (data.verdict === 'ALREADY_EQUIPPED') {
+    candidateOutcomeBadge = '<span class="matchup-outcome-badge outcome-keep">✓ SUDAH TERPASANG</span>';
+  } else if (data.verdict === 'INSUFFICIENT_DATA') {
+    candidateOutcomeBadge = '<span class="matchup-outcome-badge outcome-keep">❓ DATA KURANG</span>';
+  } else if (isConditional) {
+    candidateOutcomeBadge = '<span class="matchup-outcome-badge outcome-keep">⚠️ KONDISIONAL</span>';
+  }
 
   const matchupCardHtml = `
     <div class="compare-matchup-container">
@@ -930,7 +994,7 @@ export function renderEvaluationVerdict(data, container, targetSlot = null) {
       <span style="font-size: 10.5px; font-family: var(--font-mono); color: #94a3b8; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 4px;">
         🕒 Dievaluasi: <strong style="color: #f1f5f9;">${esc(timeStr)}</strong>
       </span>
-      ${data.engine === 'heuristic' ? `<span title="PoB2 tidak tersedia / gagal; hasil dari estimasi stat lokal" style="font-size: 10.5px; font-family: var(--font-mono); color: #fbbf24; background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.4); padding: 2px 8px; border-radius: 4px;">⚠ Estimasi heuristik (tanpa PoB2)</span>` : ''}
+      ${heuristicBadgeHtml}
     </div>
   `;
 
@@ -956,11 +1020,15 @@ export function renderEvaluationVerdict(data, container, targetSlot = null) {
 
   container.innerHTML = `
     <div class="verdict-box ${boxClass}">
-      <span class="verdict-badge ${badgeClass}">VERDICT: ${esc(data.verdict)}</span>
+      <span class="verdict-badge ${badgeClass}">VERDICT: ${esc(data.verdict || '')}</span>
       <div class="verdict-details">
         ${metaBarHtml}
         ${controllerTipHtml}
+        ${safetyBadgesHtml}
         ${winnerBadgeHtml}
+        ${deltasHtml}
+        ${priorityHtml}
+        ${targetFitHtml}
         ${matchupCardHtml}
         ${reasonHtml}
         ${gainsHtml}

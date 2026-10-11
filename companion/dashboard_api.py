@@ -142,6 +142,13 @@ def check_auto_clipboard(
         runtime_dir=runtime_dir,
         pob_session=pob_session,
     )
+    if not result.get("success"):
+        err = result.get("error", "")
+        if (
+            "tidak bisa dipasang di slot equipment" in err
+            or "Clipboard does not contain recognizable PoE2 item text" in err
+        ):
+            return {"has_new_item": False}
     result["has_new_item"] = True
     result["raw_text"] = current_text
     return result

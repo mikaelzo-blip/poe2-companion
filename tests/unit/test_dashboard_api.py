@@ -1007,6 +1007,22 @@ def test_check_auto_clipboard_reevaluates_on_context_change(fub: Path, monkeypat
     assert d_api.check_auto_clipboard(fub, char_id="Varashta", pob_session=Stub())["has_new_item"] is True
 
 
+def test_check_auto_clipboard_ignores_non_equippables(fub: Path, monkeypatch: Any) -> None:
+    import companion.dashboard_api as d_api
+
+    non_equippables = [
+        "Item Class: Life Flasks\nRarity: Normal\nLife Flask\n--------",
+        "Item Class: Stackable Currency\nRarity: Currency\nChaos Orb\n--------",
+        "Item Class: Skill Gems\nRarity: Gem\nFireball\n--------",
+        "Item Class: Waystones\nRarity: Normal\nWaystone\n--------",
+    ]
+    for raw in non_equippables:
+        d_api._LAST_SEEN_CLIPBOARD = ""
+        monkeypatch.setattr(d_api, "get_clipboard_text", lambda text=raw: text)
+        res = d_api.check_auto_clipboard(fub, char_id="BOMSHAK")
+        assert res["has_new_item"] is False
+
+
 def test_flatten_auto_equip_ok_only_for_equip_now_into_empty() -> None:
     from companion.dashboard_api import flatten_result
     from companion.equipment.evaluation import EvaluationResult

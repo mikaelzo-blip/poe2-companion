@@ -697,7 +697,9 @@ export function startAutoClipboardWatcher() {
         if (data.has_new_item) {
           const slot = data.slot;
           if (!slot) {
-            if (data.error) showTransientNotification(`⚠ Gagal evaluasi item: ${data.error}`);
+            if (data.error && !data.error.includes("tidak bisa dipasang") && !data.error.includes("recognizable PoE2 item text")) {
+              showTransientNotification(`⚠ Gagal evaluasi item: ${data.error}`);
+            }
             return;
           }
 

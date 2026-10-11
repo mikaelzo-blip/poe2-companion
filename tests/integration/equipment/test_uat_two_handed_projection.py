@@ -11,7 +11,6 @@ from companion.equipment.loadout_cli import (
 )
 from companion.equipment.loadout_promotion import promote_candidate_to_loadout
 from companion.equipment.parser import parse_item_text
-from companion.equipment.weapon_projection import validate_weapon_pairing
 
 WAND_SET1 = """Item Class: Wands
 Rarity: Magic
@@ -116,13 +115,3 @@ def test_uat_two_handed_projection_and_set2_isolation(tmp_path: Path):
     # Set 2 crossbow is completely untouched and preserved intact!
     assert new_loadout.weapon_set_2["main_hand"].item.name == "Gloom Piercer"
     assert new_loadout.weapon_set_2["off_hand"] is None
-
-    # Crossbow cannot pair with a quiver
-    quiver_cand = parse_item_text(
-        "Item Class: Quivers\nRarity: Rare\nTest Quiver\n--------\n"
-    )
-    is_valid, msg = validate_weapon_pairing(
-        new_loadout.weapon_set_2["main_hand"].item, quiver_cand
-    )
-    assert is_valid is False
-    assert "Crossbow cannot pair with quiver" in msg

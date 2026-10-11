@@ -6,8 +6,8 @@ RESPONSIBILITY BOUNDARY:
 - Enforces async correctness: serialized/single-flight engine simulation, monotonically
   increasing candidate IDs, staleness tracking, latest-wins candidate coalescing,
   and thread-safe bookkeeping independent of engine lock.
-- Generic across equipment slots conceptually (simulate_item(slot, raw_candidate)).
-- Production live watcher routing is explicitly allowlisted for the verified core slots.
+- Generic across equipment slots conceptually.
+- Production slot routing is explicitly allowlisted for the verified core slots.
 """
 
 from __future__ import annotations
@@ -269,28 +269,6 @@ class PobEquipmentDelta(BaseModel):
     dps_after: float = 0.0
     res_before: dict[str, float] = {}  # keys: fire, cold, lightning, chaos
     res_after: dict[str, float] = {}
-
-
-class DualRingSimulationResult(BaseModel):
-    """Container holding the independent baseline-anchored simulation results for Ring 1 and Ring 2."""
-
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
-
-    candidate_id: int
-    candidate_name: str
-    ring1_delta: PobEquipmentDelta | None = None
-    ring2_delta: PobEquipmentDelta | None = None
-
-
-class DualWeaponSimulationResult(BaseModel):
-    """Container holding independent baseline-anchored simulation results for two weapon placements (e.g. Weapon 1 vs Weapon 2)."""
-
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
-
-    candidate_id: int
-    candidate_name: str
-    slot1_delta: PobEquipmentDelta | None = None
-    slot2_delta: PobEquipmentDelta | None = None
 
 
 def is_docker_daemon_running() -> bool:
@@ -921,41 +899,6 @@ class Pob2EquipmentSession:
                     self.is_healthy = False
                     self.unhealthy_reason = f"Baseline restore failed: {exc}"
 
-    def simulate_item(
-        self,
-        slot: str | SlotType,
-        raw_candidate: str,
-        candidate_id: int | None = None,
-        candidate_name: str = "",
-    ) -> PobEquipmentDelta | None:
-        """Legacy wrapper over :meth:`measure` (slot validated; fails closed on unknown slots)."""
-        canonical_slot = normalize_and_validate_pob_slot(slot)
-        if candidate_id is None:
-            candidate_id = self.submit_candidate(raw_candidate, candidate_name=candidate_name, slot=canonical_slot)
-        return self.measure(canonical_slot, raw_candidate, candidate_id, candidate_name=candidate_name)
-
-    def simulate_ring_candidate(
-        self,
-        raw_candidate: str,
-        candidate_id: int | None = None,
-        candidate_name: str = "",
-    ) -> DualRingSimulationResult | None:
-        """Measure a ring candidate in Ring 1 and Ring 2; None if either leg fails or goes stale."""
-        if candidate_id is None:
-            candidate_id = self.submit_candidate(raw_candidate, candidate_name=candidate_name, slot="Ring 1")
-        delta1 = self.measure("Ring 1", raw_candidate, candidate_id, candidate_name=candidate_name)
-        if delta1 is None:
-            return None
-        delta2 = self.measure("Ring 2", raw_candidate, candidate_id, candidate_name=candidate_name)
-        if delta2 is None:
-            return None
-        return DualRingSimulationResult(
-            candidate_id=candidate_id,
-            candidate_name=candidate_name or "Candidate Ring",
-            ring1_delta=delta1,
-            ring2_delta=delta2,
-        )
-
     def simulate_weapon_plan(
         self,
         context: Any,
@@ -1075,36 +1018,6 @@ class Pob2EquipmentSession:
                     logging.getLogger(__name__).warning("Failed to restore sandbox in weapon plan simulation: %s", exc)
                     self.is_healthy = False
                     self.unhealthy_reason = f"Baseline restore failed: {exc}"
-
-    def simulate_ambiguous_1h_weapon(
-        self,
-        raw_candidate: str,
-        candidate_id: int | None = None,
-        candidate_name: str = "",
-        target_set: Any = None,
-        build_stage: Any = None,
-    ) -> DualWeaponSimulationResult | None:
-        """Measure an ambiguous 1H weapon in both hands of the target weapon set."""
-        from companion.equipment.schema import WeaponSetContext
-
-        if target_set == WeaponSetContext.WEAPON_SET_2:
-            slot1, slot2 = "Weapon 1 Swap", "Weapon 2 Swap"
-        else:
-            slot1, slot2 = "Weapon 1", "Weapon 2"
-        if candidate_id is None:
-            candidate_id = self.submit_candidate(raw_candidate, candidate_name=candidate_name, slot=slot1)
-        delta1 = self.measure(slot1, raw_candidate, candidate_id, candidate_name=candidate_name)
-        if self.is_stale(candidate_id):
-            return None
-        delta2 = self.measure(slot2, raw_candidate, candidate_id, candidate_name=candidate_name)
-        if self.is_stale(candidate_id):
-            return None
-        return DualWeaponSimulationResult(
-            candidate_id=candidate_id,
-            candidate_name=candidate_name or "Candidate Weapon",
-            slot1_delta=delta1,
-            slot2_delta=delta2,
-        )
 
     def display_recommendation(
         self,

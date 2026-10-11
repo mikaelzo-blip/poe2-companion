@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from companion.equipment.clipboard import get_clipboard_text
+from companion.equipment.current_item import character_level_and_zone, get_current_item_info, get_current_raw
 from companion.equipment.engine import EquipmentIntelligenceEngine
 from companion.equipment.fubgun_priorities import evaluate_fubgun_weapon_policy, evaluate_fubgun_equipment_policy
 from companion.equipment.recommendation import Verdict
@@ -63,139 +64,6 @@ def _resolve_stage(stage_str: str | None, char_level: int | None) -> BuildProgre
     if char_level and char_level >= 15:
         return infer_stage_from_level(char_level)
     return BuildProgressionStage.LEVELING_1_14
-
-
-def get_current_raw(
-    runtime_dir: Path,
-    char_id: str,
-    slot_name: str,
-    pob_session: Any | None = None,
-) -> str:
-    """Retrieve raw text of equipped item for given slot, from PoB session or local loadout."""
-    if pob_session is not None:
-        pob_slot_candidates = [slot_name]
-        try:
-            from companion.equipment.schema import SlotType
-            st = SlotType.from_str(slot_name)
-            pob_mapping = {
-                SlotType.HELMET: "Helmet",
-                SlotType.BODY_ARMOUR: "Body Armour",
-                SlotType.GLOVES: "Gloves",
-                SlotType.BOOTS: "Boots",
-                SlotType.AMULET: "Amulet",
-                SlotType.RING_1: "Ring 1",
-                SlotType.RING_2: "Ring 2",
-                SlotType.BELT: "Belt",
-                SlotType.MAIN_HAND: "Weapon 1",
-                SlotType.OFF_HAND: "Weapon 2",
-            }
-            if st in pob_mapping and pob_mapping[st] not in pob_slot_candidates:
-                pob_slot_candidates.insert(0, pob_mapping[st])
-        except Exception:
-            pass
-
-        for p_slot in pob_slot_candidates:
-            try:
-                eq = pob_session.get_equipped_item(p_slot)
-                if isinstance(eq, dict) and eq.get("raw"):
-                    from companion.equipment.pob_item_text import pob_item_to_clipboard
-                    return pob_item_to_clipboard(eq["raw"])
-            except Exception:
-                pass  # includes PobItemTextError: fall back to the loadout text
-
-    try:
-        from companion.equipment.loadout_cli import load_loadout
-        from companion.equipment.schema import SlotType, WeaponSetContext
-        lo = load_loadout(runtime_dir, char_id)
-        if lo:
-            w_ctx = None
-            norm = slot_name.lower().strip()
-            if "set2" in norm or "swap" in norm:
-                w_ctx = WeaponSetContext.WEAPON_SET_2
-            elif "set1" in norm:
-                w_ctx = WeaponSetContext.WEAPON_SET_1
-
-            try:
-                st = SlotType.from_str(slot_name)
-                entry = lo.get_slot(st, weapon_set=w_ctx)
-                if entry and entry.item and entry.item.raw_text:
-                    return entry.item.raw_text
-            except Exception:
-                pass
-
-            direct_keys = [
-                slot_name.lower().replace(" ", "_"),
-                slot_name.lower().replace(" ", "").replace("_", ""),
-            ]
-            for dk in direct_keys:
-                entry = lo.shared_slots.get(dk)
-                if entry and entry.item and entry.item.raw_text:
-                    return entry.item.raw_text
-    except Exception:
-        pass
-    return ""
-
-
-def get_current_item_info(
-    runtime_dir: Path,
-    char_id: str,
-    slot_name: str,
-    pob_session: Any | None = None,
-) -> tuple[str, str]:
-    """Retrieve (item_name, base_type) of equipped item for given slot."""
-    # 1. PoB session if available
-    if pob_session is not None:
-        try:
-            p_name = pob_session.get_current_item_name(slot_name)
-            if p_name and p_name != "Unobserved":
-                return str(p_name), ""
-        except Exception:
-            pass
-
-    # 2. Local loadout
-    try:
-        from companion.equipment.loadout_cli import load_loadout
-        from companion.equipment.schema import SlotType, WeaponSetContext
-        lo = load_loadout(runtime_dir, char_id)
-        if lo:
-            w_ctx = None
-            norm = slot_name.lower().strip()
-            if "set2" in norm or "swap" in norm:
-                w_ctx = WeaponSetContext.WEAPON_SET_2
-            elif "set1" in norm:
-                w_ctx = WeaponSetContext.WEAPON_SET_1
-
-            try:
-                st = SlotType.from_str(slot_name)
-                entry = lo.get_slot(st, weapon_set=w_ctx)
-                if entry and entry.item and (entry.item.name or entry.item.base_type):
-                    return entry.item.name or entry.item.base_type, entry.item.base_type or ""
-            except Exception:
-                pass
-
-            direct_keys = [
-                slot_name.lower().replace(" ", "_"),
-                slot_name.lower().replace(" ", "").replace("_", ""),
-            ]
-            for dk in direct_keys:
-                entry = lo.shared_slots.get(dk)
-                if entry and entry.item and (entry.item.name or entry.item.base_type):
-                    return entry.item.name or entry.item.base_type, entry.item.base_type or ""
-    except Exception:
-        pass
-
-    # 3. Parse current raw item text
-    try:
-        raw = get_current_raw(runtime_dir, char_id, slot_name, pob_session)
-        if raw:
-            from companion.equipment.parser import parse_item_text
-            parsed = parse_item_text(raw)
-            if parsed.name or parsed.base_type:
-                return parsed.name or parsed.base_type, parsed.base_type or ""
-    except Exception:
-        pass
-
-    return "Slot Kosong", ""
 
 
 def resolve_char_id(char_id: str | None, runtime_dir: Path) -> str:
@@ -276,14 +144,6 @@ class _EvalContext:
             **fields,
         }
 
-
-def character_level_and_zone(char_data: dict[str, Any]) -> tuple[int | None, str | None]:
-    """Read level and current_zone from character JSON (each either {"value": x} or plain)."""
-    def plain(v: Any) -> Any:
-        return v.get("value") if isinstance(v, dict) else v
-
-    lvl, zone = plain(char_data.get("level")), plain(char_data.get("current_zone"))
-    return (lvl if isinstance(lvl, int) else None), (zone if isinstance(zone, str) else None)
 
 
 def _build_eval_context(

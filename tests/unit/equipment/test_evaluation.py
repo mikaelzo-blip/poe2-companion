@@ -1,103 +1,26 @@
-import json
-from pathlib import Path
-
 import pytest
 
-from companion.builds.store import set_assignment
-from companion.dashboard_api import import_guide_payload
 from companion.equipment.evaluation import evaluate
-from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta
-
-FIX = Path(__file__).resolve().parents[2] / "fixtures" / "guides"
-FUB = "fubgun-flameblast-oil-grenade"
-
-
-def _item(item_class, base, mods, rarity="Rare", name="Doom Name"):
-    return (
-        f"Item Class: {item_class}\nRarity: {rarity}\n{name}\n{base}\n--------\n"
-        "Requires: Level 10\n--------\n" + "\n".join(mods) + "\n"
-    )
-
+from tests.unit.conftest import (
+    FIX,
+    FUB,
+    Failing,
+    Flat,
+    Ring2Empty,
+    Stub,
+    _install,
+    _item,
+    _write_char,
+    failing_pob_stub,
+    flat_pob_stub,
+    positive_pob_stub,
+    ring2_empty_stub,
+)
 
 PROBE_GLOVES = _item("Gloves", "Wool Gloves", ["+40 to maximum Life", "Adds 12 to 22 Fire Damage to Attacks", "+20% to Fire Resistance"])
 RING_TEXT = _item("Rings", "Iron Ring", ["+30 to maximum Life", "+10% to Cold Resistance"])
 BOOTS_TEXT = _item("Boots", "Wool Shoes", ["+30 to maximum Life", "+10% to Cold Resistance"])
 CROSSBOW_TEXT = _item("Crossbows", "Makeshift Crossbow", ["+40 to maximum Life"])
-
-
-def _write_char(tmp_path, char, level):
-    d = tmp_path / "characters"
-    d.mkdir(exist_ok=True)
-    (d / f"{char}.json").write_text(json.dumps({"level": {"value": level}}), encoding="utf-8")
-
-
-def _install(tmp_path, slug, char, level):
-    import_guide_payload({"text": (FIX / f"{slug}.json").read_text(encoding="utf-8")}, tmp_path)
-    _write_char(tmp_path, char, level)
-    set_assignment(tmp_path, char, slug, None)
-
-
-class Stub:
-    is_available = True
-    level = None
-    dps_gain = 0.05
-    ehp_gain = 0.03
-    empty_slots: tuple[str, ...] = ()
-    fail = False
-
-    def submit_candidate(self, raw, candidate_name="", slot="Helmet", source="manual"):
-        return 7
-
-    def measure(self, slot, raw, candidate_id, *, source="manual", clear_slots=(), candidate_name=""):
-        if self.fail:
-            raise RuntimeError("pob exploded")
-        return PobEquipmentDelta(
-            slot=slot, candidate_id=candidate_id, candidate_name="x",
-            dps_before=1000.0, dps_after=1000.0 * (1 + self.dps_gain),
-            ehp_before=5000.0, ehp_after=5000.0 * (1 + self.ehp_gain), life_before=1000, life_after=1030,
-            life_delta=30, res_before={"fire": 75}, res_after={"fire": 75},
-        )
-
-    def is_slot_empty(self, slot):
-        return slot in self.empty_slots
-
-    def get_equipped_item(self, slot):
-        return None
-
-    def get_current_item_name(self, slot):
-        return None
-
-
-class Flat(Stub):
-    dps_gain, ehp_gain = 0.005, 0.0
-
-
-class Failing(Stub):
-    fail = True
-
-
-class Ring2Empty(Stub):
-    empty_slots = ("Ring 2",)
-
-
-@pytest.fixture
-def positive_pob_stub():
-    return Stub()
-
-
-@pytest.fixture
-def flat_pob_stub():
-    return Flat()
-
-
-@pytest.fixture
-def failing_pob_stub():
-    return Failing()
-
-
-@pytest.fixture
-def ring2_empty_stub():
-    return Ring2Empty()
 
 
 def test_audit_probe_rejected_on_both_engines(tmp_path, positive_pob_stub):
@@ -224,3 +147,28 @@ def test_already_equipped_has_indonesian_reason(tmp_path):
     _seed_boots_and_life(tmp_path, "A", BOOTS_TEXT)
     r = evaluate(BOOTS_TEXT, "A", runtime_dir=tmp_path, pob_session=None, source="manual")
     assert r.reasons == ["Item ini sudah terpasang di Boots"]
+
+
+def test_guide_signal_carries_priority_counts(tmp_path, positive_pob_stub):
+    _install(tmp_path, FUB, char="BOMSHAK", level=20)
+    r = evaluate(BOOTS_TEXT, "BOMSHAK", runtime_dir=tmp_path, pob_session=positive_pob_stub, source="manual")
+    assert r.guide.priority_matched == 0
+    assert r.guide.priority_total == 1
+    assert r.guide.priority_match == 0 / 1
+
+
+def test_already_equipped_has_chosen_per_slot(tmp_path):
+    _write_char(tmp_path, "A", level=30)
+    _seed_boots_and_life(tmp_path, "A", BOOTS_TEXT)
+    r = evaluate(BOOTS_TEXT, "A", runtime_dir=tmp_path, pob_session=None, source="manual")
+    assert r.verdict == "ALREADY_EQUIPPED"
+    assert [s.slot for s in r.per_slot] == [r.slot]
+
+
+def test_current_item_base_type_on_result(tmp_path):
+    _write_char(tmp_path, "H", level=30)
+    old = _item("Boots", "Wool Shoes", ["+5% to Cold Resistance"], name="Old Tread")
+    _seed_boots_and_life(tmp_path, "H", old)
+    r = evaluate(BOOTS_TEXT, "H", runtime_dir=tmp_path, pob_session=None, source="manual")
+    assert r.current_item_base_type == "Wool Shoes"
+

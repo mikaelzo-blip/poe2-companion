@@ -36,6 +36,8 @@ class GuideSignal(BaseModel):
     name: str
     stage_title: str
     priority_match: float | None = None
+    priority_matched: int | None = None
+    priority_total: int | None = None
     must_have_missing: list[str] = []
     target_fit: dict[str, float] | None = None  # Phase 4
 
@@ -55,6 +57,7 @@ class EvaluationResult(BaseModel):
     gains: list[str] = []
     tactical_advice: dict | None = None
     current_item_name: str | None = None
+    current_item_base_type: str = ""
     item_name: str
     base_type: str
 
@@ -204,9 +207,11 @@ def evaluate(
             if parsed and candidate.rarity in ("rare", "unique") and (parsed.name, parsed.base_type) == (candidate.name, candidate.base_type):
                 return EvaluationResult(
                     verdict="ALREADY_EQUIPPED", engine="pob2" if pob_ok else "heuristic",
-                    engine_reason=state["reason"], slot=slot, slot_reason=slot_reason, per_slot=[],
+                    engine_reason=state["reason"], slot=slot, slot_reason=slot_reason,
+                    per_slot=[SlotResult(slot=slot, verdict="ALREADY_EQUIPPED")],
                     reasons=[f"Item ini sudah terpasang di {slot}"], item_name=candidate.name or candidate.base_type, base_type=candidate.base_type,
                     current_item_name=parsed.name or parsed.base_type,
+                    current_item_base_type=parsed.base_type or "",
                 )
         delta = None
         if state["pob_ok"]:
@@ -246,17 +251,28 @@ def evaluate(
         "movement_speed": d.movement_speed_delta,
     }
     sig = signals.get(chosen.slot)
-    current_name = get_current_item_info(runtime_dir, character_id, chosen.slot, pob_session if pob_ok else None)[0]
+    cur_text = current_raw(chosen.slot)
+    cur_parsed = None
+    if cur_text:
+        try:
+            cur_parsed = parse_item_text(cur_text)
+        except Exception:
+            logger.warning("Current item in %s unparseable", chosen.slot, exc_info=True)
+    info_name, info_base = get_current_item_info(runtime_dir, character_id, chosen.slot, pob_session if pob_ok else None)
+    current_name = (cur_parsed.name or cur_parsed.base_type) if cur_parsed else (None if info_name == "Slot Kosong" else info_name)
+    current_base = (cur_parsed.base_type if cur_parsed else "") or info_base or ""
     return EvaluationResult(
         verdict=verdict,
         engine="pob2" if chosen.slot in pob_slots else "none" if len(vetoed) == len(plans) else "heuristic",
         engine_reason=state["reason"], slot=chosen.slot, slot_reason=slot_reason, per_slot=results, dims=dims,
         guide=None if profile is None else GuideSignal(
             name=profile.name, stage_title=stage.title, priority_match=sig.ratio if sig else None,
+            priority_matched=sig.matched if sig else None, priority_total=sig.total if sig else None,
             must_have_missing=list(sig.must_have_missing) if sig else [],
         ),
         safety=list(chosen.reasons) if chosen.slot in vetoed else [],
         reasons=reasons, trade_offs=chosen.trade_offs, gains=chosen.gains, tactical_advice=tactical_dump,
-        current_item_name=None if current_name == "Slot Kosong" else current_name,
+        current_item_name=current_name,
+        current_item_base_type=current_base,
         item_name=candidate.name or candidate.base_type, base_type=candidate.base_type,
     )

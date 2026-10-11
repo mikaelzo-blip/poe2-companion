@@ -39,10 +39,14 @@ def _stamp_evaluated(res: dict[str, Any]) -> dict[str, Any]:
     return res
 
 
-def flatten_result(r: EvaluationResult, current_base_type: str = "") -> dict[str, Any]:
+def flatten_result(r: EvaluationResult) -> dict[str, Any]:
     """Flatten an EvaluationResult into the response shape the dashboard UI reads."""
     chosen = next((s for s in r.per_slot if s.slot == r.slot), None)
     delta = chosen.delta if chosen else None
+    dps_pct = chosen.dps_pct if chosen else 0.0
+    ehp_pct = chosen.ehp_pct if chosen else 0.0
+    slot_empty = chosen.is_empty if chosen else False
+    auto_equip_ok = r.verdict == "EQUIP_NOW" and slot_empty
     tactical = r.tactical_advice or {}
     reason = (r.reasons[0] if r.reasons else None) or tactical.get("tactical_headline") or r.verdict
     lines = [f"{r.verdict} - {r.item_name} ({r.slot})", *r.reasons]
@@ -60,10 +64,14 @@ def flatten_result(r: EvaluationResult, current_base_type: str = "") -> dict[str
         "formatted_report": "\n".join(lines),
         "tactical_advice": r.tactical_advice,
         "current_item_name": r.current_item_name,
-        "current_item_base_type": current_base_type,
+        "current_item_base_type": r.current_item_base_type,
         "is_weapon": r.slot.startswith("Weapon"),
         "dps_delta": delta.dps_delta if delta else 0,
         "life_delta": delta.life_delta if delta else 0,
+        "dps_pct": dps_pct,
+        "ehp_pct": ehp_pct,
+        "slot_empty": slot_empty,
+        "auto_equip_ok": auto_equip_ok,
         "slot": UI_SLOT_KEYS[r.slot],
         "pob_slot": r.slot,
         "recommended_slot": r.slot,
@@ -95,8 +103,7 @@ def evaluate_item_payload(
     except Exception as exc:
         logger.exception("Evaluation failed for %r", char_id)
         return {"error": f"Evaluation error: {exc}"}
-    base_type = get_current_item_info(runtime_dir, char_id, r.slot, pob_session)[1]
-    return _stamp_evaluated(flatten_result(r, base_type))
+    return _stamp_evaluated(flatten_result(r))
 
 
 _LAST_SEEN_CLIPBOARD = ""
@@ -536,6 +543,7 @@ def get_dashboard_status(
         "available": False,
         "healthy": False,
         "unhealthy_reason": None,
+        "unavailable_reason": None,
     }
     target_pob = pob_session
     if target_pob is None and char_id:
@@ -549,6 +557,7 @@ def get_dashboard_status(
         engine_status["available"] = bool(getattr(target_pob, "is_available", False))
         engine_status["healthy"] = bool(getattr(target_pob, "is_healthy", False))
         engine_status["unhealthy_reason"] = getattr(target_pob, "unhealthy_reason", None)
+        engine_status["unavailable_reason"] = getattr(target_pob, "unavailable_reason", None)
 
     status_data["engine_healthy"] = engine_status["healthy"]
 

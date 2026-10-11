@@ -786,7 +786,7 @@ def test_get_current_raw_falls_back_to_loadout_on_bad_pob_text(tmp_path: Path) -
 # --- evaluate_item_payload on the guide-aware pipeline (evaluation.evaluate) ---------------------------------
 
 from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta  # noqa: E402
-from tests.unit.equipment.test_evaluation import (  # noqa: E402
+from tests.unit.conftest import (  # noqa: E402
     FUB,
     Failing,
     Ring2Empty,
@@ -1005,6 +1005,67 @@ def test_check_auto_clipboard_reevaluates_on_context_change(fub: Path, monkeypat
     from companion.builds.store import set_assignment
     set_assignment(fub, "Varashta", FUB, "all")
     assert d_api.check_auto_clipboard(fub, char_id="Varashta", pob_session=Stub())["has_new_item"] is True
+
+
+def test_flatten_auto_equip_ok_only_for_equip_now_into_empty() -> None:
+    from companion.dashboard_api import flatten_result
+    from companion.equipment.evaluation import EvaluationResult
+    from companion.equipment.policy import SlotResult
+
+    cases = [
+        ("EQUIP_NOW", True, True),
+        ("EQUIP_NOW", False, False),
+        ("CONDITIONAL_UPGRADE", True, False),
+        ("REJECT", True, False),
+        ("INSUFFICIENT_DATA", True, False),
+    ]
+    for verdict, is_empty, expected in cases:
+        slot_res = SlotResult(slot="Boots", verdict=verdict, is_empty=is_empty)
+        eval_res = EvaluationResult(
+            verdict=verdict,
+            engine="heuristic",
+            slot="Boots",
+            slot_reason="best",
+            per_slot=[slot_res],
+            item_name="Test Boots",
+            base_type="Wool Shoes",
+        )
+        res = flatten_result(eval_res)
+        assert res["auto_equip_ok"] is expected, f"Failed for verdict={verdict}, is_empty={is_empty}"
+
+
+def test_flatten_pct_and_empty_defaults() -> None:
+    from companion.dashboard_api import flatten_result
+    from companion.equipment.evaluation import EvaluationResult
+
+    eval_res = EvaluationResult(
+        verdict="EQUIP_NOW",
+        engine="heuristic",
+        slot="Boots",
+        slot_reason="best",
+        per_slot=[],
+        item_name="Test Boots",
+        base_type="Wool Shoes",
+    )
+    res = flatten_result(eval_res)
+    assert res["dps_pct"] == 0.0
+    assert res["ehp_pct"] == 0.0
+    assert res["slot_empty"] is False
+    assert res["auto_equip_ok"] is False
+
+
+def test_status_reports_unavailable_reason(tmp_path: Path) -> None:
+    from companion.dashboard_api import get_dashboard_status
+
+    class FakeSession:
+        is_available = False
+        is_healthy = False
+        unhealthy_reason = "Docker daemon is not running"
+        unavailable_reason = "Docker daemon is not running (zero-backend fallback active)"
+
+    res = get_dashboard_status(tmp_path, char_id="BOMSHAK", pob_session=FakeSession())
+    assert "engine_status" in res
+    assert res["engine_status"]["unavailable_reason"] == "Docker daemon is not running (zero-backend fallback active)"
 
 
 def test_evaluate_item_payload_unexpected_failure_returns_error(fub: Path, monkeypatch: Any) -> None:

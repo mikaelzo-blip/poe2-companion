@@ -1068,6 +1068,42 @@ def test_status_reports_unavailable_reason(tmp_path: Path) -> None:
     assert res["engine_status"]["unavailable_reason"] == "Docker daemon is not running (zero-backend fallback active)"
 
 
+def test_status_reports_failed_init_unavailable_reason(monkeypatch: Any) -> None:
+    import companion.dashboard_server as server
+
+    class FailingSession:
+        def __init__(self, character_name: str = "BOMSHAK") -> None:
+            self.character_name = character_name
+            self.is_available = False
+            self.is_healthy = False
+            self.unavailable_reason = "Docker daemon is not running (zero-backend fallback active)"
+            self.unhealthy_reason = None
+
+        def initialize(self) -> bool:
+            return False
+
+        def close(self) -> None:
+            pass
+
+    server._GLOBAL_POB_SESSIONS.pop("BOMSHAK", None)
+    server._FAILED_CHARACTERS.pop("BOMSHAK", None)
+    server._FAILED_REASONS.pop("BOMSHAK", None)
+
+    monkeypatch.setattr(
+        "companion.equipment.pob2_equipment_advisor.Pob2EquipmentSession",
+        FailingSession,
+    )
+
+    try:
+        data = server._api_status({"char_id": "BOMSHAK"})
+        assert data["engine_status"]["available"] is False
+        assert data["engine_status"]["unavailable_reason"] == "Docker daemon is not running (zero-backend fallback active)"
+    finally:
+        server._GLOBAL_POB_SESSIONS.pop("BOMSHAK", None)
+        server._FAILED_CHARACTERS.pop("BOMSHAK", None)
+        server._FAILED_REASONS.pop("BOMSHAK", None)
+
+
 def test_evaluate_item_payload_unexpected_failure_returns_error(fub: Path, monkeypatch: Any) -> None:
     import companion.dashboard_api as d_api
 

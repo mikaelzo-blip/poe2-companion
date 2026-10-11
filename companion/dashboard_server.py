@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 _GLOBAL_POB_SESSIONS: dict[str, Any] = {}
 _FAILED_CHARACTERS: dict[str, float] = {}
+_FAILED_REASONS: dict[str, str | None] = {}
 POB_RETRY_INTERVAL_SECONDS = 300.0
 
 
@@ -81,15 +82,22 @@ def get_or_create_pob_session(character_id: str = "BOMSHAK", force_retry: bool =
             if sess.initialize():
                 _GLOBAL_POB_SESSIONS[character_id] = sess
                 _FAILED_CHARACTERS.pop(character_id, None)
+                _FAILED_REASONS.pop(character_id, None)
                 try:
                     _apply_session(character_id, sess)
                 except Exception:
                     logger.warning("PoB2 runtime import failed for %s", character_id, exc_info=True)
                 return sess
             _FAILED_CHARACTERS[character_id] = now
-        except Exception:
+            reason = getattr(sess, "unavailable_reason", None) or getattr(sess, "unhealthy_reason", None)
+            if reason:
+                _FAILED_REASONS[character_id] = reason
+        except Exception as exc:
             logger.warning("PoB2 session init failed for %s", character_id, exc_info=True)
             _FAILED_CHARACTERS[character_id] = now
+            reason = getattr(sess, "unavailable_reason", None) or getattr(sess, "unhealthy_reason", None) or str(exc)
+            if reason:
+                _FAILED_REASONS[character_id] = reason
             if sess is not None and _GLOBAL_POB_SESSIONS.get(character_id) is not sess:
                 try:
                     sess.close()

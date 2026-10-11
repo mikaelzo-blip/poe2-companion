@@ -548,8 +548,11 @@ def get_dashboard_status(
     target_pob = pob_session
     if target_pob is None and char_id:
         try:
-            from companion.dashboard_server import _GLOBAL_POB_SESSIONS
-            target_pob = _GLOBAL_POB_SESSIONS.get(char_id)
+            from companion.dashboard_server import _GLOBAL_POB_SESSIONS, _FAILED_REASONS
+            resolved_id = resolve_char_id(char_id, runtime_dir) if runtime_dir else char_id
+            target_pob = _GLOBAL_POB_SESSIONS.get(resolved_id) or _GLOBAL_POB_SESSIONS.get(char_id)
+            if target_pob is None:
+                engine_status["unavailable_reason"] = _FAILED_REASONS.get(resolved_id) or _FAILED_REASONS.get(char_id)
         except Exception:
             pass
 

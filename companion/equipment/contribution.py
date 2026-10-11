@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
+from companion.equipment.normalizer import DUAL_RES_ELEMENTS
 from companion.equipment.schema import (
     ItemCandidate,
     ModifierScope,
@@ -93,6 +94,16 @@ def build_item_contribution(
                 fire_res += mod.value
                 cold_res += mod.value
                 light_res += mod.value
+            elif mod.modifier_type in DUAL_RES_ELEMENTS:
+                for elem in DUAL_RES_ELEMENTS[mod.modifier_type]:
+                    if elem == "fire":
+                        fire_res += mod.value
+                    elif elem == "cold":
+                        cold_res += mod.value
+                    elif elem == "lightning":
+                        light_res += mod.value
+                    elif elem == "chaos":
+                        chaos_res += mod.value
             elif mod.modifier_type == NormalizedModifierType.STRENGTH:
                 str_val += int(mod.value)
             elif mod.modifier_type == NormalizedModifierType.DEXTERITY:

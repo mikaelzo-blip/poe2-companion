@@ -18,6 +18,21 @@ RE_COLD_RES = re.compile(r"^\+?(\d+)%\s+to\s+Cold\s+Resistance", re.IGNORECASE)
 RE_LIGHT_RES = re.compile(r"^\+?(\d+)%\s+to\s+Lightning\s+Resistance", re.IGNORECASE)
 RE_CHAOS_RES = re.compile(r"^\+?(\d+)%\s+to\s+Chaos\s+Resistance", re.IGNORECASE)
 RE_ALL_RES = re.compile(r"^\+?(\d+)%\s+to\s+all\s+Elemental\s+Resistances", re.IGNORECASE)
+RE_DUAL_RES = re.compile(
+    r"^\+?(\d+)%\s+to\s+(Fire|Cold|Lightning|Chaos)\s+and\s+(Fire|Cold|Lightning|Chaos)\s+Resistances",
+    re.IGNORECASE,
+)
+
+DUAL_RES_ELEMENTS: dict[NormalizedModifierType, tuple[str, str]] = {
+    NormalizedModifierType.FIRE_COLD_RESISTANCE: ("fire", "cold"),
+    NormalizedModifierType.FIRE_LIGHTNING_RESISTANCE: ("fire", "lightning"),
+    NormalizedModifierType.FIRE_CHAOS_RESISTANCE: ("fire", "chaos"),
+    NormalizedModifierType.COLD_LIGHTNING_RESISTANCE: ("cold", "lightning"),
+    NormalizedModifierType.COLD_CHAOS_RESISTANCE: ("cold", "chaos"),
+    NormalizedModifierType.LIGHTNING_CHAOS_RESISTANCE: ("lightning", "chaos"),
+}
+
+_CANONICAL_RES_ORDER = ("fire", "cold", "lightning", "chaos")
 
 RE_STR = re.compile(r"^\+?(\d+)\s+to\s+Strength", re.IGNORECASE)
 RE_DEX = re.compile(r"^\+?(\d+)\s+to\s+Dexterity", re.IGNORECASE)
@@ -132,6 +147,22 @@ def normalize_modifier(
         )
 
     # Resistances
+    m = RE_DUAL_RES.search(clean_for_match)
+    if m:
+        elem1 = m.group(2).lower()
+        elem2 = m.group(3).lower()
+        if elem1 != elem2:
+            pair = tuple(sorted((elem1, elem2), key=_CANONICAL_RES_ORDER.index))
+            mod_type = next((k for k, v in DUAL_RES_ELEMENTS.items() if v == pair), None)
+            if mod_type is not None:
+                return NormalizedModifier(
+                    modifier_type=mod_type,
+                    scope=ModifierScope.CONDITIONAL if is_conditional else ModifierScope.GLOBAL_CHARACTER_STAT,
+                    value=float(m.group(1)),
+                    raw_text=clean_text,
+                    is_implicit=is_implicit,
+                )
+
     m = RE_FIRE_RES.search(clean_for_match)
     if m:
         return NormalizedModifier(

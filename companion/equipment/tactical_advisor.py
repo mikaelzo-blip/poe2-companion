@@ -71,20 +71,6 @@ RE_ATTR = re.compile(
     r"(?:\+?\s*([0-9]+)(?:\([0-9\-]+\))?\s+(?:to\s+)?(Strength|Dexterity|Intelligence|all\s+Attributes)|(?:Strength|Dexterity|Intelligence):\s*\+?\s*([0-9]+))",
     re.IGNORECASE,
 )
-RE_FLAT_ATTACK = re.compile(
-    r"Adds\s+([0-9]+)\s+to\s+([0-9]+)\s+(?:Physical|Fire|Cold|Lightning|Chaos)?\s*Damage(?:\s+to\s+Attacks)?",
-    re.IGNORECASE,
-)
-RE_LIFE_ON_HIT = re.compile(
-    r"Gain\s+([0-9]+)\s+Life\s+per\s+Enemy\s+Hit",
-    re.IGNORECASE,
-)
-RE_MANA_ON_KILL = re.compile(
-    r"([0-9]+)\s+Mana\s+per\s+(?:enemy\s+killed|Enemy\s+Killed)",
-    re.IGNORECASE,
-)
-
-
 def _extract_life_regen(text: str) -> float:
     match = RE_LIFE_REGEN.search(text)
     if match:
@@ -93,25 +79,6 @@ def _extract_life_regen(text: str) -> float:
         except ValueError:
             return 0.0
     return 0.0
-
-
-def _extract_flat_attack_damage(text: str) -> float:
-    total = 0.0
-    for match in RE_FLAT_ATTACK.finditer(text):
-        low, high = float(match.group(1)), float(match.group(2))
-        total += (low + high) / 2.0
-    return total
-
-
-def _extract_sustain(text: str) -> dict[str, int]:
-    res = {"life_on_hit": 0, "mana_on_kill": 0}
-    loh_m = RE_LIFE_ON_HIT.search(text)
-    if loh_m:
-        res["life_on_hit"] = int(loh_m.group(1))
-    mok_m = RE_MANA_ON_KILL.search(text)
-    if mok_m:
-        res["mana_on_kill"] = int(mok_m.group(1))
-    return res
 
 
 def _extract_attributes(text: str) -> dict[str, int]:

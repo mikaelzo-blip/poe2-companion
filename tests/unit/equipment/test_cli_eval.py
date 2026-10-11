@@ -13,7 +13,7 @@ from companion.equipment.cli_eval import (
     open_pob_session,
     run_live,
 )
-from tests.unit.conftest import FUB, Stub, _install, _item
+from tests.unit.eval_helpers import FUB, Stub, _install, _item
 
 
 def test_format_result_lines() -> None:

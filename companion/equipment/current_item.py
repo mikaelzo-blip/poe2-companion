@@ -47,6 +47,30 @@ def get_current_raw(
             except Exception:  # includes PobItemTextError: fall back to the loadout text
                 logger.debug("PoB equipped item unreadable for %s", p_slot, exc_info=True)
 
+    item = _loadout_item(runtime_dir, char_id, slot_name)
+    if item and item.raw_text:
+        return item.raw_text
+    return ""
+
+
+_SWAP_SLOTS = {"weapon 1 swap": "MAIN_HAND", "weapon 2 swap": "OFF_HAND"}
+
+
+def _swap_slot(slot_name: str, w_ctx: Any) -> tuple[Any, Any]:
+    """Resolve a slot name to (SlotType, weapon set); canonical swap names mean Weapon Set 2."""
+    from companion.equipment.schema import SlotType, WeaponSetContext
+    swap = _SWAP_SLOTS.get(slot_name.lower().strip())
+    if swap:
+        return SlotType[swap], WeaponSetContext.WEAPON_SET_2
+    return SlotType.from_str(slot_name), w_ctx
+
+
+def _loadout_item(
+    runtime_dir: Path,
+    char_id: str,
+    slot_name: str,
+) -> Any | None:
+    """Retrieve the loadout item for the given character and slot, or None."""
     try:
         from companion.equipment.loadout_cli import load_loadout
         from companion.equipment.schema import SlotType, WeaponSetContext
@@ -62,8 +86,8 @@ def get_current_raw(
             try:
                 st, w_ctx = _swap_slot(slot_name, w_ctx)
                 entry = lo.get_slot(st, weapon_set=w_ctx)
-                if entry and entry.item and entry.item.raw_text:
-                    return entry.item.raw_text
+                if entry and entry.item:
+                    return entry.item
             except Exception:
                 logger.debug("Loadout lookup failed for %s", slot_name, exc_info=True)
 
@@ -73,23 +97,11 @@ def get_current_raw(
             ]
             for dk in direct_keys:
                 entry = lo.shared_slots.get(dk)
-                if entry and entry.item and entry.item.raw_text:
-                    return entry.item.raw_text
+                if entry and entry.item:
+                    return entry.item
     except Exception:
         logger.warning("Loadout read failed for %s", char_id, exc_info=True)
-    return ""
-
-
-_SWAP_SLOTS = {"weapon 1 swap": "MAIN_HAND", "weapon 2 swap": "OFF_HAND"}
-
-
-def _swap_slot(slot_name: str, w_ctx: Any) -> tuple[Any, Any]:
-    """Resolve a slot name to (SlotType, weapon set); canonical swap names mean Weapon Set 2."""
-    from companion.equipment.schema import SlotType, WeaponSetContext
-    swap = _SWAP_SLOTS.get(slot_name.lower().strip())
-    if swap:
-        return SlotType[swap], WeaponSetContext.WEAPON_SET_2
-    return SlotType.from_str(slot_name), w_ctx
+    return None
 
 
 def get_current_item_info(
@@ -109,36 +121,9 @@ def get_current_item_info(
             logger.debug("PoB current item name unavailable for %s", slot_name, exc_info=True)
 
     # 2. Local loadout
-    try:
-        from companion.equipment.loadout_cli import load_loadout
-        from companion.equipment.schema import SlotType, WeaponSetContext
-        lo = load_loadout(runtime_dir, char_id)
-        if lo:
-            w_ctx = None
-            norm = slot_name.lower().strip()
-            if "set2" in norm or "swap" in norm:
-                w_ctx = WeaponSetContext.WEAPON_SET_2
-            elif "set1" in norm:
-                w_ctx = WeaponSetContext.WEAPON_SET_1
-
-            try:
-                st, w_ctx = _swap_slot(slot_name, w_ctx)
-                entry = lo.get_slot(st, weapon_set=w_ctx)
-                if entry and entry.item and (entry.item.name or entry.item.base_type):
-                    return entry.item.name or entry.item.base_type, entry.item.base_type or ""
-            except Exception:
-                logger.debug("Loadout lookup failed for %s", slot_name, exc_info=True)
-
-            direct_keys = [
-                slot_name.lower().replace(" ", "_"),
-                slot_name.lower().replace(" ", "").replace("_", ""),
-            ]
-            for dk in direct_keys:
-                entry = lo.shared_slots.get(dk)
-                if entry and entry.item and (entry.item.name or entry.item.base_type):
-                    return entry.item.name or entry.item.base_type, entry.item.base_type or ""
-    except Exception:
-        logger.warning("Loadout read failed for %s", char_id, exc_info=True)
+    item = _loadout_item(runtime_dir, char_id, slot_name)
+    if item and (item.name or item.base_type):
+        return item.name or item.base_type, item.base_type or ""
 
     # 3. Parse current raw item text
     try:

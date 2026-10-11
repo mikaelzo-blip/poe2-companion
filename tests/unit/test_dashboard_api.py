@@ -786,7 +786,7 @@ def test_get_current_raw_falls_back_to_loadout_on_bad_pob_text(tmp_path: Path) -
 # --- evaluate_item_payload on the guide-aware pipeline (evaluation.evaluate) ---------------------------------
 
 from companion.equipment.pob2_equipment_advisor import PobEquipmentDelta  # noqa: E402
-from tests.unit.conftest import (  # noqa: E402
+from tests.unit.eval_helpers import (  # noqa: E402
     FUB,
     Failing,
     Ring2Empty,

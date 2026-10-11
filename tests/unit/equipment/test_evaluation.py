@@ -2,7 +2,7 @@ import pytest
 
 from companion.builds.store import load_guide, save_guide
 from companion.equipment.evaluation import evaluate
-from tests.unit.conftest import (
+from tests.unit.eval_helpers import (
     FIX,
     FUB,
     Failing,
@@ -12,10 +12,6 @@ from tests.unit.conftest import (
     _install,
     _item,
     _write_char,
-    failing_pob_stub,
-    flat_pob_stub,
-    positive_pob_stub,
-    ring2_empty_stub,
 )
 
 PROBE_GLOVES = _item("Gloves", "Wool Gloves", ["+40 to maximum Life", "Adds 12 to 22 Fire Damage to Attacks", "+20% to Fire Resistance"])

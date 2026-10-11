@@ -193,7 +193,8 @@ def evaluate(
             vetoed.add(slot)
             results.append(rejected(slot, reasons))
             continue
-        if not is_empty(slot, state["pob_ok"]):
+        empty = is_empty(slot, state["pob_ok"])
+        if not empty:
             cur = current_raw(slot)
             try:
                 parsed = parse_item_text(cur) if cur else None
@@ -212,6 +213,7 @@ def evaluate(
             delta = measure_pob(plan)
             if delta is None:
                 state["pob_ok"], state["reason"] = False, _FALLBACK_REASON
+                empty = current_raw(slot) == ""
         if delta is None:
             heuristic_used = True
             if slot in _WEAPON_SLOTS:
@@ -221,12 +223,7 @@ def evaluate(
             if delta is None:
                 results.append(insufficient(slot, "Life baseline belum diketahui"))
                 continue
-            via_pob = False
-        else:
-            via_pob = True
-        results.append(decide(
-            delta, unmet_requirements=unmet, priority=signals[slot], is_empty=is_empty(slot, via_pob),
-        ))
+        results.append(decide(delta, unmet_requirements=unmet, priority=signals[slot], is_empty=empty))
 
     chosen = max(results, key=lambda r: (r.is_empty and r.verdict != "REJECT", VERDICT_RANK[r.verdict], r.dps_pct, r.ehp_pct))
     verdict, tactical_dump, reasons = chosen.verdict, None, list(chosen.reasons)

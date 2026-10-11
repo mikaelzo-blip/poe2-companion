@@ -160,3 +160,45 @@ def test_unparseable_item_raises_value_error(tmp_path):
     _write_char(tmp_path, "X", level=30)
     with pytest.raises(ValueError):
         evaluate("not an item", "X", runtime_dir=tmp_path, pob_session=None, source="manual")
+
+
+def _seed_boots_and_life(tmp_path, char, equipped_text, life=1000):
+    from companion.equipment.baseline import BaselineSource, CharacterFact, CharacterStatBaseline
+    from companion.equipment.baseline_cli import save_baseline
+    from companion.equipment.loadout import EquippedLoadout
+    from companion.equipment.loadout_cli import save_loadout
+    from companion.equipment.parser import parse_item_text
+    from companion.equipment.schema import SlotType
+    from companion.state.provenance import VerificationState
+
+    lo = EquippedLoadout.create_draft(character_id=char)
+    lo.set_slot(SlotType.BOOTS, parse_item_text(equipped_text, target_slot=SlotType.BOOTS))
+    save_loadout(tmp_path, lo)
+    base = CharacterStatBaseline.create_empty(character_id=char, anchored_loadout_revision=lo.revision)
+    fact = CharacterFact[int](
+        value=life, source=BaselineSource.MANUAL_USER_INPUT, observed_at="2026-01-01T00:00:00+00:00",
+        verification=VerificationState.VERIFIED,
+    )
+    save_baseline(tmp_path, base.model_copy(update={"life": fact}))
+
+
+def test_heuristic_path_projects_life_from_baseline_and_loadout(tmp_path):
+    _write_char(tmp_path, "H", level=30)
+    old = _item("Boots", "Wool Shoes", ["+5% to Cold Resistance"], name="Old Tread")
+    _seed_boots_and_life(tmp_path, "H", old)
+    r = evaluate(BOOTS_TEXT, "H", runtime_dir=tmp_path, pob_session=None, source="manual")
+    assert r.engine == "heuristic" and r.engine_reason == "PoB2 tidak tersedia"
+    assert r.verdict == "EQUIP_NOW" and r.slot == "Boots"
+    assert r.dims["life"] == 30 and r.dims["ehp_pct"] == pytest.approx(0.03)
+    assert r.dims["dps_pct"] == 0 and r.dims["cold_res"] == 5
+
+
+def test_already_equipped_detects_same_rare_but_not_magic(tmp_path):
+    _write_char(tmp_path, "A", level=30)
+    _seed_boots_and_life(tmp_path, "A", BOOTS_TEXT)
+    r = evaluate(BOOTS_TEXT, "A", runtime_dir=tmp_path, pob_session=None, source="manual")
+    assert r.verdict == "ALREADY_EQUIPPED" and r.slot == "Boots"
+    magic = _item("Boots", "Wool Shoes", ["+30 to maximum Life"], rarity="Magic", name="Sturdy Wool Shoes of Life")
+    _seed_boots_and_life(tmp_path, "A", magic)
+    r = evaluate(magic, "A", runtime_dir=tmp_path, pob_session=None, source="manual")
+    assert r.verdict != "ALREADY_EQUIPPED"

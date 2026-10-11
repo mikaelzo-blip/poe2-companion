@@ -442,6 +442,109 @@ def test_import_character_payload_persists_baseline_and_state(tmp_path: Path) ->
     assert state.character_class == "Mercenary"
 
 
+def test_import_character_payload_maps_class_code(tmp_path: Path) -> None:
+    from companion.dashboard_api import import_character_payload
+    from companion.state.store import CharacterStateStore
+
+    sample_payload = {
+        "character": {"name": "TestWitch", "level": 30, "class": "Witch3"},
+        "items": [
+            {
+                "name": "Wanderer Boots",
+                "typeLine": "Iron Greaves",
+                "inventoryId": "Boots",
+                "frameType": 2,
+            }
+        ],
+    }
+
+    res = import_character_payload(
+        {"character_id": "TestWitch", "character_data": sample_payload},
+        runtime_dir=tmp_path,
+    )
+    assert res.get("success") is True
+
+    store = CharacterStateStore(runtime_dir=tmp_path)
+    state = store.load_character("TestWitch")
+    assert state is not None
+    assert state.character_name == "TestWitch"
+    assert state.character_class == "Witch"
+    assert state.ascendancy == "Lich"
+
+
+def test_import_character_payload_no_class_stores_none(tmp_path: Path) -> None:
+    from companion.dashboard_api import import_character_payload
+    from companion.state.store import CharacterStateStore
+
+    sample_payload = {
+        "character": {"name": "NoClassHero", "level": 10},
+        "items": [
+            {
+                "name": "Wanderer Boots",
+                "typeLine": "Iron Greaves",
+                "inventoryId": "Boots",
+                "frameType": 2,
+            }
+        ],
+    }
+
+    res = import_character_payload(
+        {"character_id": "NoClassHero", "character_data": sample_payload},
+        runtime_dir=tmp_path,
+    )
+    assert res.get("success") is True
+
+    store = CharacterStateStore(runtime_dir=tmp_path)
+    state = store.load_character("NoClassHero")
+    assert state is not None
+    assert state.character_name == "NoClassHero"
+    assert state.character_class is None
+    assert state.ascendancy is None
+
+
+def test_get_account_characters_maps_api_class_codes(tmp_path, monkeypatch):
+    from companion import dashboard_api
+    from companion.dashboard_api import get_account_characters
+    monkeypatch.setattr(
+        dashboard_api,
+        "_list_api_characters",
+        lambda now=None: [
+            {"name": "Sparky", "level": 75, "class": "Sorceress1", "league": "Rise"},
+            {"name": "UnknownGuy", "level": 1, "class": None, "league": "Standard"},
+        ],
+    )
+    res = get_account_characters(runtime_dir=tmp_path)
+    chars = {c["name"]: c for c in res["characters"]}
+    assert chars["Sparky"]["class"] == "Sorceress"
+    assert chars["Sparky"]["ascendancy"] == "Stormweaver"
+    assert chars["UnknownGuy"]["class"] is None
+    assert chars["UnknownGuy"]["ascendancy"] is None
+
+
+def test_get_account_characters_maps_local_class_codes(tmp_path, monkeypatch):
+    from companion import dashboard_api
+    from companion.dashboard_api import get_account_characters
+    monkeypatch.setattr(dashboard_api, "_list_api_characters", lambda now=None: [])
+    char_dir = tmp_path / "characters"
+    char_dir.mkdir()
+    (char_dir / "Sorc.json").write_text(
+        json.dumps({"character_name": "Sorc", "level": 50, "character_class": "Sorceress1"})
+    )
+    (char_dir / "Daisy.json").write_text(
+        json.dumps({"character_name": "Daisy", "character_class": "Witch3", "ascendancy": "Gemling Legionnaire"})
+    )
+    (char_dir / "NoClass.json").write_text(
+        json.dumps({"character_name": "NoClass", "level": 12})
+    )
+    res = get_account_characters(runtime_dir=tmp_path)
+    chars = {c["name"]: c for c in res["characters"]}
+    assert chars["Sorc"]["class"] == "Sorceress"
+    assert chars["Sorc"]["ascendancy"] == "Stormweaver"
+    assert chars["Daisy"]["ascendancy"] == "Lich"  # stale stored default loses to the code
+    assert chars["NoClass"]["class"] is None
+    assert chars["NoClass"]["ascendancy"] is None
+
+
 
 
 

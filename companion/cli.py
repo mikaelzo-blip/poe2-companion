@@ -147,8 +147,8 @@ def build_parser() -> argparse.ArgumentParser:
     init_p = state_sub.add_parser("init", help="Initialize a new character state")
     init_p.add_argument("--id", required=True, help="Character identifier (^[a-zA-Z0-9_-]{1,64}$)")
     init_p.add_argument("--name", required=True, help="Character name")
-    init_p.add_argument("--class-name", default="Mercenary", help="Character class (default: Mercenary)")
-    init_p.add_argument("--ascendancy", default="Gemling Legionnaire", help="Ascendancy (default: Gemling Legionnaire)")
+    init_p.add_argument("--class-name", default=None, help="Character class (default: unknown)")
+    init_p.add_argument("--ascendancy", default=None, help="Ascendancy (default: unknown)")
     init_p.add_argument("--runtime", default="runtime", help="Runtime directory (default: runtime)")
 
     # state inspect
@@ -618,7 +618,7 @@ def handle_state_inspect(args: argparse.Namespace) -> int:
             print(json.dumps(char.model_dump(), indent=2))
         else:
             print(f"Character: {char.character_name} (ID: {char.character_id})")
-            print(f"  Class / Ascendancy: {char.character_class} / {char.ascendancy}")
+            print(f"  Class / Ascendancy: {char.character_class or 'Unknown'} / {char.ascendancy or 'Unknown'}")
             print(f"  Level: {char.level.value} (verification: {char.level.verification_state.value})")
             print(f"  Zone: {char.current_zone.value if char.current_zone else 'Unknown'} (Act {char.current_act.value if char.current_act else 1})")
             print(f"  Deaths: {char.death_count.value if char.death_count else 0}")

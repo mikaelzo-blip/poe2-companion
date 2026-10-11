@@ -77,7 +77,7 @@ export async function setupCharacterAndGuideControls() {
         data.characters.forEach(c => {
           const opt = document.createElement('option');
           opt.value = c.name;
-          opt.textContent = `${c.name} (Lvl ${c.level} ${c.class})`;
+          opt.textContent = `${c.name} (Lvl ${c.level} ${c.ascendancy || c.class || 'Unknown'})`;
           if (c.name === (data.active_character_id || appState.activeCharId)) {
             opt.selected = true;
           }

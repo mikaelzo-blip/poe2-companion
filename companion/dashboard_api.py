@@ -16,7 +16,7 @@ from companion.equipment.evaluation import EvaluationResult, _resolve_guide, eva
 from companion.equipment.parser import parse_item_text
 from companion.equipment.pob2_equipment_advisor import load_pob_mcp_modules
 from companion.equipment.slot_resolver import UI_SLOT_KEYS
-from companion.state.schema import CharacterState
+from companion.state.schema import CharacterState, split_class_code
 from companion.state.store import CharacterStateStore
 
 logger = logging.getLogger(__name__)
@@ -288,7 +288,7 @@ def _import_character_payload_locked(payload: dict[str, Any], runtime_dir: Path)
 
         char_info = raw_payload.get("character") or {}
         char_level = char_info.get("level") or raw_payload.get("level")
-        char_class = char_info.get("class") or raw_payload.get("class") or "Mercenary"
+        char_class = char_info.get("class") or raw_payload.get("class")
         char_name = char_info.get("name") or char_id
 
         store = CharacterStateStore(runtime_dir=runtime_dir)
@@ -299,7 +299,7 @@ def _import_character_payload_locked(payload: dict[str, Any], runtime_dir: Path)
 
         if existing_state:
             existing_state.character_name = char_name
-            existing_state.character_class = char_class
+            existing_state.set_class(char_class)
             if char_level is not None:
                 existing_state.level = ProvenancedField[int].create(int(char_level), source="OFFICIAL_API_POLL")
             store.save_character(existing_state)
@@ -345,14 +345,13 @@ def _update_character_stats_payload_locked(payload: dict[str, Any], runtime_dir:
         state = CharacterState(
             character_id=char_id,
             character_name=payload.get("character_name") or char_id,
-            character_class=payload.get("character_class") or "Mercenary",
-            ascendancy=payload.get("ascendancy") or "Gemling Legionnaire",
+            character_class=payload.get("character_class"),
+            ascendancy=payload.get("ascendancy"),
         )
 
     if payload.get("character_name"):
         state.character_name = payload["character_name"]
-    if payload.get("character_class"):
-        state.character_class = payload["character_class"]
+    state.set_class(payload.get("character_class"))
     if payload.get("ascendancy"):
         state.ascendancy = payload["ascendancy"]
 
@@ -609,7 +608,13 @@ def get_account_characters(
     if runtime_dir is None:
         runtime_dir = Path(__file__).resolve().parent.parent / "runtime"
 
-    characters: list[dict[str, Any]] = list(_list_api_characters())
+    characters: list[dict[str, Any]] = []
+    for c in _list_api_characters():
+        cls_name, asc_name = split_class_code(c.get("class"))
+        entry = dict(c)
+        entry["class"] = cls_name
+        entry["ascendancy"] = asc_name or c.get("ascendancy")
+        characters.append(entry)
     source = "api" if characters else "local"
     seen_names = {c["name"] for c in characters}
 
@@ -630,10 +635,12 @@ def get_account_characters(
             seen_names.add(c_name)
             lvl_obj = c_data.get("level", 1)
             lvl_val = lvl_obj.get("value", 1) if isinstance(lvl_obj, dict) else (lvl_obj if isinstance(lvl_obj, int) else 1)
+            cls_name, asc_name = split_class_code(c_data.get("character_class"))
             characters.append({
                 "name": c_name,
                 "level": lvl_val,
-                "class": c_data.get("character_class", "Unknown"),
+                "class": cls_name,
+                "ascendancy": asc_name or c_data.get("ascendancy"),  # a class code is authoritative
                 "league": "Local",
             })
 
@@ -693,7 +700,7 @@ def select_character_payload(
     if not char_file.is_file():
         acc_info = get_account_characters(account_name=account_name, runtime_dir=runtime_dir)
         found_meta = next((c for c in acc_info.get("characters", []) if c["name"].lower() == char_id.lower()), None)
-        c_class = found_meta["class"] if found_meta else "Mercenary"
+        c_class = found_meta["class"] if found_meta else None
         c_level = found_meta["level"] if found_meta else 1
 
         try:
@@ -704,6 +711,7 @@ def select_character_payload(
                 character_id=char_id,
                 character_name=char_id,
                 character_class=c_class,
+                ascendancy=found_meta.get("ascendancy") if found_meta else None,
                 level=ProvenancedField[int].create(int(c_level), source="OFFICIAL_API_POLL"),
             )
             store.save_character(new_state)

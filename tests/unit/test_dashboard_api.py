@@ -1259,3 +1259,26 @@ def test_update_stats_stage_from_guide(tmp_path: Path) -> None:
     char_no_guide = status_no_guide.get("character", {})
     assert char_no_guide.get("build_progression", {}).get("active_stage") == "Karakter saja"
 
+
+
+def test_reimport_keeps_revision_line_and_history(tmp_path: Path) -> None:
+    from companion.dashboard_api import import_character_payload
+    from companion.equipment.loadout_cli import get_loadout_history_dir, load_loadout
+    from companion.equipment.schema import SlotType
+
+    def payload(ring_mod: str) -> dict:
+        return {"character_id": "rev_char", "character_data": {"items": [
+            {"name": "", "typeLine": "Iron Ring", "inventoryId": "Ring", "frameType": 1, "explicitMods": [ring_mod]},
+            {"name": "", "typeLine": "Jade Amulet", "inventoryId": "Amulet", "frameType": 1, "explicitMods": ["+10 to maximum Life"]},
+        ]}}
+
+    import_character_payload(payload("+20 to maximum Life"), runtime_dir=tmp_path)
+    import_character_payload(payload("+20 to maximum Life"), runtime_dir=tmp_path)
+    assert load_loadout(tmp_path, "rev_char").revision == 1  # same gear: no new revision
+
+    import_character_payload(payload("+40 to maximum Life"), runtime_dir=tmp_path)
+    lo = load_loadout(tmp_path, "rev_char")
+    assert lo.revision == 2 and "+40" in lo.get_slot(SlotType.RING_1).item.raw_text
+    snapshots = sorted(p.name for p in get_loadout_history_dir(tmp_path, "rev_char").glob("rev_*.json"))
+    assert snapshots == ["rev_000001.json"]
+    assert lo.get_slot(SlotType.AMULET) is not None

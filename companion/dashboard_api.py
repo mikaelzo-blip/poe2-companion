@@ -229,6 +229,30 @@ def import_character_payload(payload: dict[str, Any], runtime_dir: Path) -> dict
         return _import_character_payload_locked(payload, runtime_dir)
 
 
+def _replace_slots(loadout: Any, new: Any) -> bool:
+    """Make ``loadout`` hold exactly ``new``'s items via versioned transitions; True if changed."""
+    from companion.equipment.loadout import ALL_SHARED_SLOTS, ALL_WEAPON_SLOTS
+    from companion.equipment.schema import WeaponSetContext
+
+    changed = False
+    slots = [(s, None) for s in ALL_SHARED_SLOTS] + [
+        (s, w) for w in (WeaponSetContext.WEAPON_SET_1, WeaponSetContext.WEAPON_SET_2) for s in ALL_WEAPON_SLOTS
+    ]
+    for slot, wset in slots:
+        entry = new.get_slot(slot, weapon_set=wset)
+        if entry is None or entry.item is None:
+            changed |= loadout.transition_clear_slot(slot, weapon_set=wset)
+        elif loadout.transition_slot(
+            slot, entry.item, source=entry.source, weapon_set=wset,
+            verification=entry.verification, evidence_ref=entry.evidence_ref,
+        ):
+            changed = True
+        else:
+            # Decision-equal item: take the new text and provenance (e.g. CONFLICTING) without a revision bump.
+            loadout._raw_set_slot(slot, entry.item, entry.source, wset, entry.verification, entry.evidence_ref)
+    return changed
+
+
 def _import_character_payload_locked(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
     """Import full character equipment JSON (from GGG get-items or export)."""
     char_id = payload.get("character_id", "BOMSHAK")
@@ -238,7 +262,7 @@ def _import_character_payload_locked(payload: dict[str, Any], runtime_dir: Path)
     overwrite = payload.get("overwrite", True)
 
     from companion.equipment.api_adapter import GGGCharacterAPIAdapter
-    from companion.equipment.loadout_cli import load_loadout, save_loadout
+    from companion.equipment.loadout_cli import execute_loadout_transition, load_loadout, save_loadout
     from companion.equipment.baseline import BaselineSource
     from companion.equipment.baseline_cli import load_baseline, save_baseline
 
@@ -253,7 +277,14 @@ def _import_character_payload_locked(payload: dict[str, Any], runtime_dir: Path)
     if loadout is None:
         return {"error": "; ".join(warnings) if warnings else "Gagal membaca item karakter dari JSON."}
 
-    save_loadout(runtime_dir, loadout)
+    if current_loadout is not None and current_loadout.is_finalized:
+        # Keep the revision line and history: a re-import must not restart at revision 1.
+        res = execute_loadout_transition(runtime_dir, char_id, lambda lo: _replace_slots(lo, loadout))
+        loadout = res.loadout
+        if not res.is_changed:
+            save_loadout(runtime_dir, loadout)  # raw_text refreshes carry no revision bump
+    else:
+        save_loadout(runtime_dir, loadout)
     if baseline is not None:
         if current_baseline is not None:
             same_gear = (

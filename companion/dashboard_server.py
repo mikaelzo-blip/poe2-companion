@@ -286,12 +286,14 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
         if not self._request_allowed(check_origin=True):
             return
         route = POST_ROUTES.get(self.path)
+        # Always drain the body: closing a socket with unread data sends a TCP RST on Windows,
+        # which can reset the client before it reads the 404.
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         if route is None:
-            self.close_connection = True  # unread POST body must not poison keep-alive
             self.send_response(404)
+            self.send_header("Content-Length", "0")
             self.end_headers()
             return
-        body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         self._dispatch(lambda: route(json.loads(body.decode("utf-8")) if body else {}))
 
 

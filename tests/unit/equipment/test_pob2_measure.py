@@ -50,8 +50,9 @@ class FakeEngine:
                 ],
             }
         elif action == "set_main_skill":
-            group = kw["group"]
-            return {"mainDPS": {1: 0.0, 2: 50.0, 3: 80.0, 4: 999.0}[group]}
+            # only Flameblast (group 2) uses the equipped weapon
+            dps = {1: 0.0, 2: 50.0, 3: 80.0, 4: 999.0}[kw["group"]]
+            return {"mainDPS": dps + (25.0 if self._equipped and kw["group"] == 2 else 0.0)}
         elif action == "get_defenses":
             return {"Life": 100, "Armour": 0, "Evasion": 0, "EnergyShield": 0,
                     "TotalEHP": 120.0 if self._equipped else 100.0}
@@ -93,7 +94,9 @@ def _imports(s: Pob2EquipmentSession) -> list[str]:
 
 
 def _locks(s: Pob2EquipmentSession) -> list[int]:
-    return [kw["group"] for a, kw in s.sandbox_engine.calls if a == "set_main_skill"]
+    """Groups locked right before each stat reading (probe calls excluded)."""
+    calls = s.sandbox_engine.calls
+    return [kw["group"] for (a, kw), (nxt, _) in zip(calls, calls[1:]) if a == "set_main_skill" and nxt == "get_defenses"]
 
 
 def test_main_group_set_on_initialize(session):
@@ -105,7 +108,7 @@ def test_measure_swap_slot_activates_set2_and_locks_skill(session):
     d = session.measure("Weapon 1 Swap", CROSSBOW, session.submit_candidate(CROSSBOW))
     imports = _imports(session)
     assert 'useSecondWeaponSet="true"' in imports[0]
-    assert _locks(session) == [3, 3]
+    assert _locks(session) == [2, 2]  # the group the crossbow changes, not the highest-DPS one
     assert imports[-1] == session.xml
     assert d.dps_after > d.dps_before and d.res_before["fire"] == FAKE_FIRE_BEFORE
     assert d.res_after["fire"] == FAKE_FIRE_AFTER and d.res_after["chaos"] == -60
@@ -160,14 +163,23 @@ def test_initialize_picks_highest_dps_group(session):
 
 
 def test_measure_locks_guide_main_skill(session):
-    cid = session.submit_candidate(CROSSBOW)
-    session.measure("Weapon 1 Swap", CROSSBOW, cid, main_skill="Flameblast")
+    session.measure("Gloves", GLOVES, session.submit_candidate(GLOVES), main_skill="Flameblast")
     assert _locks(session) == [2, 2]
 
 
 def test_measure_unmatched_main_skill_falls_back(session):
-    cid = session.submit_candidate(CROSSBOW)
-    session.measure("Weapon 1 Swap", CROSSBOW, cid, main_skill="Nonexistent Skill")
+    session.measure("Gloves", GLOVES, session.submit_candidate(GLOVES), main_skill="Nonexistent Skill")
+    assert _locks(session) == [3, 3]
+
+
+def test_weapon_slot_overrides_guide_skill_with_most_changed_group(session):
+    session.measure("Weapon 1 Swap", CROSSBOW, session.submit_candidate(CROSSBOW), main_skill="Oil Grenade")
+    assert _locks(session) == [2, 2]
+
+
+def test_weapon_slot_keeps_guide_skill_when_no_group_changes(session):
+    session.skill_groups = [1, 3]  # neither group reacts to the weapon
+    session.measure("Weapon 1 Swap", CROSSBOW, session.submit_candidate(CROSSBOW), main_skill="Oil Grenade")
     assert _locks(session) == [3, 3]
 
 

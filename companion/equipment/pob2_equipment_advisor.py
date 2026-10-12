@@ -214,6 +214,11 @@ def _set_weapon_set_in_xml(xml_str: str, set_num: int) -> str:
         return xml_str
 
 
+def _main_dps(engine: Any, group: int) -> float:
+    """Make ``group`` PoB's main skill and return its DPS (FullDPS, else CombinedDPS)."""
+    return float((engine.call("set_main_skill", group=group) or {}).get("mainDPS") or 0)
+
+
 def _clear_slots_in_xml(xml_str: str, clear_slots: tuple[str, ...] | list[str]) -> str:
     """Clear specific slot itemIds (set to 0) in PoB XML."""
     import xml.etree.ElementTree as ET
@@ -325,6 +330,8 @@ class Pob2EquipmentSession:
         self.stats_before: dict[str, Any] = {}
         # 1-based main socket group reported by PoB after each import; locked on every measurement
         self.main_group: int | None = None
+        # enabled socket groups with an active skill (1-based), from the same refresh
+        self.skill_groups: list[int] = []
 
         # Concurrency & async correctness primitives
         # _engine_lock ONLY serializes expensive PoB engine simulation calls
@@ -510,19 +517,21 @@ class Pob2EquipmentSession:
         try:
             skills = self.engine.call("list_skills")
             pob_main = skills.get("mainSocketGroup")
+            self.skill_groups = [
+                g["index"] for g in skills.get("groups") or [] if g.get("enabled") and g.get("activeSkill")
+            ]
             best, best_dps = pob_main, float("-inf")
-            for g in skills.get("groups") or []:
-                if not (g.get("enabled") and g.get("activeSkill")):
-                    continue
-                dps = float((self.engine.call("set_main_skill", group=g["index"]) or {}).get("mainDPS") or 0)
-                if dps > best_dps or (dps == best_dps and g["index"] == pob_main):
-                    best, best_dps = g["index"], dps
+            for idx in self.skill_groups:
+                dps = _main_dps(self.engine, idx)
+                if dps > best_dps or (dps == best_dps and idx == pob_main):
+                    best, best_dps = idx, dps
             self.main_group = int(best) if best else None
             if self.main_group is not None:
                 self.engine.call("set_main_skill", group=self.main_group)
         except Exception as exc:
             logging.getLogger(__name__).warning("Could not read PoB2 main socket group: %s", exc)
             self.main_group = None
+            self.skill_groups = []
 
     def submit_candidate(
         self,
@@ -835,10 +844,11 @@ class Pob2EquipmentSession:
     ) -> PobEquipmentDelta | None:
         """Measure one candidate in one slot against its own context-specific baseline.
 
-        Activates the weapon set the slot belongs to, locks the guide stage's main skill
-        when it matches a socket group, else the baseline's highest-DPS group before
-        both readings, applies ``clear_slots`` to the "after" build only, and always
-        restores the baseline XML. Returns None if stale, unavailable or on engine failure.
+        Activates the weapon set the slot belongs to and locks one skill before both readings:
+        for weapon slots the group whose DPS the candidate changes most, otherwise (or when
+        no group changes) the guide stage's main skill when it matches a socket group, else
+        the baseline's highest-DPS group. Applies ``clear_slots`` to the "after" build only
+        and always restores the baseline XML. Returns None if stale, unavailable or on engine failure.
         """
         canonical_slot = normalize_and_validate_pob_slot(slot)
         if not self.is_available or self.sandbox_engine is None or not self.xml:
@@ -863,6 +873,19 @@ class Pob2EquipmentSession:
             try:
                 base_to_use = base_xml if base_xml is not None else self.xml
                 xml_set = _set_weapon_set_in_xml(base_to_use, 2 if canonical_slot.endswith("Swap") else 1)
+                if base_xml is None and canonical_slot.startswith("Weapon") and self.skill_groups:
+                    # A weapon often feeds only its own skill (BOMSHAK: swap crossbow -> Oil Grenade),
+                    # so lock the group whose DPS the swap changes most; unchanged -> keep `group`.
+                    # ponytail: 2 recalcs per group per weapon compare; cache per slot if it gets slow
+                    engine.call("import_build", xml=xml_set)
+                    dps_before = {g: _main_dps(engine, g) for g in self.skill_groups}
+                    if clear_slots:
+                        engine.call("import_build", xml=_clear_slots_in_xml(xml_set, clear_slots))
+                    engine.call("equip_item", slot=canonical_slot, raw=raw)
+                    change = {g: abs(_main_dps(engine, g) - dps_before[g]) for g in self.skill_groups}
+                    best = max(self.skill_groups, key=lambda g: (change[g], g == group))
+                    if change[best] > 0:
+                        group = best
                 engine.call("import_build", xml=xml_set)
                 lock_skill()
                 def_before = engine.call("get_defenses")

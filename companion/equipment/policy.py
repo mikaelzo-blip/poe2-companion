@@ -14,6 +14,9 @@ EHP_FLOOR = -0.01
 EHP_UP = 0.02
 DPS_FLOOR = -0.005
 DPS_DOWN = -0.01
+# a DPS drop beyond DPS_CRASH is only worth it for at least EHP_COMPENSATE more EHP
+DPS_CRASH = -0.20
+EHP_COMPENSATE = 0.05
 RES_CAP = 75
 
 VERDICT_RANK = {"EQUIP_NOW": 3, "CONDITIONAL_UPGRADE": 2, "INSUFFICIENT_DATA": 1, "REJECT": 0}
@@ -89,6 +92,8 @@ def decide(
         verdict, reason = "REJECT", "Kebutuhan item belum terpenuhi."
     elif dps_pct <= DPS_DOWN and ehp_pct <= 0:
         verdict, reason = "REJECT", "DPS turun tanpa kompensasi EHP."
+    elif dps_pct < DPS_CRASH and ehp_pct < EHP_COMPENSATE:
+        verdict, reason = "REJECT", "DPS turun lebih dari 20% dan kenaikan EHP di bawah 5%."
     elif breached and no_gain:
         verdict, reason = "REJECT", "Resist turun di bawah cap tanpa keuntungan."
     elif not breached and (

@@ -23,6 +23,10 @@ def _delta(dps_b, dps_a, ehp_b, ehp_a, res_b=None, res_a=None, **extra):
     (1000, 1020, 500, 500, {"fire": 75}, {"fire": 68}, [], "CONDITIONAL_UPGRADE"),
     (1000, 1100, 500, 600, {}, {}, ["Level 40/42"], "REJECT"),
     (0, 5, 0, 0, {}, {}, [], "EQUIP_NOW"),                      # level-1 baseline: no ZeroDivisionError
+    (100, 12, 1000, 1016, {}, {}, [], "REJECT"),                # BOMSHAK crossbow: -88% DPS, +1.6% EHP
+    (100, 79, 1000, 1049, {}, {}, [], "REJECT"),                # -21% DPS, +4.9% EHP
+    (100, 79, 1000, 1050, {}, {}, [], "CONDITIONAL_UPGRADE"),   # -21% DPS, +5% EHP compensates
+    (100, 80, 1000, 1016, {}, {}, [], "CONDITIONAL_UPGRADE"),   # -20% DPS is not beyond the bar
 ])
 def test_policy_table(dps_b, dps_a, ehp_b, ehp_a, res_b, res_a, unmet, expected):
     d = _delta(dps_b, dps_a, ehp_b, ehp_a, res_b, res_a)

@@ -57,6 +57,7 @@ class Stub:
         source="manual",
         clear_slots=(),
         candidate_name="",
+        main_skill: str | None = None,
         base_xml: str | None = None,
     ):
         if not hasattr(self, "calls"):
@@ -68,6 +69,7 @@ class Stub:
             "source": source,
             "clear_slots": clear_slots,
             "candidate_name": candidate_name,
+            "main_skill": main_skill,
             "base_xml": base_xml,
         })
         if self.fail:

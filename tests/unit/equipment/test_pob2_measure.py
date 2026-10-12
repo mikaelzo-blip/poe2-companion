@@ -40,7 +40,18 @@ class FakeEngine:
                 raise RuntimeError("boom")
             self._equipped = True
         elif action == "list_skills":
-            return {"mainSocketGroup": 3, "groups": []}
+            return {
+                "mainSocketGroup": 1,
+                "groups": [
+                    {"index": 1, "enabled": True, "activeSkill": "Virtuous Barrier", "gems": []},
+                    {"index": 2, "enabled": True, "activeSkill": "Flameblast", "gems": []},
+                    {"index": 3, "enabled": True, "activeSkill": "Oil Grenade", "gems": []},
+                    {"index": 4, "enabled": False, "activeSkill": "Big Nuke", "gems": []},
+                ],
+            }
+        elif action == "set_main_skill":
+            group = kw["group"]
+            return {"mainDPS": {1: 0.0, 2: 50.0, 3: 80.0, 4: 999.0}[group]}
         elif action == "get_defenses":
             return {"Life": 100, "Armour": 0, "Evasion": 0, "EnergyShield": 0,
                     "TotalEHP": 120.0 if self._equipped else 100.0}
@@ -129,4 +140,37 @@ def test_stale_candidate_returns_none_and_skips_engine(session):
 def test_restore_runs_when_equip_fails(session_failing_equip):
     assert session_failing_equip.measure("Gloves", GLOVES, 1) is None
     assert session_failing_equip.sandbox_engine.calls[-1][0] == "import_build"
+
+
+def test_initialize_picks_highest_dps_group(session):
+    assert session.main_group == 3
+    set_skill_indices = [
+        (i, kw["group"])
+        for i, (a, kw) in enumerate(session.engine.calls)
+        if a == "set_main_skill"
+    ]
+    assert set_skill_indices
+    last_set_idx, last_group = set_skill_indices[-1]
+    assert last_group == 3
+    calc_stats_indices = [
+        i for i, (a, kw) in enumerate(session.engine.calls)
+        if a == "calc_stats" and i > last_set_idx
+    ]
+    assert len(calc_stats_indices) > 0
+
+
+def test_measure_locks_guide_main_skill(session):
+    cid = session.submit_candidate(CROSSBOW)
+    session.measure("Weapon 1 Swap", CROSSBOW, cid, main_skill="Flameblast")
+    assert _locks(session) == [2, 2]
+
+
+def test_measure_unmatched_main_skill_falls_back(session):
+    cid = session.submit_candidate(CROSSBOW)
+    session.measure("Weapon 1 Swap", CROSSBOW, cid, main_skill="Nonexistent Skill")
+    assert _locks(session) == [3, 3]
+
+
+def test_find_socket_group_crossbow_alias_without_match_returns_none(session):
+    assert session.find_socket_group_for_skill("CROSSBOW_LEVELING") is None
 

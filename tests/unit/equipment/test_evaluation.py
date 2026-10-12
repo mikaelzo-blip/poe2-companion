@@ -362,3 +362,15 @@ def test_evaluate_stage_override_by_title(tmp_path, positive_pob_stub):
     assert r.guide.stage_title == "Endgame"
 
 
+
+
+def test_measure_receives_stage_main_skill(tmp_path, positive_pob_stub):
+    _install(tmp_path, FUB, char="BOMSHAK", level=60)
+    profile = load_guide(tmp_path, FUB)
+    stage = next(s for s in profile.stages if s.id == profile.pob_stage_id)
+    stage.main_skill = "Flameblast"
+    save_guide(tmp_path, profile)
+
+    evaluate(BOOTS_TEXT, "BOMSHAK", runtime_dir=tmp_path, pob_session=positive_pob_stub,
+             source="manual", stage_override=stage.id)
+    assert positive_pob_stub.calls[0]["main_skill"] == "Flameblast"

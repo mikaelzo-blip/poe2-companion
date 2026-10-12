@@ -178,7 +178,9 @@ def evaluate(
         try:
             if state["cid"] is None:
                 state["cid"] = pob_session.submit_candidate(raw_text, candidate.name, plans[0].slot, source)
-            return pob_session.measure(plan.slot, raw_text, state["cid"], source=source, clear_slots=plan.clear_slots)
+            return pob_session.measure(
+                plan.slot, raw_text, state["cid"], source=source, clear_slots=plan.clear_slots, main_skill=stage.main_skill,
+            )
         except Exception:
             logger.warning("PoB2 measurement failed for %s", plan.slot, exc_info=True)
             return None

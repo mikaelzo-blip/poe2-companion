@@ -356,9 +356,9 @@ class Pob2EquipmentSession:
                     if equipped:
                         self.equipped_items[slot] = equipped
 
+                self._refresh_main_group()
                 self.defenses_before = self.engine.call("get_defenses")
                 self.stats_before = self.engine.call("calc_stats")
-                self._refresh_main_group()
                 self.is_available = True
                 self.is_healthy = True
                 self.unhealthy_reason = None
@@ -448,9 +448,9 @@ class Pob2EquipmentSession:
                 if equipped:
                     self.equipped_items[slot] = equipped
 
+            self._refresh_main_group()
             self.defenses_before = self.engine.call("get_defenses")
             self.stats_before = self.engine.call("calc_stats")
-            self._refresh_main_group()
             self.is_available = True
             self.is_healthy = True
             self.unhealthy_reason = None
@@ -501,11 +501,25 @@ class Pob2EquipmentSession:
             return False
 
     def _refresh_main_group(self) -> None:
-        """Read PoB's main socket group from the hot engine after an import."""
+        """Lock the baseline engine on its highest-DPS socket group.
+
+        GGG imports always set mainSocketGroup = 1 (often a 0-DPS buff), so every enabled
+        group with an active skill is tried (mainDPS = FullDPS or CombinedDPS); ties keep
+        PoB's own main group.
+        """
         try:
             skills = self.engine.call("list_skills")
-            group = skills.get("mainSocketGroup") if isinstance(skills, dict) else None
-            self.main_group = int(group) if group else None
+            pob_main = skills.get("mainSocketGroup")
+            best, best_dps = pob_main, float("-inf")
+            for g in skills.get("groups") or []:
+                if not (g.get("enabled") and g.get("activeSkill")):
+                    continue
+                dps = float((self.engine.call("set_main_skill", group=g["index"]) or {}).get("mainDPS") or 0)
+                if dps > best_dps or (dps == best_dps and g["index"] == pob_main):
+                    best, best_dps = g["index"], dps
+            self.main_group = int(best) if best else None
+            if self.main_group is not None:
+                self.engine.call("set_main_skill", group=self.main_group)
         except Exception as exc:
             logging.getLogger(__name__).warning("Could not read PoB2 main socket group: %s", exc)
             self.main_group = None
@@ -611,9 +625,9 @@ class Pob2EquipmentSession:
                     if equipped:
                         self.equipped_items[slot] = equipped
 
+                self._refresh_main_group()
                 self.defenses_before = self.engine.call("get_defenses")
                 self.stats_before = self.engine.call("calc_stats")
-                self._refresh_main_group()
                 self.last_synced_at = time.monotonic()
                 return True
             except Exception as exc:
@@ -694,7 +708,6 @@ class Pob2EquipmentSession:
                         active = (g.get("activeSkill") or "").lower()
                         if candidate_skill in active:
                             return g.get("index")
-                return skills.get("mainSocketGroup")
         except Exception:
             return None
         return None
@@ -817,11 +830,13 @@ class Pob2EquipmentSession:
         source: str = "manual",
         clear_slots: tuple[str, ...] = (),
         candidate_name: str = "",
+        main_skill: str | None = None,
         base_xml: str | None = None,
     ) -> PobEquipmentDelta | None:
         """Measure one candidate in one slot against its own context-specific baseline.
 
-        Activates the weapon set the slot belongs to, locks PoB's main skill before
+        Activates the weapon set the slot belongs to, locks the guide stage's main skill
+        when it matches a socket group, else the baseline's highest-DPS group before
         both readings, applies ``clear_slots`` to the "after" build only, and always
         restores the baseline XML. Returns None if stale, unavailable or on engine failure.
         """
@@ -839,7 +854,7 @@ class Pob2EquipmentSession:
                 return None
 
             engine = self.sandbox_engine
-            group = self.main_group
+            group = (self.find_socket_group_for_skill(main_skill) if main_skill else None) or self.main_group
 
             def lock_skill() -> None:
                 if base_xml is None and group is not None:

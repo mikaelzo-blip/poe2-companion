@@ -4,6 +4,7 @@ from pathlib import Path
 import time
 from unittest.mock import MagicMock
 
+from companion.equipment.api_adapter import ggg_item_to_text
 from companion.equipment.baseline import BaselineSource, CharacterFact, CharacterStatBaseline
 from companion.equipment.baseline_cli import load_baseline, save_baseline
 from companion.equipment.loadout_cli import get_loadout_history_dir, load_loadout, save_loadout
@@ -16,6 +17,8 @@ EQUIPPED = json.loads((Path(__file__).parents[2] / "fixtures" / "pob" / "get_equ
 HELM_RAW = EQUIPPED["Helmet"]["raw"]
 STAFF_RAW = EQUIPPED["Weapon 1"]["raw"]
 BOOTS_RAW = EQUIPPED["Boots"]["raw"]
+GGG_ITEMS = json.loads((Path(__file__).parents[2] / "fixtures" / "ggg" / "items.json").read_text(encoding="utf-8"))
+GGG_STAFF = next(i for i in GGG_ITEMS if i["inventoryId"] == "Weapon")
 
 
 def _sess(raw=HELM_RAW):
@@ -24,6 +27,7 @@ def _sess(raw=HELM_RAW):
     sess.get_equipped_item.side_effect = lambda s: sess.equipped_items.get(s, {"equipped": False})
     sess.defenses_before = {"Life": 812, "Armour": 300, "Evasion": 450, "EnergyShield": 60, "Mana": 120}
     sess.stats_before = {"defense": {"FireResist": 82, "ColdResist": 40, "LightningResist": 75, "ChaosResist": -10}}
+    sess.ggg_payload = None
     return sess
 
 
@@ -181,3 +185,27 @@ def test_different_item_with_fewer_known_mods_is_a_real_swap(tmp_path):
     assert lo.revision == 2
     b = load_baseline(tmp_path, "T")
     assert b.life.value == 500 and b.life.verification == VerificationState.STALE
+
+
+def test_ggg_item_text_wins_over_pob_text_and_pob_fallback_is_labelled_derived(tmp_path):
+    sess = _sess()
+    sess.equipped_items["Weapon 1"] = {"equipped": True, "raw": STAFF_RAW}
+    sess.ggg_payload = {"character": {"equipment": [GGG_STAFF]}}  # GGG has the staff, not the helmet
+    assert apply_session_to_runtime(tmp_path, "T", sess) == []
+    lo = load_loadout(tmp_path, "T")
+    staff = lo.weapon_set_1[SlotType.MAIN_HAND.value]
+    assert staff.item.raw_text == ggg_item_to_text(GGG_STAFF).strip()
+    assert staff.source == BaselineSource.GGG_OFFICIAL_API and staff.item.required_level == 36
+    helm = lo.get_slot(SlotType.HELMET)
+    assert helm.item.raw_text == pob_item_to_clipboard(HELM_RAW).strip()
+    assert helm.source == BaselineSource.DERIVED_CALCULATION
+
+
+def test_resync_with_same_ggg_payload_changes_nothing(tmp_path):
+    sess = _sess()
+    sess.equipped_items = {"Weapon 1": {"equipped": True, "raw": STAFF_RAW.replace("Cataclysm Call", "Catáclysm Call")}}
+    sess.ggg_payload = {"items": [GGG_STAFF]}
+    apply_session_to_runtime(tmp_path, "T", sess)
+    rev = load_loadout(tmp_path, "T").revision
+    apply_session_to_runtime(tmp_path, "T", sess)
+    assert load_loadout(tmp_path, "T").revision == rev

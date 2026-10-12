@@ -12,6 +12,7 @@ RESPONSIBILITY BOUNDARY:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -214,6 +215,15 @@ def _set_weapon_set_in_xml(xml_str: str, set_num: int) -> str:
         return xml_str
 
 
+def _as_payload(raw_json: Any) -> dict[str, Any] | None:
+    """GGG character JSON (string or dict) as a dict; None when it is not a JSON object."""
+    try:
+        payload = json.loads(raw_json) if isinstance(raw_json, (str, bytes)) else raw_json
+    except ValueError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def _main_dps(engine: Any, group: int) -> float:
     """Make ``group`` PoB's main skill and return its DPS (FullDPS, else CombinedDPS)."""
     return float((engine.call("set_main_skill", group=group) or {}).get("mainDPS") or 0)
@@ -319,6 +329,8 @@ class Pob2EquipmentSession:
         self.engine: Any = None
         self.sandbox_engine: Any = None
         self.xml: str | None = None
+        # GGG character payload of the last import; its item text beats PoB's BuildRaw text
+        self.ggg_payload: dict[str, Any] | None = None
         self.class_name: str | None = None
         self.level: int | None = None
         self.last_synced_at: float = 0.0
@@ -353,6 +365,7 @@ class Pob2EquipmentSession:
                 self.sandbox_engine = self.engine_factory()
                 raw_json = self.poe_api_client.fetch_character_raw(self.character_name)
                 imp_res = self.engine.call("import_character", json=raw_json)
+                self.ggg_payload = _as_payload(raw_json)
                 self.xml = imp_res.get("xml")
                 self.class_name = imp_res.get("className")
                 self.level = imp_res.get("level")
@@ -446,6 +459,7 @@ class Pob2EquipmentSession:
         # Import character and setup initial baseline
         try:
             imp_res = self.engine.call("import_character", json=raw_json)
+            self.ggg_payload = _as_payload(raw_json)
             self.xml = imp_res.get("xml")
             self.class_name = imp_res.get("className")
             self.level = imp_res.get("level")
@@ -625,6 +639,7 @@ class Pob2EquipmentSession:
                         raw_json = poe_api.fetch_character_raw(self.character_name)
 
                 imp_res = self.engine.call("import_character", json=raw_json)
+                self.ggg_payload = _as_payload(raw_json)
                 self.xml = imp_res.get("xml")
                 self.class_name = imp_res.get("className")
                 self.level = imp_res.get("level")

@@ -83,6 +83,39 @@ def ggg_item_to_text(item: dict[str, Any]) -> str:
     return SEP.join("\n".join(b) for b in blocks)
 
 
+# Ignored non-gear inventory locations
+_IGNORED_INVENTORIES = {"maininventory", "flask", "passivejewels"}
+
+
+def ggg_equipment(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Equipped item objects of a GGG character payload (top level or under ``character``)."""
+    char = payload.get("character") or {}
+    return payload.get("items") or payload.get("equipment") or char.get("equipment") or char.get("items") or []
+
+
+def ggg_slot(inventory_id: str) -> tuple[SlotType, WeaponSetContext | None] | None:
+    """Map a GGG ``inventoryId`` to (slot, weapon set); None for non-gear locations."""
+    if not inventory_id or inventory_id.lower() in _IGNORED_INVENTORIES:
+        return None
+    inv = inventory_id.lower().replace("-", "_").replace(" ", "_")
+    if inv in ("weapon2", "weaponswap", "weapon_2", "weapon_2_swap", "weapon_1_swap", "set2_main_hand"):
+        return SlotType.MAIN_HAND, WeaponSetContext.WEAPON_SET_2
+    if inv in ("offhand2", "offhandswap", "offhand_2", "offhand_2_swap", "weapon_2_swap_offhand", "set2_off_hand"):
+        return SlotType.OFF_HAND, WeaponSetContext.WEAPON_SET_2
+    if inv in ("weapon", "weapon1", "mainhand", "main_hand"):
+        return SlotType.MAIN_HAND, WeaponSetContext.WEAPON_SET_1
+    if inv in ("offhand", "offhand1", "off_hand"):
+        return SlotType.OFF_HAND, WeaponSetContext.WEAPON_SET_1
+    if inv in ("ring", "ring1", "ring_1"):
+        return SlotType.RING_1, None
+    if inv in ("ring2", "ring_2"):
+        return SlotType.RING_2, None
+    try:
+        return SlotType.from_str(inventory_id), None
+    except ValueError:
+        return None
+
+
 class OAuthStatus(str, Enum):
     DISCONNECTED = "DISCONNECTED"
     AUTHENTICATED = "AUTHENTICATED"
@@ -145,13 +178,7 @@ class GGGCharacterAPIAdapter:
         overwrite_conflicts: bool = False,
     ) -> tuple[EquippedLoadout | None, CharacterStatBaseline | None, list[str]]:
         warnings: list[str] = []
-        eq_data = (
-            raw_payload.get("items")
-            or raw_payload.get("equipment")
-            or raw_payload.get("character", {}).get("equipment")
-            or raw_payload.get("character", {}).get("items")
-            or []
-        )
+        eq_data = ggg_equipment(raw_payload)
         if not eq_data:
             warnings.append("Payload does not contain any equipment or items.")
             return None, None, warnings
@@ -192,38 +219,11 @@ class GGGCharacterAPIAdapter:
                         evidence_ref=entry.evidence_ref,
                     )
 
-        # Ignored non-gear inventory locations
-        ignored_invs = {"maininventory", "flask", "passivejewels"}
-
         for raw_item in eq_data:
-            slot_name = raw_item.get("inventoryId") or raw_item.get("slot") or ""
-            if not slot_name or slot_name.lower() in ignored_invs:
+            mapped = ggg_slot(raw_item.get("inventoryId") or raw_item.get("slot") or "")
+            if mapped is None:
                 continue
-
-            normalized_inv = slot_name.lower().replace("-", "_").replace(" ", "_")
-            weapon_set: WeaponSetContext | None = None
-
-            if normalized_inv in ("weapon2", "weaponswap", "weapon_2", "weapon_2_swap", "weapon_1_swap", "set2_main_hand"):
-                slot = SlotType.MAIN_HAND
-                weapon_set = WeaponSetContext.WEAPON_SET_2
-            elif normalized_inv in ("offhand2", "offhandswap", "offhand_2", "offhand_2_swap", "weapon_2_swap_offhand", "set2_off_hand"):
-                slot = SlotType.OFF_HAND
-                weapon_set = WeaponSetContext.WEAPON_SET_2
-            elif normalized_inv in ("weapon", "weapon1", "mainhand", "main_hand"):
-                slot = SlotType.MAIN_HAND
-                weapon_set = WeaponSetContext.WEAPON_SET_1
-            elif normalized_inv in ("offhand", "offhand1", "off_hand"):
-                slot = SlotType.OFF_HAND
-                weapon_set = WeaponSetContext.WEAPON_SET_1
-            elif normalized_inv in ("ring", "ring1", "ring_1"):
-                slot = SlotType.RING_1
-            elif normalized_inv in ("ring2", "ring_2"):
-                slot = SlotType.RING_2
-            else:
-                try:
-                    slot = SlotType.from_str(slot_name)
-                except ValueError:
-                    continue
+            slot, weapon_set = mapped
 
             name = raw_item.get("name", "").strip()
             base_type = raw_item.get("typeLine", "").strip()

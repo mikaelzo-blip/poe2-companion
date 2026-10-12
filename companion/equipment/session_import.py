@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from companion.equipment.api_adapter import ggg_equipment, ggg_item_to_text, ggg_slot
 from companion.equipment.baseline import BaselineSource, CharacterFact, CharacterStatBaseline
 from companion.equipment.baseline_cli import load_baseline, save_baseline
 from companion.equipment.loadout import EquippedLoadout
@@ -40,10 +41,25 @@ _DEFENSE_FIELDS = {
 }
 
 
+def _ggg_items(payload: dict | None) -> dict[tuple[SlotType, WeaponSetContext | None], dict]:
+    """GGG item objects keyed like ``_SLOT_MAP`` values."""
+    items = {}
+    for raw in ggg_equipment(payload or {}):
+        mapped = ggg_slot(raw.get("inventoryId") or "")
+        if mapped is not None:
+            items[mapped] = raw
+    return items
+
+
 def _parse_items(
-    equipped: dict[str, Any], warnings: list[str]
-) -> tuple[list[tuple[SlotType, WeaponSetContext | None, Any]], list[tuple[SlotType, WeaponSetContext | None]]]:
-    """Convert PoB item text to ItemCandidates; also list slots PoB explicitly reports unequipped."""
+    equipped: dict[str, Any], warnings: list[str], ggg_payload: dict | None = None,
+) -> tuple[list[tuple[SlotType, WeaponSetContext | None, Any, BaselineSource]], list[tuple[SlotType, WeaponSetContext | None]]]:
+    """Item per slot PoB reports equipped, plus slots PoB explicitly reports unequipped.
+
+    The GGG item text (full properties, real requirements, GGG spelling) is used whenever the
+    payload PoB was built from has the slot; PoB's BuildRaw text is only the fallback.
+    """
+    ggg = _ggg_items(ggg_payload)
     parsed, cleared = [], []
     for pob_slot in sorted(POB2_PRODUCTION_SLOTS):
         mapped = _SLOT_MAP.get(pob_slot)
@@ -54,11 +70,14 @@ def _parse_items(
         if not eq.get("equipped"):
             cleared.append((slot, wset))
             continue
-        if not eq.get("raw"):
-            continue
         try:
-            text = pob_item_to_clipboard(eq["raw"])
-            parsed.append((slot, wset, parse_item_text(text, target_slot=slot, target_weapon_set=wset)))
+            if mapped in ggg:
+                text, source = ggg_item_to_text(ggg[mapped]), BaselineSource.GGG_OFFICIAL_API
+            elif eq.get("raw"):
+                text, source = pob_item_to_clipboard(eq["raw"]), BaselineSource.DERIVED_CALCULATION
+            else:
+                continue
+            parsed.append((slot, wset, parse_item_text(text, target_slot=slot, target_weapon_set=wset), source))
         except Exception as exc:
             logger.warning("PoB2 item import failed for %s", pob_slot, exc_info=True)
             warnings.append(f"{pob_slot}: could not import item ({exc})")
@@ -75,10 +94,10 @@ _LOGGED_KEEPS: set[tuple[str, str]] = set()
 def _apply_items(loadout: EquippedLoadout, parsed: list, cleared: list = ()) -> bool:
     """Mutate loadout in place; True if a decision-relevant change occurred."""
     changed = False
-    for slot, wset, item in parsed:
+    for slot, wset, item, source in parsed:
         entry = loadout.get_slot(slot, weapon_set=wset)
         stored = entry.item if entry else None
-        if stored is not None:
+        if stored is not None and source != BaselineSource.GGG_OFFICIAL_API:
             same_item = (stored.name, stored.base_type) == (item.name, item.base_type)
             if same_item and _known_mods(item) < _known_mods(stored):
                 # Same item, PoB text parsed worse than what we hold: keep the stored item.
@@ -93,7 +112,7 @@ def _apply_items(loadout: EquippedLoadout, parsed: list, cleared: list = ()) -> 
                     "required_int": stored.required_int,
                 })
         if loadout.transition_slot(
-            slot, item, source=BaselineSource.GGG_OFFICIAL_API, weapon_set=wset,
+            slot, item, source=source, weapon_set=wset,
             verification=VerificationState.VERIFIED,
         ):
             changed = True
@@ -142,13 +161,14 @@ def _apply_baseline(baseline: CharacterStatBaseline, defenses: dict, stats: dict
         _set_fact(baseline, pair[1], min(int(raw), cap))
 
 
-def _snapshot(session: Any) -> tuple[dict, dict, dict]:
+def _snapshot(session: Any) -> tuple[dict, dict, dict, dict | None]:
     """Copy cached session data while no sync is mutating it (never calls engine methods)."""
     with session._engine_lock:
         return (
             dict(session.equipped_items or {}),
             dict(session.defenses_before or {}),
             dict(session.stats_before or {}),
+            getattr(session, "ggg_payload", None),
         )
 
 
@@ -156,8 +176,8 @@ def apply_session_to_runtime(runtime_dir: Path, character_id: str, session: Any)
     """Write the session's equipped item text and computed baseline; returns warnings, never raises."""
     warnings: list[str] = []
     try:
-        equipped, defenses, stats = _snapshot(session)
-        parsed, cleared = _parse_items(equipped, warnings)
+        equipped, defenses, stats, ggg_payload = _snapshot(session)
+        parsed, cleared = _parse_items(equipped, warnings, ggg_payload)
         with character_runtime_lock(character_id):
             loadout = load_loadout(runtime_dir, character_id)
             pre_fingerprint = loadout.compute_fingerprint() if loadout.is_finalized else None

@@ -125,3 +125,11 @@ def test_quest_rewards_skip_entries_without_quest():
     prof, _, _ = parse_mobalytics_guide(data)
     assert [q.quest for q in prof.quest_rewards] == ["Venom Draught"]
     assert [(n.name, n.kind) for n in prof.stages[0].notables] == [("Radial Force", "NOTABLE")]
+
+
+def test_source_url_must_be_http():
+    data = json.loads((GUIDES / "plant-oracle-druid-leveling-build-guide.json").read_text(encoding="utf-8"))
+    data["source_url"] = "javascript:alert(1)"
+    assert parse_mobalytics_guide(data)[0].source_url is None
+    data["source_url"] = "https://mobalytics.gg/poe-2/builds/x"
+    assert parse_mobalytics_guide(data)[0].source_url == "https://mobalytics.gg/poe-2/builds/x"

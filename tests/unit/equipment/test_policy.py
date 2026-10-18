@@ -64,3 +64,8 @@ def test_helpers_and_rank():
     r = rejected("Helmet", ["a", "b"])
     assert (r.verdict, r.reasons) == ("REJECT", ["a", "b"])
     assert VERDICT_RANK["EQUIP_NOW"] > VERDICT_RANK["CONDITIONAL_UPGRADE"] > VERDICT_RANK["INSUFFICIENT_DATA"] > VERDICT_RANK["REJECT"]
+
+
+def test_deltas_that_round_to_zero_are_not_listed():
+    r = decide(_delta(1000, 1000, 500, 500, average_hit_pct=0.04, movement_speed_delta=-1e-9))
+    assert r.gains == [] and r.trade_offs == []

@@ -139,13 +139,20 @@ export async function importGuideFromUrl() {
     text = '';
   }
   history.replaceState(null, '', location.pathname + location.search);
+  let info = {};
+  try {
+    info = JSON.parse(text);
+  } catch (e) {
+    return alert('Gagal impor guide: data guide di URL rusak.');
+  }
+  // Any website can open this URL, so the user confirms what is imported (a guide with the same slug is replaced).
+  if (!confirm(`Impor guide "${info.name || '?'}"?\nSumber: ${info.source_url || '?'}`)) return;
   try {
     const res = await post('/api/guides', { text });
     if (res.error) return alert(`Gagal impor guide: ${res.error}`);
     await refreshGuides();
     await refreshGuideControls();
-    const warns = (res.warnings || []).map((w) => `
-⚠ ${w}`).join('');
+    const warns = (res.warnings || []).map((w) => `\n⚠ ${w}`).join('');
     alert(`✅ Guide diimpor: ${res.name} (${res.stages} stage).${warns}`);
   } catch (e) {
     alert(`Gagal impor guide: ${e.message}`);

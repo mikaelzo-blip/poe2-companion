@@ -46,6 +46,11 @@ def _raw_text(slot: str, name: str, label: str, stats: list, mods: list[str]) ->
     return "\n--------\n".join(blocks)
 
 
+def _http_url(url: object) -> str | None:
+    """Only http(s) links are kept; the dashboard renders source_url as a link."""
+    return url if isinstance(url, str) and url.lower().startswith(("https://", "http://")) else None
+
+
 def _parse(data: dict) -> tuple[GuideProfile, str | None, list[str]]:
     if data.get("format") != FORMAT:
         raise ValueError(f"Format panduan tidak dikenal (harus {FORMAT}).")
@@ -90,7 +95,7 @@ def _parse(data: dict) -> tuple[GuideProfile, str | None, list[str]]:
         ))
     pob = data.get("pob_code") or None
     profile = GuideProfile(
-        slug=data["slug"], name=data["name"], source_url=data.get("source_url"),
+        slug=data["slug"], name=data["name"], source_url=_http_url(data.get("source_url")),
         imported_at=datetime.now(timezone.utc).isoformat(), stages=stages,
         has_pob=pob is not None, pob_stage_id=stages[-1].id,
         gem_notes=[GemNote(title=str(n.get("title") or ""), steps=[str(t) for t in n.get("steps") or []])

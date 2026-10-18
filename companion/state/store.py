@@ -57,6 +57,36 @@ def atomic_write_file(target_path: Path, data_bytes: bytes) -> None:
         raise
 
 
+# Facts several writers own (PoB2 import, manual sync, the log observer's in-memory copy): per key the newest wins.
+_SHARED_FACT_GROUPS = ("attributes", "resistances", "resources")
+
+
+def _keep_newer_stat_facts(state_dict: dict[str, Any], canonical_path: Path) -> None:
+    """Keep facts on disk that are newer than the state being saved, so a stale copy cannot revert them."""
+    try:
+        disk = json.loads(canonical_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    for group in _SHARED_FACT_GROUPS:
+        mine, theirs = state_dict.get(group), disk.get(group)
+        if not isinstance(mine, dict) or not isinstance(theirs, dict):
+            continue
+        for key, fact in theirs.items():
+            if not isinstance(fact, dict) or not fact.get("observed_at"):
+                continue
+            ours = mine.get(key)
+            if not isinstance(ours, dict) or _observed(fact) > _observed(ours):
+                mine[key] = fact
+
+
+def _observed(fact: dict[str, Any]) -> datetime:
+    try:
+        ts = datetime.fromisoformat(str(fact.get("observed_at")))
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+
+
 class CharacterStateStore:
     """Manages persistent per-character state files, backups, and active pointer."""
 
@@ -89,6 +119,7 @@ class CharacterStateStore:
         with StateLock(self.lock_file):
             # 1. Update timestamp and serialize state
             state_dict = state.model_dump()
+            _keep_newer_stat_facts(state_dict, canonical_path)
             state_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
             data_bytes = (json.dumps(state_dict, indent=2) + "\n").encode("utf-8")
 

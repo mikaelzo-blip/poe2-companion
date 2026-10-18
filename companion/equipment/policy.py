@@ -80,7 +80,7 @@ def decide(
             signed.append((pct, f"{pct:+.1%} {name}"))
     for field, label, unit in _FLAT_STATS:
         value = getattr(delta, field)
-        if value:
+        if round(value, 1):
             signed.append((value, f"{round(value, 1):+g}{unit} {label}"))
     gains = [text for value, text in signed if value > 0]
     trade_offs = [text for value, text in signed if value < 0]

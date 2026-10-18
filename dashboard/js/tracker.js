@@ -96,7 +96,7 @@ export async function loadTracker() {
       return;
     }
     current = data;
-    const src = data.source_url ? ` · <a href="${esc(data.source_url)}" target="_blank" rel="noopener">sumber</a>` : '';
+    const src = /^https?:\/\//i.test(data.source_url || '') ? ` · <a href="${esc(data.source_url)}" target="_blank" rel="noopener">sumber</a>` : '';
     body.innerHTML = `
       <p class="tracker-meta">${esc(data.character_id)} · Lvl ${esc(data.character_level ?? '?')} · ${esc(data.act)}
         · ${esc(data.guide)} (${esc(data.stage)})${src}</p>

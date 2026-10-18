@@ -340,6 +340,80 @@
           "name": "Cast on Critical",
           "weapon_set": null
         }
+      ],
+      "notables": [
+        {
+          "name": "Guardian of the Wilds",
+          "kind": "NOTABLE"
+        },
+        {
+          "name": "Harbinger of Disaster",
+          "kind": "NOTABLE"
+        },
+        {
+          "name": "Radial Force",
+          "kind": "NOTABLE"
+        },
+        {
+          "name": "Wildsurge Incantation",
+          "kind": "KEY_STONE"
+        },
+        {
+          "name": "Lasting Incantations",
+          "kind": "NOTABLE"
+        },
+        {
+          "name": "Wasting Casts",
+          "kind": "NOTABLE"
+        },
+        {
+          "name": "Boundless Growth",
+          "kind": "NOTABLE"
+        },
+        {
+          "name": "Constricting",
+          "kind": "NOTABLE"
+        },
+        {
+          "name": "Cut to the Bone",
+          "kind": "NOTABLE"
+        },
+        {
+          "name": "Dangerous Blossom",
+          "kind": "NOTABLE"
+        },
+        {
+          "name": "Return to Nature",
+          "kind": "NOTABLE"
+        },
+        {
+          "name": "Blood Tearing",
+          "kind": "NOTABLE"
+        },
+        {
+          "name": "Shredding Force",
+          "kind": "NOTABLE"
+        },
+        {
+          "name": "Aspiring Genius",
+          "kind": "NOTABLE"
+        },
+        {
+          "name": "Arcane Nature",
+          "kind": "NOTABLE"
+        },
+        {
+          "name": "Desensitisation",
+          "kind": "NOTABLE"
+        },
+        {
+          "name": "The Lesser Harm",
+          "kind": "ASCENDANCY_LARGE"
+        },
+        {
+          "name": "Forced Outcome",
+          "kind": "ASCENDANCY_LARGE"
+        }
       ]
     }
   ],
@@ -393,5 +467,192 @@
       ]
     }
   ],
-  "vendor_regex": "\"y: (r|m)\" \"\\d+% i.+mov|ph.*da|ell.*ge$|^\\+.*l sp.*ls$|^\\+.*al sp.*ls$|spiri|st spe|\\d.+life\" \"s: (am|ri|be|wa|st|gl|boo|bod|he|fo)\""
+  "vendor_regex": "\"y: (r|m)\" \"\\d+% i.+mov|ph.*da|ell.*ge$|^\\+.*l sp.*ls$|^\\+.*al sp.*ls$|spiri|st spe|\\d.+life\" \"s: (am|ri|be|wa|st|gl|boo|bod|he|fo)\"",
+  "quest_rewards": [
+    {
+      "act": "Act 1",
+      "area": "Clearfell",
+      "quest": "Beira of the Rotten Pack",
+      "reward": "+10% to Cold Resistance"
+    },
+    {
+      "act": "Act 1",
+      "area": "Hunting Grounds",
+      "quest": "The Crowbell",
+      "reward": "Grants Two Weapon Set Passive Skill Points"
+    },
+    {
+      "act": "Act 1",
+      "area": "Freythorn",
+      "quest": "The King in the Mists",
+      "reward": "+30 to Spirit"
+    },
+    {
+      "act": "Act 1",
+      "area": "Ogham Farmlands",
+      "quest": "Una's Hut",
+      "reward": "Grants Two Weapon Set Passive Skill Points"
+    },
+    {
+      "act": "Act 1",
+      "area": "Ogham Manor",
+      "quest": "Candlemass, the Living Rite",
+      "reward": "+20 to maximum Life"
+    },
+    {
+      "act": "Act 2",
+      "area": "Keth",
+      "quest": "Kabala, Constrictor Queen",
+      "reward": "Grants Two Weapon Set Passive Skill Points"
+    },
+    {
+      "act": "Act 2",
+      "area": "Valley of the Titans",
+      "quest": "Medallion",
+      "reward": "30% increased Charm Effect Duration, +1 Charm Slot"
+    },
+    {
+      "act": "Act 2",
+      "area": "Deshar",
+      "quest": "Final Letter",
+      "reward": "Grants Two Weapon Set Passive Skill Points"
+    },
+    {
+      "act": "Act 2",
+      "area": "The Spires of Deshar",
+      "quest": "Sisters of Garukhan",
+      "reward": "+10% to Lightning Resistance"
+    },
+    {
+      "act": "Act 3",
+      "area": "Jungle Ruins",
+      "quest": "Mighty Silverfist",
+      "reward": "Grants Two Weapon Set Passive Skill Points"
+    },
+    {
+      "act": "Act 3",
+      "area": "The Venom Crypts",
+      "quest": "Venom Draught",
+      "reward": "25% increased Stun Threshold"
+    },
+    {
+      "act": "Act 3",
+      "area": "Jiquani's Machinarium",
+      "quest": "Blackjaw, the Remnant",
+      "reward": "+10% to Fire Resistance"
+    },
+    {
+      "act": "Act 3",
+      "area": "The Azak Bog",
+      "quest": "Ignagduk, the Bog Witch",
+      "reward": "+30 to Spirit"
+    },
+    {
+      "act": "Act 3",
+      "area": "The Molten Vault",
+      "quest": "The Molten Vault",
+      "reward": "Reforging Bench"
+    },
+    {
+      "act": "Act 3",
+      "area": "Aggorat",
+      "quest": "Blood Sacrifice",
+      "reward": "Grants Two Weapon Set Passive Skill Points"
+    },
+    {
+      "act": "Act 4",
+      "area": "Journey's End",
+      "quest": "Captain Hartlin",
+      "reward": "Two Weapon Set Passive Skill Points, Skill Gem(Lv 13), Delirium Drop"
+    },
+    {
+      "act": "Act 4",
+      "area": "Whakapanu Island",
+      "quest": "Great White One",
+      "reward": "+30% increased Global Armour, Evasion and Energy Shield"
+    },
+    {
+      "act": "Act 4",
+      "area": "Eye of Hinekora",
+      "quest": "Navali's Rest",
+      "reward": "5% increased Maximum Mana"
+    },
+    {
+      "act": "Act 4",
+      "area": "Halls of the Dead",
+      "quest": "Yama The White",
+      "reward": "Grants Two Weapon Set Passive Skill Points"
+    },
+    {
+      "act": "Act 4",
+      "area": "Halls of the Dead",
+      "quest": "Tawhoa's Test",
+      "reward": "+5% to Lightning Resistance"
+    },
+    {
+      "act": "Act 4",
+      "area": "Abandoned Prison",
+      "quest": "Goddess of Justice",
+      "reward": "30% increased Mana Recovery from Flasks"
+    },
+    {
+      "act": "Interlude",
+      "area": "Wolvenhold",
+      "quest": "Oswin, the Dread Warden",
+      "reward": "Grants Two Weapon Set Passive Skill Points"
+    },
+    {
+      "act": "Interlude",
+      "area": "The Khari Crossing",
+      "quest": "Akthi and Anundr",
+      "reward": "Two Weapon Set Passive Skill Points"
+    },
+    {
+      "act": "Interlude",
+      "area": "The Khari Crossing",
+      "quest": "Molten Shrine",
+      "reward": "5% increased Maximum Life"
+    },
+    {
+      "act": "Interlude",
+      "area": "Qimah",
+      "quest": "Tabana's Pillar",
+      "reward": "+5% to all Elemental Resistances"
+    },
+    {
+      "act": "Interlude",
+      "area": "Kriar Village",
+      "quest": "Lythara, the Wayward Spear",
+      "reward": "+40 to Spirit"
+    },
+    {
+      "act": "Interlude",
+      "area": "Howling Caves",
+      "quest": "The Abominable Yeti",
+      "reward": "Grants Two Weapon Set Passive Skill Points"
+    },
+    {
+      "act": "Act 4",
+      "area": "Halls of the Dead",
+      "quest": "Tasalio's Test",
+      "reward": "+5% to Cold Resistance"
+    },
+    {
+      "act": "Act 4",
+      "area": "Halls of the Dead",
+      "quest": "Ngamahu's Test",
+      "reward": "+5% to Fire Resistance"
+    },
+    {
+      "act": "Act 4",
+      "area": "Halls of the Dead",
+      "quest": "Tribal Medicine",
+      "reward": "+30% increased Global Armour, Evasion and Energy Shield"
+    }
+  ],
+  "tree_hints": [
+    "Use the \"Notable Priority\" section above to see the correct pathing.",
+    "HINT: In Act 1 you can path toward Wasting Casts first until you have enough points to respec into Wildsurge Incantation you can respec at The Hooded One NPC in town for a small gold cost.",
+    "For your first Ascendancy take Fateful Vision for more damage. Later on when you complete the 2nd Ascendancy you can respec to Forced Outcome."
+  ]
 }

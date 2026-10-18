@@ -35,12 +35,27 @@ def _objective(oid: str, priority: int, title: str, action: str, rationale: str,
     }
 
 
-def _act_label(act: int) -> str:
+def act_label(act: int) -> str:
     return "Interlude" if act == 6 else "Endgame" if act >= 10 else f"Act {act}"
 
 
 def _next_act(act: int) -> int | None:
     return {1: 2, 2: 3, 3: 4, 4: 6, 6: 10}.get(act)
+
+
+def _level_and_zone(runtime_dir: Path, char_id: str) -> tuple[Any, Any]:
+    char_file = runtime_dir / "characters" / f"{char_id}.json"
+    try:
+        char_data = json.loads(char_file.read_text(encoding="utf-8")) if char_file.is_file() else {}
+    except (OSError, ValueError):
+        char_data = {}
+    return character_level_and_zone(char_data)
+
+
+def character_level_and_act(runtime_dir: Path, char_id: str) -> tuple[Any, int]:
+    """The character's level and current act (zone first, level as fallback)."""
+    level, zone = _level_and_zone(runtime_dir, char_id)
+    return level, act_of_zone(zone) or act_for_level(level) or 1
 
 
 def resist_by_act(baseline: Any, act: int, current_act: int) -> dict[str, int] | None:
@@ -77,11 +92,11 @@ def _resist_objective(baseline: Any, act: int) -> dict[str, Any] | None:
     if not gaps:
         return None
     names = dict(_ELEMENTS)
-    title = f"Resistance untuk {_act_label(target_act)}: kurang " + ", ".join(f"{names[el]} {g}%" for el, g in gaps.items())
+    title = f"Resistance untuk {act_label(target_act)}: kurang " + ", ".join(f"{names[el]} {g}%" for el, g in gaps.items())
     rationale = (f"Sekarang " + "/".join(f"{now[el]}%" for el, _ in _ELEMENTS)
-                 + f" ({_act_label(act)}, penalti Resistance {resist_penalty_for_act(act)}%).")
+                 + f" ({act_label(act)}, penalti Resistance {resist_penalty_for_act(act)}%).")
     if nxt:
-        rationale += (f" Di {_act_label(nxt)} penalti Resistance {resist_penalty_for_act(nxt)}%: jadi "
+        rationale += (f" Di {act_label(nxt)} penalti Resistance {resist_penalty_for_act(nxt)}%: jadi "
                       + "/".join(f"{then[el]}%" for el, _ in _ELEMENTS) + ".")
     critical = min(then.values()) < 30
     return _objective("resist", 5 if critical else 4, title,
@@ -156,13 +171,7 @@ def guide_objectives(runtime_dir: Path, char_id: str) -> dict[str, Any] | None:
     profile = load_guide(runtime_dir, slug) if slug else None
     if profile is None:
         return None
-    char_file = runtime_dir / "characters" / f"{char_id}.json"
-    try:
-        char_data = json.loads(char_file.read_text(encoding="utf-8")) if char_file.is_file() else {}
-    except (OSError, ValueError):
-        char_data = {}
-    level, zone = character_level_and_zone(char_data)
-    act = act_of_zone(zone) or act_for_level(level) or 1
+    level, act = character_level_and_act(runtime_dir, char_id)
     stage = resolve_stage(profile, level, override)
     baseline = load_baseline(runtime_dir, char_id)
 
@@ -192,12 +201,7 @@ def rank_slots(runtime_dir: Path, char_id: str, pob_session: Any) -> dict[str, A
         return {"error": "Karakter belum punya guide."}
     if pob_session is None or not getattr(pob_session, "is_available", False):
         return {"error": "PoB2 tidak tersedia."}
-    char_file = runtime_dir / "characters" / f"{char_id}.json"
-    try:
-        char_data = json.loads(char_file.read_text(encoding="utf-8")) if char_file.is_file() else {}
-    except (OSError, ValueError):
-        char_data = {}
-    level, zone = character_level_and_zone(char_data)
+    level, zone = _level_and_zone(runtime_dir, char_id)
     stage = resolve_stage(profile, level, override)
     if hasattr(pob_session, "apply_zone"):
         pob_session.apply_zone(zone, level)

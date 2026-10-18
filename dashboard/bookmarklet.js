@@ -49,6 +49,14 @@ function extractGuide(win) {
       return ((doc.content || []).filter(function (s) { return s && s.__typename === type; })[0] || {}).data || {};
     };
     var gemNotes = sections(widget("Poe2DocumentUgWidgetSkillGemsV1").descriptionPoeSkillGems);
+    var treeHints = [];
+    sections(widget("Poe2DocumentUgWidgetPassiveTreeV1").descriptionPoe2PassiveTree).forEach(function (sec) {
+      treeHints = treeHints.concat(sec.steps);
+    });
+    var questRewards = ((doc.data.questRewards || {}).quests || []).map(function (q) {
+      var r = q.reward || {};
+      return { act: q.quest.act, area: q.quest.area, quest: q.quest.name, reward: r.bakedDescription || r.name || "" };
+    });
     var regex = null;
     (doc.content || []).forEach(function (s) {
       sections(s && s.data && s.data.simplifiedContent).forEach(function (sec) {
@@ -86,7 +94,10 @@ function extractGuide(win) {
       var gems = (v.skillGems && v.skillGems.gems) || [];
       var skills = gems.filter(function (g) { return g.activeSkill && g.activeSkill.name; })
         .map(function (g) { return { name: g.activeSkill.name, weapon_set: g.grantedByWeaponSet || null }; });
-      return { id: v.id, title: titles[v.id] || "Variant " + (i + 1), items: items, skills: skills };
+      var tree = v.passiveTree || {};
+      var notables = ((tree.mainTree || {}).priorityList || []).concat((tree.ascendancyTree || {}).priorityList || [])
+        .map(function (n) { return { name: n.name, kind: n.type }; });
+      return { id: v.id, title: titles[v.id] || "Variant " + (i + 1), items: items, skills: skills, notables: notables };
     });
 
     return {
@@ -98,6 +109,8 @@ function extractGuide(win) {
       variants: variants,
       gem_notes: gemNotes,
       vendor_regex: regex,
+      quest_rewards: questRewards,
+      tree_hints: treeHints,
     };
   } catch (e) {
     throw new Error(FORMAT_ERR);

@@ -356,6 +356,16 @@ def _api_slot_ranking(payload: dict[str, Any]) -> Any:
         _RANKING_LOCK.release()
 
 
+def _api_tracker(q: dict[str, str]) -> Any:
+    from companion.dashboard_api import get_build_tracker
+    return get_build_tracker(RUNTIME_DIR, normalize_char_id(q.get("char_id")))
+
+
+def _api_tracker_tick(payload: dict[str, Any]) -> Any:
+    from companion.dashboard_api import set_tracker_tick_payload
+    return set_tracker_tick_payload(payload, RUNTIME_DIR, normalize_char_id(payload.get("character_id")))
+
+
 def _api_import_guide(payload: dict[str, Any]) -> Any:
     from companion.dashboard_api import import_guide_payload
     return import_guide_payload(payload, RUNTIME_DIR)
@@ -449,6 +459,7 @@ GET_ROUTES: dict[str, Callable[[dict[str, str]], Any]] = {
     "/api/clipboard-poll": _api_clipboard_poll,
     "/api/account-characters": _api_account_characters,
     "/api/guides": _api_guides,
+    "/api/tracker": _api_tracker,
     "/api/get-clipboard": _api_get_clipboard,
 }
 
@@ -464,6 +475,7 @@ POST_ROUTES: dict[str, Callable[[dict[str, Any]], Any]] = {
     "/api/guides/rules": _api_guide_rules,
     "/api/character-guide": _api_character_guide,
     "/api/slot-ranking": _api_slot_ranking,
+    "/api/tracker/tick": _api_tracker_tick,
 }
 
 

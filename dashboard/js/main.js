@@ -6,6 +6,7 @@ import { setupCharacterAndGuideControls } from './controls.js';
 import { setupStatsModal, setupSyncModal } from './modals.js';
 import { setupNavigation, setupSlotRanking } from './overview.js';
 import { checkHttpHost, setupDragAndDrop, setupFolderAccess } from './runtime.js';
+import { setupTracker } from './tracker.js';
 
 // Initialization
 document.addEventListener('DOMContentLoaded', async () => {
@@ -16,6 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupCompareSubtabs();
   setupSyncModal();
   setupStatsModal();
+  setupTracker();
   await setupCharacterAndGuideControls();
 
   // Try auto-fetching via HTTP if hosted via server

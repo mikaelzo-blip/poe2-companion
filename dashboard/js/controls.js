@@ -1,5 +1,6 @@
 import { fetchHttpRuntime } from './runtime.js';
 import { appState, logToTerminal } from './state.js';
+import { refreshTrackerIfVisible } from './tracker.js';
 
 function fillSelect(sel, firstLabel, items, selected) {
   sel.innerHTML = '';
@@ -110,6 +111,7 @@ export async function setupCharacterAndGuideControls() {
           appState.activeCharId = selectedName;
           showGuideError('');
           await refreshGuideControls();
+          refreshTrackerIfVisible();
           logToTerminal('CHARACTER', `Karakter aktif beralih ke ${selectedName}`);
           await fetchHttpRuntime();
         } else {

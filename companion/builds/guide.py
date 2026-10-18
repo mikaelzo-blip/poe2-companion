@@ -84,6 +84,20 @@ class GemNote(BaseModel):
     steps: list[str] = []
 
 
+class QuestReward(BaseModel):
+    """A permanent quest buff the guide takes ("Act 2", "Medallion": "+1 Charm Slot")."""
+    act: str
+    area: str = ""
+    quest: str
+    reward: str
+
+
+class PassiveNotable(BaseModel):
+    """One entry of the guide's notable priority list (kind: NOTABLE, KEY_STONE, ASCENDANCY_LARGE...)."""
+    name: str
+    kind: str = "NOTABLE"
+
+
 class GuideStage(BaseModel):
     id: str
     title: str
@@ -93,6 +107,7 @@ class GuideStage(BaseModel):
     items: dict[str, StageItem] = {}
     main_skill: str | None = None
     weapon_classes: dict[int, list[str]] = {}
+    notables: list[PassiveNotable] = []
 
 
 class GuideProfile(BaseModel):
@@ -106,6 +121,8 @@ class GuideProfile(BaseModel):
     breaker_rules: list[BreakerRule] = []
     gem_notes: list[GemNote] = []
     vendor_regex: str | None = None
+    quest_rewards: list[QuestReward] = []
+    tree_hints: list[str] = []
 
     @field_validator("stages")
     @classmethod

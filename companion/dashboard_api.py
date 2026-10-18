@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 import json
 import logging
+import re
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -17,7 +20,7 @@ from companion.equipment.parser import parse_item_text
 from companion.equipment.pob2_equipment_advisor import load_pob_mcp_modules
 from companion.equipment.slot_resolver import UI_SLOT_KEYS
 from companion.state.schema import CharacterState, split_class_code
-from companion.state.store import CharacterStateStore
+from companion.state.store import CharacterStateStore, atomic_write_file
 
 logger = logging.getLogger(__name__)
 
@@ -919,3 +922,114 @@ def set_character_guide_payload(payload: dict[str, Any], runtime_dir: Path) -> d
     return {"success": True}
 
 
+
+
+# --- Build Tracker: per-act checklist from the character's guide; ticks persisted in runtime/tracker ---
+
+_TRACKER_LOCK = threading.Lock()
+_TRACKER_ID = re.compile(r"^[a-z]+:[0-9a-f]{12}$")
+_SAFE_CHAR = re.compile(r"^[\w-]{1,64}$")
+
+
+def _tracker_file(runtime_dir: Path, char_id: str) -> Path:
+    if not _SAFE_CHAR.match(char_id):
+        raise ValueError("ID karakter tidak valid.")
+    return runtime_dir / "tracker" / f"{char_id}.json"
+
+
+def _tracker_done(runtime_dir: Path, char_id: str) -> set[str]:
+    try:
+        return set(json.loads(_tracker_file(runtime_dir, char_id).read_text(encoding="utf-8")).get("done") or [])
+    except (OSError, ValueError, AttributeError):
+        return set()
+
+
+def _tid(kind: str, text: str) -> str:
+    """Stable checklist id from the item's text, so ticks survive a guide re-import."""
+    return f"{kind}:{hashlib.md5(text.encode('utf-8')).hexdigest()[:12]}"
+
+
+def _act_section(title: str) -> str:
+    m = re.search(r"\bact\s*(\d+)", title, re.I)
+    if m:
+        return f"Act {m.group(1)}"
+    return "Interlude" if "interlude" in title.lower() else "Umum"
+
+
+def _gear_rows(runtime_dir: Path, char_id: str, stage: Any) -> list[dict[str, Any]]:
+    from companion.builds import advisor
+
+    gaps = {slot: (gap, missing) for slot, gap, missing in advisor.slot_gaps(runtime_dir, char_id, stage)}
+    rows = []
+    for slot, item in stage.items.items():
+        row = {"slot": slot, "guide_item": item.name, "item_class": item.item_class, "is_unique": item.is_unique,
+               "match_pct": None, "missing": [], "done": False}
+        if slot in gaps:
+            gap, missing = gaps[slot]
+            row.update(match_pct=round((1 - gap) * 100), missing=missing, done=gap == 0)
+        elif item.is_unique:
+            row["done"] = item.name.lower() in advisor.get_current_raw(runtime_dir, char_id, slot).lower()
+            row["match_pct"] = 100 if row["done"] else 0
+        rows.append(row)
+    return rows
+
+
+def get_build_tracker(runtime_dir: Path, char_id: str) -> dict[str, Any]:
+    """Build Tracker for the character's guide: gear vs guide (computed), gem steps, quest rewards, passives (ticked)."""
+    from companion.builds import advisor
+    from companion.builds.stages import resolve_stage
+    from companion.builds.store import load_guide
+
+    slug, override = get_assignment(runtime_dir, char_id)
+    profile = load_guide(runtime_dir, slug) if slug else None
+    if profile is None:
+        return {"error": "Karakter belum punya guide.", "character_id": char_id}
+    level, act = advisor.character_level_and_act(runtime_dir, char_id)
+    stage = resolve_stage(profile, level, override)
+    done = _tracker_done(runtime_dir, char_id)
+
+    sections: dict[str, list[dict[str, Any]]] = {}
+    for note in profile.gem_notes:
+        for step in note.steps:
+            sections.setdefault(_act_section(note.title), []).append(
+                {"id": _tid("gem", step), "kind": "gem", "group": note.title, "text": step})
+    for q in profile.quest_rewards:
+        sections.setdefault(_act_section(q.act), []).append(
+            {"id": _tid("quest", f"{q.act}|{q.quest}"), "kind": "quest", "group": q.area, "text": q.quest,
+             "detail": q.reward})
+    order = [f"Act {n}" for n in range(1, 5)] + ["Interlude"]
+    keys = sorted(sections, key=lambda k: order.index(k) if k in order else (-1 if k == "Umum" else len(order)))
+    passives = [{"id": _tid("node", n.name), "kind": "node", "group": n.kind, "text": n.name} for n in stage.notables]
+    passives += [{"id": _tid("hint", h), "kind": "hint", "group": "Hint", "text": h} for h in profile.tree_hints]
+    for item in [i for k in keys for i in sections[k]] + passives:
+        item["done"] = item["id"] in done
+    ticks = [i for k in keys for i in sections[k]] + [p for p in passives if p["kind"] == "node"]
+    gear = _gear_rows(runtime_dir, char_id, stage)
+    return {
+        "success": True, "character_id": char_id, "character_level": level, "act": advisor.act_label(act),
+        "guide": profile.name, "source_url": profile.source_url, "stage": stage.title,
+        "gear": gear,
+        "sections": [{"key": k, "current": k == advisor.act_label(act), "items": sections[k]} for k in keys],
+        "passives": passives,
+        "progress": {"done": sum(i["done"] for i in ticks) + sum(r["done"] for r in gear),
+                     "total": len(ticks) + len(gear)},
+    }
+
+
+def set_tracker_tick_payload(payload: dict[str, Any], runtime_dir: Path, char_id: str) -> dict[str, Any]:
+    """Tick or untick one checklist id for the character (runtime/tracker/<char>.json)."""
+    tid = str(payload.get("id") or "")
+    if not _TRACKER_ID.match(tid):
+        return {"error": "ID checklist tidak valid."}
+    try:
+        path = _tracker_file(runtime_dir, char_id)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    with _TRACKER_LOCK:
+        done = _tracker_done(runtime_dir, char_id)
+        if payload.get("done"):
+            done.add(tid)
+        else:
+            done.discard(tid)
+        atomic_write_file(path, json.dumps({"done": sorted(done)}, indent=2).encode("utf-8"))
+    return {"success": True, "id": tid, "done": tid in done}

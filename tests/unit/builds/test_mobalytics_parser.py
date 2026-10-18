@@ -103,3 +103,25 @@ def test_plant_oracle_keeps_gem_progression_and_vendor_regex():
 def test_guides_without_gem_notes_still_parse():
     prof, _, _ = _parse("fubgun-flameblast-oil-grenade")
     assert prof.gem_notes == [] and prof.vendor_regex is None
+
+
+def test_plant_oracle_quest_rewards_and_passives():
+    prof, _, _ = _parse("plant-oracle-druid-leveling-build-guide")
+    medallion = next(q for q in prof.quest_rewards if q.quest == "Medallion")
+    assert medallion.act == "Act 2" and "+1 Charm Slot" in medallion.reward
+    assert {q.act for q in prof.quest_rewards} == {"Act 1", "Act 2", "Act 3", "Act 4", "Interlude"}
+    notables = prof.stages[0].notables
+    assert notables[0].name == "Guardian of the Wilds"
+    assert ("Wildsurge Incantation", "KEY_STONE") in [(n.name, n.kind) for n in notables]
+    assert notables[-1].kind == "ASCENDANCY_LARGE"
+    assert any("Wasting Casts" in h for h in prof.tree_hints)
+
+
+def test_quest_rewards_skip_entries_without_quest():
+    data = _synth({})
+    data["quest_rewards"] = [{"act": "Act 3", "quest": "Venom Draught", "reward": "25% increased Stun Threshold"},
+                             {"act": "Act 3", "reward": "orphan"}]
+    data["variants"][0]["notables"] = [{"name": "Radial Force"}, {"kind": "NOTABLE"}]
+    prof, _, _ = parse_mobalytics_guide(data)
+    assert [q.quest for q in prof.quest_rewards] == ["Venom Draught"]
+    assert [(n.name, n.kind) for n in prof.stages[0].notables] == [("Radial Force", "NOTABLE")]

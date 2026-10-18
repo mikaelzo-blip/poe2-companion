@@ -6,7 +6,9 @@ from datetime import datetime, timezone
 
 from pydantic import ValidationError
 
-from companion.builds.guide import GemNote, GuideProfile, GuideStage, StageItem, weapon_classes_of
+from companion.builds.guide import (
+    GemNote, GuideProfile, GuideStage, PassiveNotable, QuestReward, StageItem, weapon_classes_of,
+)
 from companion.builds.stages import assign_level_ranges
 from companion.equipment.api_adapter import ITEM_CLASS_PLURAL
 
@@ -83,6 +85,8 @@ def _parse(data: dict) -> tuple[GuideProfile, str | None, list[str]]:
             id=str(v["id"]), title=v.get("title") or str(v["id"]), items=items,
             main_skill=skills[0]["name"] if skills else None,
             weapon_classes=weapon_classes_of(items),
+            notables=[PassiveNotable(name=str(n["name"]), kind=str(n.get("kind") or "NOTABLE"))
+                      for n in v.get("notables") or [] if n.get("name")],
         ))
     pob = data.get("pob_code") or None
     profile = GuideProfile(
@@ -92,6 +96,10 @@ def _parse(data: dict) -> tuple[GuideProfile, str | None, list[str]]:
         gem_notes=[GemNote(title=str(n.get("title") or ""), steps=[str(t) for t in n.get("steps") or []])
                    for n in data.get("gem_notes") or []],
         vendor_regex=data.get("vendor_regex") or None,
+        quest_rewards=[QuestReward(act=str(q.get("act") or "Lainnya"), area=str(q.get("area") or ""),
+                                   quest=str(q["quest"]), reward=str(q.get("reward") or ""))
+                       for q in data.get("quest_rewards") or [] if q.get("quest")],
+        tree_hints=[str(t) for t in data.get("tree_hints") or [] if t],
     )
     return profile, pob, warnings
 

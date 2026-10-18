@@ -727,9 +727,14 @@ class Pob2EquipmentSession:
                 logging.getLogger(__name__).warning("Failed to sync character in PoB2 session: %s", exc)
                 return False
 
-    def apply_zone(self, zone: str | None) -> bool:
-        """Set the baseline's elemental resistance penalty to the act of ``zone``; True when it changed."""
+    def apply_zone(self, zone: str | None, level: int | None = None) -> bool:
+        """Set the baseline's elemental resistance penalty to the act of ``zone``; True when it changed.
+
+        An unknown zone (hideout, no log yet) keeps the last penalty; with none set yet, ``level`` picks the act.
+        """
         penalty = resist_penalty_for_zone(zone)
+        if penalty is None and self.resist_penalty is None:
+            penalty = resist_penalty_for_act(act_for_level(level))
         if penalty is None or penalty == self.resist_penalty or not self.is_available or self.engine is None or not self.xml:
             return False
         with self._engine_lock:

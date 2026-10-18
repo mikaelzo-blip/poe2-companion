@@ -41,3 +41,9 @@ def test_apply_zone_rebuilds_baseline_once_and_survives_a_resync():
     assert s.apply_zone("Felled Hideout") is False  # unknown act keeps the last penalty
     assert s.sync_character() is True
     assert _penalties(s.xml) == ["-10"]
+
+
+def test_unknown_zone_falls_back_to_the_level_act_only_before_any_penalty():
+    s = _make()
+    assert s.apply_zone("Unknown", 27) is True and s.resist_penalty == -10  # level 27 = act 2
+    assert s.apply_zone("Unknown", 40) is False and s.resist_penalty == -10  # a known penalty wins over level

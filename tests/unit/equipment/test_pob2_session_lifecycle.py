@@ -62,3 +62,21 @@ def test_get_or_create_closes_unavailable_cached_session(monkeypatch):
     assert dashboard_server.get_or_create_pob_session("X", force_retry=True) is None
     stale.close.assert_called_once()
     assert "X" not in dashboard_server._GLOBAL_POB_SESSIONS
+
+
+def test_new_session_gets_the_act_penalty_before_its_first_import(monkeypatch, tmp_path):
+    (tmp_path / "characters").mkdir()
+    (tmp_path / "characters" / "X.json").write_text(
+        '{"level": {"value": 27}, "current_zone": {"value": "Unknown"}}', encoding="utf-8")
+    monkeypatch.setattr(dashboard_server, "RUNTIME_DIR", tmp_path)
+    monkeypatch.setattr(dashboard_server, "_GLOBAL_POB_SESSIONS", {})
+    monkeypatch.setattr(dashboard_server, "_FAILED_CHARACTERS", {})
+    calls = []
+    fresh = MagicMock()
+    fresh.initialize.return_value = True
+    fresh.apply_zone.side_effect = lambda zone, level: calls.append(("zone", zone, level))
+    monkeypatch.setattr(dashboard_server, "_apply_session", lambda cid, s: calls.append(("import", cid)))
+    monkeypatch.setattr("companion.equipment.pob2_equipment_advisor.Pob2EquipmentSession", lambda **kw: fresh)
+    monkeypatch.setattr(dashboard_server, "normalize_char_id", lambda c: c)
+    assert dashboard_server.get_or_create_pob_session("X", force_retry=True) is fresh
+    assert calls == [("zone", "Unknown", 27), ("import", "X")]

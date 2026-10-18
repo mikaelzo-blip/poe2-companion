@@ -84,6 +84,8 @@ def get_or_create_pob_session(character_id: str = "BOMSHAK", force_retry: bool =
                 _FAILED_CHARACTERS.pop(character_id, None)
                 _FAILED_REASONS.pop(character_id, None)
                 try:
+                    level, zone = _level_and_zone(character_id)
+                    sess.apply_zone(zone, level)  # the act's resistance penalty before the first import
                     _apply_session(character_id, sess)
                 except Exception:
                     logger.warning("PoB2 runtime import failed for %s", character_id, exc_info=True)
@@ -134,7 +136,7 @@ def maybe_refresh_pob_session(
     def run() -> None:
         try:
             synced = sess.sync_character()
-            if sess.apply_zone(zone) or synced:
+            if sess.apply_zone(zone, level) or synced:
                 _apply_session(character_id, sess)
         except Exception:
             logger.warning("PoB2 refresh failed for %s", character_id, exc_info=True)
@@ -165,6 +167,15 @@ def sync_equipped_item_to_pob_session(character_id: str, slot: str, raw_text: st
         except Exception:
             pass
     return False
+
+
+def _level_and_zone(character_id: str) -> tuple[int | None, str | None]:
+    from companion.dashboard_api import character_level_and_zone
+    try:
+        data = json.loads((RUNTIME_DIR / "characters" / f"{character_id}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None, None
+    return character_level_and_zone(data)
 
 
 def _apply_session(character_id: str, sess: Any) -> None:

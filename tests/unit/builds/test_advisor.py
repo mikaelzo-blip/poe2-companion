@@ -100,8 +100,8 @@ class FakeSession:
     def __init__(self):
         self.zones = []
 
-    def apply_zone(self, zone):
-        self.zones.append(zone)
+    def apply_zone(self, zone, level=None):
+        self.zones.append((zone, level))
 
     def submit_candidate(self, raw, name, slot, source):
         return 1
@@ -118,7 +118,7 @@ def test_rank_slots_orders_by_pob_gain(runtime):
     out = advisor.rank_slots(runtime, "P", s)
     assert [r["slot"] for r in out["rows"]] == ["Weapon 1", "Belt"]
     assert out["rows"][0]["dps_pct"] == 0.8 and out["rows"][1]["ehp_pct"] == 0.2
-    assert s.zones == ["The Titan Grotto"]
+    assert s.zones == [("The Titan Grotto", 23)]
 
 
 def test_rank_slots_needs_pob(runtime):

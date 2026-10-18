@@ -159,7 +159,7 @@ def evaluate(
     mods = [m.raw_text for m in candidate.modifiers]
     pob_ok = pob_session is not None and bool(getattr(pob_session, "is_available", False))
     if pob_ok and hasattr(pob_session, "apply_zone"):
-        pob_session.apply_zone(zone)  # campaign acts have a smaller resistance penalty than PoB's endgame default
+        pob_session.apply_zone(zone, level)  # campaign acts have a smaller resistance penalty than PoB's endgame default
     state ={"pob_ok": pob_ok, "reason": None if pob_ok else "PoB2 tidak tersedia", "cid": None}
     raws: dict[str, str] = {}
 

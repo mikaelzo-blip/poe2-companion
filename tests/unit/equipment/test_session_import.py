@@ -209,3 +209,18 @@ def test_resync_with_same_ggg_payload_changes_nothing(tmp_path):
     rev = load_loadout(tmp_path, "T").revision
     apply_session_to_runtime(tmp_path, "T", sess)
     assert load_loadout(tmp_path, "T").revision == rev
+
+
+def test_pob_attributes_mana_and_spirit_replace_character_defaults(tmp_path):
+    from companion.state.schema import CharacterState
+    from companion.state.store import CharacterStateStore
+
+    store = CharacterStateStore(runtime_dir=tmp_path)
+    store.save_character(CharacterState(character_id="T", character_name="T"))
+    sess = _sess()
+    sess.stats_before["defense"].update({"Str": 31, "Dex": 22, "Int": 88, "Mana": 343, "Spirit": 30})
+    assert apply_session_to_runtime(tmp_path, "T", sess) == []
+    state = store.load_character("T")
+    assert [state.attributes[a].value for a in ("strength", "dexterity", "intelligence")] == [31, 22, 88]
+    assert (state.resources["mana"].value, state.resources["spirit"].value) == (343, 30)
+    assert state.attributes["strength"].source == "POB2_CALCULATION"

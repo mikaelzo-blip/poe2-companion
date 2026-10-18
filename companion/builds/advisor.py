@@ -200,7 +200,7 @@ def rank_slots(runtime_dir: Path, char_id: str, pob_session: Any) -> dict[str, A
     level, zone = character_level_and_zone(char_data)
     stage = resolve_stage(profile, level, override)
     if hasattr(pob_session, "apply_zone"):
-        pob_session.apply_zone(zone)
+        pob_session.apply_zone(zone, level)
     rows, skipped = [], []
     for slot, item in stage.items.items():
         if not item.raw_text:

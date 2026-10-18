@@ -161,6 +161,31 @@ def _apply_baseline(baseline: CharacterStatBaseline, defenses: dict, stats: dict
         _set_fact(baseline, pair[1], min(int(raw), cap))
 
 
+_STATE_FIELDS = (
+    ("attributes", "strength", "Str"), ("attributes", "dexterity", "Dex"),
+    ("attributes", "intelligence", "Int"), ("resources", "mana", "Mana"), ("resources", "spirit", "Spirit"),
+)
+
+
+def _apply_character_state(runtime_dir: Path, character_id: str, stats: dict) -> None:
+    """Attributes, Mana and Spirit from PoB2 replace defaults and older values in the character state."""
+    from companion.state.schema import ProvenancedField
+    from companion.state.store import CharacterStateStore
+
+    defense = stats.get("defense") or {}
+    found = [(group, name, int(defense[key])) for group, name, key in _STATE_FIELDS if defense.get(key) is not None]
+    if not found:
+        return
+    store = CharacterStateStore(runtime_dir=runtime_dir)
+    try:
+        state = store.load_character(character_id)
+    except Exception:
+        return  # no character state yet; the observer creates it
+    for group, name, value in found:
+        getattr(state, group)[name] = ProvenancedField[int].create(value, source="POB2_CALCULATION")
+    store.save_character(state)
+
+
 def _snapshot(session: Any) -> tuple[dict, dict, dict, dict | None]:
     """Copy cached session data while no sync is mutating it (never calls engine methods)."""
     with session._engine_lock:
@@ -209,6 +234,7 @@ def apply_session_to_runtime(runtime_dir: Path, character_id: str, session: Any)
             penalty = getattr(session, "resist_penalty", None)
             baseline.resist_penalty = penalty if isinstance(penalty, int) else -60
             save_baseline(runtime_dir, baseline)
+            _apply_character_state(runtime_dir, character_id, stats)
     except Exception as exc:
         logger.warning("apply_session_to_runtime failed for %s", character_id, exc_info=True)
         warnings.append(f"runtime update failed: {exc}")

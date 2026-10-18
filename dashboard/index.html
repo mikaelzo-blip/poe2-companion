@@ -210,7 +210,7 @@
             <div class="card">
               <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                 <span class="card-title">Attributes & Progression Stats</span>
-                <button class="btn btn-xs" id="btn-open-stats-modal" style="font-size: 11px; padding: 3px 8px; background: rgba(216, 169, 56, 0.15); border: 1px solid var(--accent-gold); color: var(--accent-gold); border-radius: 4px; cursor: pointer;" title="Perbarui / sinkronkan stat dan resistensi karakter Anda dari in-game">
+                <button class="btn btn-xs" id="btn-open-stats-modal" style="font-size: 11px; padding: 3px 8px; background: rgba(216, 169, 56, 0.15); border: 1px solid var(--accent-gold); color: var(--accent-gold); border-radius: 4px; cursor: pointer;" title="Perbarui / sinkronkan stat dan Resistance karakter Anda dari in-game">
                   ✏️ Edit / Sync Stat
                 </button>
               </div>
@@ -243,7 +243,7 @@
 
                 <div class="defenses-summary">
                   <div class="def-item">
-                    <span class="def-label">Max Life</span>
+                    <span class="def-label">Life</span>
                     <strong class="def-val highlight-life" id="def-life">—</strong>
                   </div>
                   <div class="def-item">
@@ -255,7 +255,7 @@
                     <strong class="def-val" id="def-armour">—</strong>
                   </div>
                   <div class="def-item">
-                    <span class="def-label">Evasion</span>
+                    <span class="def-label">Evasion Rating</span>
                     <strong class="def-val" id="def-evasion">—</strong>
                   </div>
                   <div class="def-item">
@@ -280,7 +280,7 @@
                       <strong id="val-cold-res" style="font-size: 13px; color: #ef4444; font-weight: 800;">—</strong>
                     </div>
                     <div class="res-badge-box" id="res-box-light" style="padding: 6px 4px; border-radius: 4px; text-align: center; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.5);">
-                      <span style="display: block; font-size: 9px; color: #f87171; font-weight: 700;">LIGHT</span>
+                      <span style="display: block; font-size: 9px; color: #f87171; font-weight: 700;">LIGHTNING</span>
                       <strong id="val-light-res" style="font-size: 13px; color: #ef4444; font-weight: 800;">—</strong>
                     </div>
                     <div class="res-badge-box" id="res-box-chaos" style="padding: 6px 4px; border-radius: 4px; text-align: center; background: rgba(200, 80, 255, 0.1); border: 1px solid rgba(200, 80, 255, 0.3);">
@@ -587,7 +587,7 @@ Requirements: Level 12
       </div>
       <div style="padding: 16px 20px;">
         <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.4;">
-          Perbarui data atribut, pertahanan, dan resistansi in-game agar Tactical Advisor dapat menganalisis persyaratan gear dan build secara presisi.
+          Perbarui data Attributes, Defences, dan Resistance in-game agar Tactical Advisor dapat menganalisis persyaratan gear dan build secara presisi.
         </p>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
@@ -602,37 +602,37 @@ Requirements: Level 12
         </div>
 
         <div style="font-size: 11px; font-weight: 700; color: var(--accent-gold); text-transform: uppercase; margin: 10px 0 6px 0; border-bottom: 1px solid var(--border-subtle); padding-bottom: 4px;">
-          Atribut Dasar
+          Attributes
         </div>
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px;">
           <div>
-            <label style="display: block; font-size: 10px; color: #ef4444; margin-bottom: 2px;">Strength (Str):</label>
+            <label style="display: block; font-size: 10px; color: #ef4444; margin-bottom: 2px;">Strength:</label>
             <input type="number" id="stat-edit-str" class="modal-input" value="75">
           </div>
           <div>
-            <label style="display: block; font-size: 10px; color: #22c55e; margin-bottom: 2px;">Dexterity (Dex):</label>
+            <label style="display: block; font-size: 10px; color: #22c55e; margin-bottom: 2px;">Dexterity:</label>
             <input type="number" id="stat-edit-dex" class="modal-input" value="91">
           </div>
           <div>
-            <label style="display: block; font-size: 10px; color: #3b82f6; margin-bottom: 2px;">Intelligence (Int):</label>
+            <label style="display: block; font-size: 10px; color: #3b82f6; margin-bottom: 2px;">Intelligence:</label>
             <input type="number" id="stat-edit-int" class="modal-input" value="22">
           </div>
         </div>
 
         <div style="font-size: 11px; font-weight: 700; color: var(--accent-gold); text-transform: uppercase; margin: 10px 0 6px 0; border-bottom: 1px solid var(--border-subtle); padding-bottom: 4px;">
-          Pertahanan & Pool
+          Defences & Pools
         </div>
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px;">
           <div>
-            <label style="display: block; font-size: 10px; color: #ef4444; margin-bottom: 2px;">Max Life:</label>
+            <label style="display: block; font-size: 10px; color: #ef4444; margin-bottom: 2px;">Maximum Life:</label>
             <input type="number" id="stat-edit-life" class="modal-input" value="1157">
           </div>
           <div>
-            <label style="display: block; font-size: 10px; color: #3b82f6; margin-bottom: 2px;">Mana:</label>
+            <label style="display: block; font-size: 10px; color: #3b82f6; margin-bottom: 2px;">Maximum Mana:</label>
             <input type="number" id="stat-edit-mana" class="modal-input" value="300">
           </div>
           <div>
-            <label style="display: block; font-size: 10px; color: #a855f7; margin-bottom: 2px;">Energy Shield:</label>
+            <label style="display: block; font-size: 10px; color: #a855f7; margin-bottom: 2px;">Maximum Energy Shield:</label>
             <input type="number" id="stat-edit-es" class="modal-input" value="73">
           </div>
           <div>
@@ -640,7 +640,7 @@ Requirements: Level 12
             <input type="number" id="stat-edit-armour" class="modal-input" value="207">
           </div>
           <div>
-            <label style="display: block; font-size: 10px; color: #10b981; margin-bottom: 2px;">Evasion:</label>
+            <label style="display: block; font-size: 10px; color: #10b981; margin-bottom: 2px;">Evasion Rating:</label>
             <input type="number" id="stat-edit-evasion" class="modal-input" value="526">
           </div>
           <div>
@@ -654,19 +654,19 @@ Requirements: Level 12
         </div>
         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px;">
           <div>
-            <label style="display: block; font-size: 10px; color: #ff8866; margin-bottom: 2px;">Fire Res (%):</label>
+            <label style="display: block; font-size: 10px; color: #ff8866; margin-bottom: 2px;">Fire Resistance (%):</label>
             <input type="number" id="stat-edit-fire" class="modal-input" value="17">
           </div>
           <div>
-            <label style="display: block; font-size: 10px; color: #66b2ff; margin-bottom: 2px;">Cold Res (%):</label>
+            <label style="display: block; font-size: 10px; color: #66b2ff; margin-bottom: 2px;">Cold Resistance (%):</label>
             <input type="number" id="stat-edit-cold" class="modal-input" value="-8">
           </div>
           <div>
-            <label style="display: block; font-size: 10px; color: #ffd166; margin-bottom: 2px;">Light Res (%):</label>
+            <label style="display: block; font-size: 10px; color: #ffd166; margin-bottom: 2px;">Lightning Resistance (%):</label>
             <input type="number" id="stat-edit-light" class="modal-input" value="7">
           </div>
           <div>
-            <label style="display: block; font-size: 10px; color: #cc88ff; margin-bottom: 2px;">Chaos Res (%):</label>
+            <label style="display: block; font-size: 10px; color: #cc88ff; margin-bottom: 2px;">Chaos Resistance (%):</label>
             <input type="number" id="stat-edit-chaos" class="modal-input" value="0">
           </div>
         </div>

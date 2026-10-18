@@ -21,16 +21,21 @@ RES_CAP = 75
 
 VERDICT_RANK = {"EQUIP_NOW": 3, "CONDITIONAL_UPGRADE": 2, "INSUFFICIENT_DATA": 1, "REJECT": 0}
 
-# (field, label, unit suffix)
+# (field, PoE2 stat name, unit suffix)
 _FLAT_STATS = (
-    ("life_delta", "Life", ""),
+    ("life_delta", "maximum Life", ""),
+    ("mana_delta", "maximum Mana", ""),
+    ("es_delta", "maximum Energy Shield", ""),
     ("armour_delta", "Armour", ""),
-    ("evasion_delta", "Evasion", ""),
-    ("es_delta", "Energy Shield", ""),
-    ("fire_res_delta", "Fire Res", "%"),
-    ("cold_res_delta", "Cold Res", "%"),
-    ("lightning_res_delta", "Lightning Res", "%"),
-    ("chaos_res_delta", "Chaos Res", "%"),
+    ("evasion_delta", "Evasion Rating", ""),
+    ("fire_res_delta", "Fire Resistance", "%"),
+    ("cold_res_delta", "Cold Resistance", "%"),
+    ("lightning_res_delta", "Lightning Resistance", "%"),
+    ("chaos_res_delta", "Chaos Resistance", "%"),
+    ("crit_chance_delta", "Critical Hit Chance", "%"),
+    ("crit_bonus_delta", "Critical Damage Bonus", "%"),
+    ("average_hit_pct", "Average Hit", "%"),
+    ("speed_pct", "Skill Speed (uses per second)", "%"),
     ("movement_speed_delta", "Movement Speed", "%"),
     ("strength_delta", "Strength", ""),
     ("dexterity_delta", "Dexterity", ""),
@@ -76,11 +81,11 @@ def decide(
     for field, label, unit in _FLAT_STATS:
         value = getattr(delta, field)
         if value:
-            signed.append((value, f"{value:+g}{unit} {label}"))
+            signed.append((value, f"{round(value, 1):+g}{unit} {label}"))
     gains = [text for value, text in signed if value > 0]
     trade_offs = [text for value, text in signed if value < 0]
     trade_offs += [
-        f"{key.capitalize()} Res turun di bawah cap ({before:g}% → {after:g}%)" for key, before, after in breached
+        f"{key.capitalize()} Resistance turun di bawah cap ({before:g}% → {after:g}%)" for key, before, after in breached
     ]
     trade_offs += [f"Kebutuhan belum terpenuhi: {req}" for req in unmet_requirements]
 

@@ -334,6 +334,11 @@ class PobEquipmentDelta(BaseModel):
     strength_delta: int = 0
     dexterity_delta: int = 0
     intelligence_delta: int = 0
+    mana_delta: int = 0
+    crit_chance_delta: float = 0.0  # percentage points
+    crit_bonus_delta: float = 0.0  # Critical Damage Bonus, percentage points
+    average_hit_pct: float = 0.0  # percent change of the main skill's Average Hit
+    speed_pct: float = 0.0  # percent change of the main skill's uses per second
     life_before: int = 0
     life_after: int = 0
     ehp_before: float = 0.0
@@ -899,6 +904,17 @@ class Pob2EquipmentSession:
         dps_after = float(off_after.get("CombinedDPS") or 0.0)
         dps_delta = dps_after - dps_before
 
+        def _off(key: str) -> tuple[float, float]:
+            return float(off_before.get(key) or 0.0), float(off_after.get(key) or 0.0)
+
+        def _pct(key: str) -> float:
+            b, a = _off(key)
+            return round((a - b) / b * 100, 1) if b else 0.0
+
+        crit_b, crit_a = _off("CritChance")
+        multi_b, multi_a = _off("CritMultiplier")  # PoB multiplier (2.0 = +100% Critical Damage Bonus)
+        mana_delta = int((def_after.get("Mana") or 0) - (def_before.get("Mana") or 0))
+
         cur_name = self.get_current_item_name(canonical_slot)
 
         return PobEquipmentDelta(
@@ -918,6 +934,11 @@ class Pob2EquipmentSession:
             movement_speed_delta=movement_speed_delta,
             ehp_delta=ehp_delta,
             dps_delta=dps_delta,
+            mana_delta=mana_delta,
+            crit_chance_delta=round(crit_a - crit_b, 1),
+            crit_bonus_delta=round((multi_a - multi_b) * 100, 1),
+            average_hit_pct=_pct("AverageHit"),
+            speed_pct=_pct("Speed"),
             life_before=life_before,
             life_after=life_after,
             ehp_before=ehp_before,

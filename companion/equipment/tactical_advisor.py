@@ -293,11 +293,11 @@ def generate_tactical_advice(
     if cand_regen > 0:
         if regen_delta > 0:
             sustain_note = (
-                f"+{regen_delta:.1f} Life Regen per detik pada {candidate_name} adalah sustain pasif "
+                f"+{regen_delta:.1f} Life Regeneration per second pada {candidate_name} adalah sustain pasif "
                 f"yang sangat besar untuk Level {lvl}. Sangat nyaman untuk eksplorasi dan farming."
             )
         else:
-            sustain_note = f"{cand_regen:.1f} Life Regen per detik (sebanding dengan gear lama)."
+            sustain_note = f"{cand_regen:.1f} Life Regeneration per second (sebanding dengan gear lama)."
 
     # 4b. Audit Character Stats Baseline & Requirements
     trade_off_bullets: list[str] = []
@@ -335,15 +335,15 @@ def generate_tactical_advice(
             if cold_delta < 0:
                 verdict = Verdict.REJECT
                 neg_cold_msg = (
-                    f"Resistansi Cold karakter Anda saat ini sudah di angka negatif ({char_cold}%). "
-                    f"Menukar item ini akan menurunkan Cold Res menjadi {char_cold + cold_delta}%, "
-                    f"sangat berbahaya dan fatal terhadap musuh tipe cold!"
+                    f"Cold Resistance karakter Anda saat ini sudah di angka negatif ({char_cold}%). "
+                    f"Menukar item ini akan menurunkan Cold Resistance menjadi {char_cold + cold_delta}%, "
+                    f"sangat berbahaya dan fatal terhadap musuh Cold damage!"
                 )
                 attr_warnings.append(neg_cold_msg)
-                trade_off_bullets.append(f"Cold Res makin jatuh: {char_cold}% -> {char_cold + cold_delta}%")
+                trade_off_bullets.append(f"Cold Resistance makin jatuh: {char_cold}% -> {char_cold + cold_delta}%")
             elif cold_delta > 0:
                 stat_analysis_notes.append(
-                    f"⭐ Menambal Cold Res Kritis: +{cold_delta}% Cold Res (mengangkat resistansi dari {char_cold}% ke {char_cold + cold_delta}%)."
+                    f"⭐ Menambal Cold Resistance Kritis: +{cold_delta}% Cold Resistance (dari {char_cold}% ke {char_cold + cold_delta}%)."
                 )
 
         char_light = norm_stats.get("lightning_res")
@@ -351,15 +351,15 @@ def generate_tactical_advice(
             if lightning_delta < 0:
                 verdict = Verdict.REJECT
                 neg_light_msg = (
-                    f"Resistansi Lightning karakter Anda saat ini sudah di angka negatif ({char_light}%). "
-                    f"Menukar item ini akan menurunkan Lightning Res menjadi {char_light + lightning_delta}%, "
-                    f"sangat berbahaya terkena burst petir!"
+                    f"Lightning Resistance karakter Anda saat ini sudah di angka negatif ({char_light}%). "
+                    f"Menukar item ini akan menurunkan Lightning Resistance menjadi {char_light + lightning_delta}%, "
+                    f"sangat berbahaya terkena burst Lightning!"
                 )
                 attr_warnings.append(neg_light_msg)
-                trade_off_bullets.append(f"Lightning Res makin jatuh: {char_light}% -> {char_light + lightning_delta}%")
+                trade_off_bullets.append(f"Lightning Resistance makin jatuh: {char_light}% -> {char_light + lightning_delta}%")
             elif lightning_delta > 0:
                 stat_analysis_notes.append(
-                    f"⭐ Menambal Lightning Res Kritis: +{lightning_delta}% Lightning Res (mengangkat resistansi dari {char_light}% ke {char_light + lightning_delta}%)."
+                    f"⭐ Menambal Lightning Resistance Kritis: +{lightning_delta}% Lightning Resistance (dari {char_light}% ke {char_light + lightning_delta}%)."
                 )
 
         char_fire = norm_stats.get("fire_res")
@@ -367,14 +367,14 @@ def generate_tactical_advice(
             if fire_delta < 0:
                 verdict = Verdict.REJECT
                 neg_fire_msg = (
-                    f"Resistansi Fire karakter Anda saat ini sudah di angka negatif ({char_fire}%). "
-                    f"Menukar item ini akan menurunkan Fire Res menjadi {char_fire + fire_delta}%!"
+                    f"Fire Resistance karakter Anda saat ini sudah di angka negatif ({char_fire}%). "
+                    f"Menukar item ini akan menurunkan Fire Resistance menjadi {char_fire + fire_delta}%!"
                 )
                 attr_warnings.append(neg_fire_msg)
-                trade_off_bullets.append(f"Fire Res makin jatuh: {char_fire}% -> {char_fire + fire_delta}%")
+                trade_off_bullets.append(f"Fire Resistance makin jatuh: {char_fire}% -> {char_fire + fire_delta}%")
             elif fire_delta > 0:
                 stat_analysis_notes.append(
-                    f"⭐ Menambal Fire Res Kritis: +{fire_delta}% Fire Res (mengangkat resistansi dari {char_fire}% ke {char_fire + fire_delta}%)."
+                    f"⭐ Menambal Fire Resistance Kritis: +{fire_delta}% Fire Resistance (dari {char_fire}% ke {char_fire + fire_delta}%)."
                 )
 
         char_life = norm_stats.get("life")
@@ -382,7 +382,7 @@ def generate_tactical_advice(
             pct = (life_delta / char_life) * 100
             sign = "+" if life_delta > 0 else ""
             stat_analysis_notes.append(
-                f"Dampak Life: {sign}{life_delta} ({sign}{pct:.1f}% dari {char_life} Base Life -> {char_life + life_delta})"
+                f"Dampak maximum Life: {sign}{life_delta} ({sign}{pct:.1f}% dari {char_life} maximum Life -> {char_life + life_delta})"
             )
 
 
@@ -414,8 +414,8 @@ def generate_tactical_advice(
             if ehp_delta > 0:
                 defense_parts.append(f"+{ehp_delta:.1f} EHP")
             if total_local_defense_gain > 0:
-                defense_parts.append(f"+{total_local_defense_gain} Total Pertahanan")
-            summary_str = ", ".join(defense_parts) if defense_parts else "+Pertahanan"
+                defense_parts.append(f"+{total_local_defense_gain} Total Defences")
+            summary_str = ", ".join(defense_parts) if defense_parts else "+Defences"
             headline = f"{candidate_name} LEBIH BAGUS! Pasang sekarang untuk peningkatan pertahanan ({summary_str})."
             action = (
                 f"Sangat direkomendasikan dipasang. Menghadapi ancaman di {zone_profile.friendly_name}, "
@@ -522,7 +522,7 @@ def generate_tactical_advice(
         for l_type in zone_profile.lethal_damage_types:
             l_delta = getattr(delta, f"{l_type.lower()}_res_delta", 0)
             if l_delta > 0:
-                lethal_positive.append(f"+{l_delta}% {l_type.capitalize()} Res")
+                lethal_positive.append(f"+{l_delta}% {l_type.capitalize()} Resistance")
         if lethal_positive:
             effective_zone_threat = (
                 f"Resistansi aman untuk {zone_profile.friendly_name}: "

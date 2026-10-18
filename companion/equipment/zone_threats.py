@@ -35,7 +35,7 @@ class ZoneThreatProfile(BaseModel):
         if "fire" in threat_lowers and fire_delta <= -5:
             warnings.append(
                 f"Penurunan Fire Resistance ({fire_delta}%) sangat berbahaya di {self.friendly_name} "
-                f"karena ancaman proyektil/serangan api tinggi."
+                f"karena ancaman proyektil/Fire damage tinggi."
             )
         if "cold" in threat_lowers and cold_delta <= -5:
             warnings.append(
@@ -82,7 +82,7 @@ ZONE_CATALOG: dict[str, dict[str, Any]] = {
         "lethal_damage_types": ["Physical", "Cold"],
         "recommended_res": {"cold": 20, "fire": 15, "lightning": 15},
         "upcoming_boss": "The Clear Fell Horrors",
-        "survival_notes": "Hutan berkabut: waspadai sergapan fisik dan burst dingin.",
+        "survival_notes": "Hutan berkabut: waspadai sergapan Physical damage dan burst Cold damage.",
     },
     "the crypt": {
         "friendly_name": "The Crypt (Act 1)",
@@ -107,7 +107,7 @@ ZONE_CATALOG: dict[str, dict[str, Any]] = {
         "lethal_damage_types": ["Fire", "Physical"],
         "recommended_res": {"fire": 35, "lightning": 25, "cold": 20},
         "upcoming_boss": "The Dreadnought / Jamanra / Vastiri Bandits",
-        "survival_notes": "Padang pasir Vastiri dipenuhi bandit api, proyektil beruntun, dan rolling boulder fisik. Kehilangan Fire Resistance sangat mematikan di sini.",
+        "survival_notes": "Padang pasir Vastiri dipenuhi bandit dengan Fire damage, proyektil beruntun, dan rolling boulder Physical damage. Kehilangan Fire Resistance sangat mematikan di sini.",
     },
     "vastiri outskirts": {
         "friendly_name": "Vastiri Outskirts (Act 2)",
@@ -115,7 +115,7 @@ ZONE_CATALOG: dict[str, dict[str, Any]] = {
         "lethal_damage_types": ["Fire", "Physical"],
         "recommended_res": {"fire": 35, "lightning": 25, "cold": 20},
         "upcoming_boss": "The Dreadnought / Vastiri Trappers",
-        "survival_notes": "Waspadai panah api beruntun dan rolling boulder pasir.",
+        "survival_notes": "Waspadai panah ber-Fire damage beruntun dan rolling boulder pasir.",
     },
     "G2_2": {
         "friendly_name": "The Traitor's Passage (Act 2)",
@@ -123,7 +123,7 @@ ZONE_CATALOG: dict[str, dict[str, Any]] = {
         "lethal_damage_types": ["Fire", "Physical", "Lightning"],
         "recommended_res": {"fire": 40, "lightning": 30, "cold": 20},
         "upcoming_boss": "Vastiri Ambushers",
-        "survival_notes": "Lorong sempit: rentan burst api terkonsentrasi.",
+        "survival_notes": "Lorong sempit: rentan burst Fire damage terkonsentrasi.",
     },
     "G2_5": {
         "friendly_name": "The Dreadnought Approach (Act 2)",
@@ -131,7 +131,7 @@ ZONE_CATALOG: dict[str, dict[str, Any]] = {
         "lethal_damage_types": ["Fire", "Physical"],
         "recommended_res": {"fire": 45, "lightning": 30, "cold": 20},
         "upcoming_boss": "The Dreadnought Core Engine",
-        "survival_notes": "Area mesin Dreadnought: semburan api uap dan mortar raksasa.",
+        "survival_notes": "Area mesin Dreadnought: semburan uap Fire damage dan mortar raksasa.",
     },
 }
 
@@ -168,7 +168,7 @@ class ZoneThreatMatrix:
                     lethal_damage_types=["Fire", "Physical"],
                     recommended_res={"fire": 35, "lightning": 25, "cold": 20},
                     upcoming_boss="Act 2 Bosses / The Dreadnought",
-                    survival_notes="Act 2 Vastiri: ancaman api dan proyektil fisik tinggi.",
+                    survival_notes="Act 2 Vastiri: ancaman Fire damage dan proyektil Physical damage tinggi.",
                 )
             if clean_id.upper().startswith("G1_") or clean_id.upper().startswith("G1"):
                 return ZoneThreatProfile(
@@ -178,7 +178,7 @@ class ZoneThreatMatrix:
                     lethal_damage_types=["Physical", "Cold"],
                     recommended_res={"cold": 20, "fire": 15, "lightning": 15},
                     upcoming_boss="Act 1 Encounters",
-                    survival_notes="Act 1: ancaman serangan fisik dan dingin.",
+                    survival_notes="Act 1: ancaman Physical dan Cold damage.",
                 )
 
         # Fallback heuristic based on character level
@@ -191,7 +191,7 @@ class ZoneThreatMatrix:
                 lethal_damage_types=["Physical", "Cold"],
                 recommended_res={"cold": 20, "lightning": 15, "fire": 15},
                 upcoming_boss="Act 1 Progression Bosses",
-                survival_notes="Level 1-14: prioritaskan kestabilan Life dasar dan mitigasi fisik.",
+                survival_notes="Level 1-14: prioritaskan kestabilan maximum Life dan mitigasi Physical damage.",
             )
         elif lvl < 33:
             return ZoneThreatProfile(
@@ -201,7 +201,7 @@ class ZoneThreatMatrix:
                 lethal_damage_types=["Fire", "Physical"],
                 recommended_res={"fire": 35, "lightning": 25, "cold": 20},
                 upcoming_boss="Act 2 Encounters (The Dreadnought / Jamanra)",
-                survival_notes="Level 15-32 (Act 2): Fire Resistance sangat esensial menghindari one-shot dari proyektil dan burst api.",
+                survival_notes="Level 15-32 (Act 2): Fire Resistance sangat esensial menghindari one-shot dari proyektil dan burst Fire damage.",
             )
         elif lvl < 52:
             return ZoneThreatProfile(

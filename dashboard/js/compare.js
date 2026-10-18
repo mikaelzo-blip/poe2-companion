@@ -967,7 +967,7 @@ export function renderEvaluationVerdict(data, container, targetSlot = null) {
     } else if (isConditional) {
       equipBtnHtml = `
         <button class="btn btn-primary btn-block" id="btn-equip-candidate" style="margin-top: 12px; background: var(--accent-gold); color: #000; font-weight: 700; cursor: pointer;">
-          ⚠️ Pertahankan ${esc(currentName)} (Pasang ${esc(candidateName)} Hanya Jika Butuh Resistensi)
+          ⚠️ Pertahankan ${esc(currentName)} (Pasang ${esc(candidateName)} Hanya Jika Butuh Resistance)
         </button>
         <div id="equip-status-msg" style="margin-top: 6px; font-size: 11px; text-align: center; display: none;"></div>
       `;

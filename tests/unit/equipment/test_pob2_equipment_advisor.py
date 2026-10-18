@@ -530,3 +530,20 @@ def test_measure_never_touches_main_engine():
     assert "calc_stats" in sandbox_actions
     assert "get_defenses" in sandbox_actions
 
+
+
+def test_build_delta_reports_offense_and_mana_deltas():
+    session = Pob2EquipmentSession(
+        character_name="BOMSHAK", engine_factory=FakePobEngine, poe_api_client=FakePoeApi(),
+    )
+    pools = {"Life": 300, "Armour": 0, "Evasion": 0, "EnergyShield": 0, "TotalEHP": 250.0}
+    res = {"FireResist": 0, "ColdResist": 0, "LightningResist": 0, "ChaosResist": 0}
+    off_before = {"CombinedDPS": 100.0, "CritChance": 5.0, "CritMultiplier": 2.0, "AverageHit": 50.0, "Speed": 1.6}
+    off_after = {"CombinedDPS": 120.0, "CritChance": 7.5, "CritMultiplier": 2.3, "AverageHit": 55.0, "Speed": 1.6}
+    delta = session._build_delta(
+        canonical_slot="Weapon 1", candidate_id=1, candidate_name="Wand",
+        def_before={**pools, "Mana": 100}, def_after={**pools, "Mana": 140},
+        stats_before={"defense": res, "offense": off_before}, stats_after={"defense": res, "offense": off_after},
+    )
+    assert (delta.crit_chance_delta, delta.crit_bonus_delta) == (2.5, 30.0)
+    assert (delta.average_hit_pct, delta.speed_pct, delta.mana_delta) == (10.0, 0.0, 40)

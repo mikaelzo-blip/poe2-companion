@@ -216,7 +216,7 @@ export function loadDataIntoUI(status, character, objective, loadout, baseline =
     const negs = [];
     if (fireRes < 0) negs.push(`Fire ${fireRes}%`);
     if (coldRes < 0) negs.push(`Cold ${coldRes}%`);
-    if (lightRes < 0) negs.push(`Light ${lightRes}%`);
+    if (lightRes < 0) negs.push(`Lightning ${lightRes}%`);
     if (negs.length > 0) {
       resCaptionEl.textContent = `⚠️ Negatif: ${negs.join(', ')} Rawan One-Shot!`;
       resCaptionEl.style.color = '#ef4444';
@@ -225,7 +225,7 @@ export function loadDataIntoUI(status, character, objective, loadout, baseline =
       const uncapped = [];
       if (fireRes < 75) uncapped.push(`Fire ${fireRes}%`);
       if (coldRes < 75) uncapped.push(`Cold ${coldRes}%`);
-      if (lightRes < 75) uncapped.push(`Light ${lightRes}%`);
+      if (lightRes < 75) uncapped.push(`Lightning ${lightRes}%`);
       if (uncapped.length > 0) {
         resCaptionEl.textContent = `Target 75%: ${uncapped.join(', ')}`;
         resCaptionEl.style.color = '#facc15';

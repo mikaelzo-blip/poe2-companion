@@ -48,11 +48,12 @@ def test_percent_labels():
 
 
 def test_flat_stats_and_breach_texts():
-    d = _delta(1000, 1000, 500, 510, {"fire": 75}, {"fire": 68}, life_delta=25, fire_res_delta=-12)
+    d = _delta(1000, 1000, 500, 510, {"fire": 75}, {"fire": 68}, life_delta=25, fire_res_delta=-12,
+               crit_chance_delta=2.5, average_hit_pct=-4.24)
     r = decide(d, unmet_requirements=["Level 40/42"])
-    assert r.gains == ["+2.0% EHP", "+25 Life"]
+    assert r.gains == ["+2.0% EHP", "+25 maximum Life", "+2.5% Critical Hit Chance"]
     assert r.trade_offs == [
-        "-12% Fire Res", "Fire Res turun di bawah cap (75% → 68%)",
+        "-12% Fire Resistance", "-4.2% Average Hit", "Fire Resistance turun di bawah cap (75% → 68%)",
         "Kebutuhan belum terpenuhi: Level 40/42",
     ]
     assert r.delta is d and r.reasons

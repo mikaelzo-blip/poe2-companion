@@ -22,7 +22,7 @@ from companion.equipment.pob2_equipment_advisor import act_for_level, act_of_zon
 
 SOURCE = "Guide Advisor"
 RES_TARGET = 75
-_ELEMENTS = (("fire", "api"), ("cold", "dingin"), ("lightning", "petir"))
+_ELEMENTS = (("fire", "Fire Resistance"), ("cold", "Cold Resistance"), ("lightning", "Lightning Resistance"))
 _WEAPON_SLOTS = ("Weapon 1", "Weapon 2", "Weapon 1 Swap", "Weapon 2 Swap")
 _ACT_TITLE = re.compile(r"\bact\s*(\d+)", re.I)
 
@@ -77,15 +77,15 @@ def _resist_objective(baseline: Any, act: int) -> dict[str, Any] | None:
     if not gaps:
         return None
     names = dict(_ELEMENTS)
-    title = f"Resist untuk {_act_label(target_act)}: kurang " + ", ".join(f"{names[el]} {g}%" for el, g in gaps.items())
+    title = f"Resistance untuk {_act_label(target_act)}: kurang " + ", ".join(f"{names[el]} {g}%" for el, g in gaps.items())
     rationale = (f"Sekarang " + "/".join(f"{now[el]}%" for el, _ in _ELEMENTS)
-                 + f" ({_act_label(act)}, penalti {resist_penalty_for_act(act)}%).")
+                 + f" ({_act_label(act)}, penalti Resistance {resist_penalty_for_act(act)}%).")
     if nxt:
-        rationale += (f" Di {_act_label(nxt)} penalti {resist_penalty_for_act(nxt)}%: jadi "
+        rationale += (f" Di {_act_label(nxt)} penalti Resistance {resist_penalty_for_act(nxt)}%: jadi "
                       + "/".join(f"{then[el]}%" for el, _ in _ELEMENTS) + ".")
     critical = min(then.values()) < 30
     return _objective("resist", 5 if critical else 4, title,
-                      "Cari resist + Life di gloves, ring, helm, boots, belt (regex vendor di bawah).", rationale,
+                      "Cari Resistance + maximum Life di gloves, ring, helm, boots, belt (regex vendor di bawah).", rationale,
                       cost=4 if critical else 3)
 
 

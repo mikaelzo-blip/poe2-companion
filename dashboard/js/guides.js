@@ -129,6 +129,29 @@ export async function refreshGuides() {
   }
 }
 
+/** Import a guide the bookmarklet passed in the URL fragment (#guide=<json>); the fragment never reaches the server log. */
+export async function importGuideFromUrl() {
+  if (!location.hash.startsWith('#guide=')) return;
+  let text;
+  try {
+    text = decodeURIComponent(location.hash.slice('#guide='.length));
+  } catch (e) {
+    text = '';
+  }
+  history.replaceState(null, '', location.pathname + location.search);
+  try {
+    const res = await post('/api/guides', { text });
+    if (res.error) return alert(`Gagal impor guide: ${res.error}`);
+    await refreshGuides();
+    await refreshGuideControls();
+    const warns = (res.warnings || []).map((w) => `
+⚠ ${w}`).join('');
+    alert(`✅ Guide diimpor: ${res.name} (${res.stages} stage).${warns}`);
+  } catch (e) {
+    alert(`Gagal impor guide: ${e.message}`);
+  }
+}
+
 export function setupGuides() {
   const msg = document.getElementById('guide-import-msg');
   const show = (html, color) => {
@@ -137,10 +160,13 @@ export function setupGuides() {
     msg.innerHTML = html;
   };
 
-  // Bookmarklet href = "javascript:" + encoded source of /bookmarklet.js
+  // Bookmarklet href = "javascript:" + encoded source of /bookmarklet.js, pointed back at this dashboard
   fetch('/bookmarklet.js')
     .then((r) => r.text())
-    .then((t) => { document.getElementById('guide-bookmarklet').href = 'javascript:' + encodeURIComponent(t); })
+    .then((t) => {
+      const src = t.replace('__DASHBOARD_ORIGIN__', location.origin);
+      document.getElementById('guide-bookmarklet').href = 'javascript:' + encodeURIComponent(src);
+    })
     .catch(() => {});
 
   document.getElementById('btn-do-import-guide')?.addEventListener('click', async () => {

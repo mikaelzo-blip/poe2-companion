@@ -1,5 +1,6 @@
-/* Mobalytics PoE2 guide extractor. Run as a bookmarklet on a guide page; copies
-   JSON (format poe2-companion-guide/1) to the clipboard for pasting in the dashboard.
+/* Mobalytics PoE2 guide extractor. Run as a bookmarklet on a guide page; opens the
+   dashboard with the guide JSON (format poe2-companion-guide/1) in the URL fragment, which
+   the dashboard imports. Without a dashboard origin it copies the JSON to the clipboard.
    extractGuide(win) is standalone so it can also be run from a browser pane. */
 function extractGuide(win) {
   var FORMAT_ERR = "Format halaman tidak dikenal";
@@ -119,8 +120,14 @@ function extractGuide(win) {
 
 (function () {
   if (typeof window === "undefined" || typeof navigator === "undefined") return;
+  /* the dashboard replaces this placeholder with its own origin when it builds the bookmark */
+  var DASHBOARD = "__DASHBOARD_ORIGIN__";
   try {
     var json = JSON.stringify(extractGuide(window));
+    if (/^https?:/.test(DASHBOARD)) {
+      window.open(DASHBOARD + "/#guide=" + encodeURIComponent(json), "_blank");
+      return;
+    }
     navigator.clipboard.writeText(json).then(
       function () { alert("Panduan disalin. Tempel di dashboard."); },
       function () { alert("Gagal menyalin ke clipboard."); }

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from pydantic import ValidationError
 
-from companion.builds.guide import GuideProfile, GuideStage, StageItem, weapon_classes_of
+from companion.builds.guide import GemNote, GuideProfile, GuideStage, StageItem, weapon_classes_of
 from companion.builds.stages import assign_level_ranges
 from companion.equipment.api_adapter import ITEM_CLASS_PLURAL
 
@@ -89,6 +89,9 @@ def _parse(data: dict) -> tuple[GuideProfile, str | None, list[str]]:
         slug=data["slug"], name=data["name"], source_url=data.get("source_url"),
         imported_at=datetime.now(timezone.utc).isoformat(), stages=stages,
         has_pob=pob is not None, pob_stage_id=stages[-1].id,
+        gem_notes=[GemNote(title=str(n.get("title") or ""), steps=[str(t) for t in n.get("steps") or []])
+                   for n in data.get("gem_notes") or []],
+        vendor_regex=data.get("vendor_regex") or None,
     )
     return profile, pob, warnings
 

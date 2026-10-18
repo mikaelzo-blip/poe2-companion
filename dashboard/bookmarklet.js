@@ -21,6 +21,41 @@ function extractGuide(win) {
       (kids || []).forEach(function (c) { if (c && c.id && c.title) titles[c.id] = c.title; });
     });
 
+    /* Lexical rich text -> [{title, steps}]: a heading opens a section, each paragraph/list item is a step */
+    var flat = function (n) {
+      if (!n) return "";
+      if (n.type === "text") return n.text || "";
+      if (n.type === "static-data-widget") return n.label || "";
+      if (n.type === "linebreak") return " ";
+      return (n.children || []).map(flat).join(n.type === "list" ? " | " : "");
+    };
+    var sections = function (rich) {
+      var out = [], cur = null;
+      var walk = function (n) {
+        if (n.type === "heading") { cur = { title: flat(n).trim(), steps: [] }; out.push(cur); return; }
+        if (n.type === "paragraph" || n.type === "listitem") {
+          var t = flat(n).replace(/\s+/g, " ").trim();
+          if (!t) return;
+          if (!cur) { cur = { title: "", steps: [] }; out.push(cur); }
+          cur.steps.push(t);
+          return;
+        }
+        (n.children || []).forEach(walk);
+      };
+      walk((rich && rich.value && rich.value.root) || {});
+      return out;
+    };
+    var widget = function (type) {
+      return ((doc.content || []).filter(function (s) { return s && s.__typename === type; })[0] || {}).data || {};
+    };
+    var gemNotes = sections(widget("Poe2DocumentUgWidgetSkillGemsV1").descriptionPoeSkillGems);
+    var regex = null;
+    (doc.content || []).forEach(function (s) {
+      sections(s && s.data && s.data.simplifiedContent).forEach(function (sec) {
+        sec.steps.forEach(function (t) { if (!regex && /^Regex:/i.test(t)) regex = t.replace(/^Regex:\s*/i, ""); });
+      });
+    });
+
     var toItem = function (entry) {
       var ci = entry && entry.commonItem;
       if (!ci) return null;
@@ -61,6 +96,8 @@ function extractGuide(win) {
       name: doc.data.name,
       pob_code: doc.data.pobCode || null,
       variants: variants,
+      gem_notes: gemNotes,
+      vendor_regex: regex,
     };
   } catch (e) {
     throw new Error(FORMAT_ERR);

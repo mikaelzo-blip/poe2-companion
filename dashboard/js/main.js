@@ -4,12 +4,13 @@
 import { setupCompareSubtabs } from './compare.js';
 import { setupCharacterAndGuideControls } from './controls.js';
 import { setupStatsModal, setupSyncModal } from './modals.js';
-import { setupNavigation } from './overview.js';
+import { setupNavigation, setupSlotRanking } from './overview.js';
 import { checkHttpHost, setupDragAndDrop, setupFolderAccess } from './runtime.js';
 
 // Initialization
 document.addEventListener('DOMContentLoaded', async () => {
   setupNavigation();
+  setupSlotRanking();
   setupFolderAccess();
   setupDragAndDrop();
   setupCompareSubtabs();

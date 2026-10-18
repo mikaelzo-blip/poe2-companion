@@ -90,3 +90,16 @@ def test_synthetic_edge_cases():
     assert pob is None and not prof.has_pob
     assert sum("charm1" in w or "flask1" in w for w in warnings) == 2
     assert any("war-fan" in w for w in warnings)
+
+
+def test_plant_oracle_keeps_gem_progression_and_vendor_regex():
+    prof, _, _ = _parse("plant-oracle-druid-leveling-build-guide")
+    acts = {n.title: n.steps for n in prof.gem_notes}
+    assert acts["Act 2"][0].startswith("When you get your first level 2 Support Gem")
+    assert "Act 4 & Interludes" in acts
+    assert prof.vendor_regex.startswith('"y: (r|m)"')
+
+
+def test_guides_without_gem_notes_still_parse():
+    prof, _, _ = _parse("fubgun-flameblast-oil-grenade")
+    assert prof.gem_notes == [] and prof.vendor_regex is None

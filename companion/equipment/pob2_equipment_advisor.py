@@ -231,15 +231,32 @@ def _main_dps(engine: Any, group: int) -> float:
 
 
 @lru_cache(maxsize=1)
-def _zone_acts() -> dict[str, int]:
+def _zone_acts() -> dict[str, Any]:
     # Generated from the PoB fork's Data/WorldAreas.lua by scripts/gen_zone_acts.py.
     return json.loads((Path(__file__).parent / "data" / "zone_acts.json").read_text(encoding="utf-8"))
 
 
-def resist_penalty_for_zone(zone: str | None) -> int | None:
-    """PoB's elemental resistance penalty for the act of ``zone`` (Act 1 = 0 ... endgame = -60); None if unknown."""
-    act = _zone_acts().get(zone or "")
+def act_of_zone(zone: str | None) -> int | None:
+    """Act of a campaign zone (interludes = 6, endgame areas = 10); None for hideouts, maps and unknown names."""
+    return _zone_acts()["zones"].get(zone or "")
+
+
+def act_for_level(level: int | None) -> int | None:
+    """Campaign act whose areas start at or below ``level`` (an estimate when the zone is unknown)."""
+    if level is None:
+        return None
+    acts = [int(a) for a, lv in _zone_acts()["act_min_level"].items() if int(a) < 10 and lv <= level]
+    return max(acts, default=1)
+
+
+def resist_penalty_for_act(act: int | None) -> int | None:
+    """PoB's elemental resistance penalty for ``act`` (Act 1 = 0 ... endgame = -60)."""
     return None if act is None else max(-10 * (act - 1), -60)
+
+
+def resist_penalty_for_zone(zone: str | None) -> int | None:
+    """PoB's elemental resistance penalty for the act of ``zone``; None if unknown."""
+    return resist_penalty_for_act(act_of_zone(zone))
 
 
 def _set_resist_penalty_in_xml(xml_str: str, penalty: int) -> str:

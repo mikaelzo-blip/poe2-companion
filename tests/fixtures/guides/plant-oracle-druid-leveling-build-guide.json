@@ -342,5 +342,56 @@
         }
       ]
     }
-  ]
+  ],
+  "gem_notes": [
+    {
+      "title": "",
+      "steps": [
+        "The skills shown above are how we'll end the campaign. Here's a breakdown of how it progresses:"
+      ]
+    },
+    {
+      "title": "Act 1",
+      "steps": [
+        "Cut Entangle with your first skill gem. Every time you get a higher skill gem, level Entangle first (along with using your Gemcutter's Prisms). Support it with Brutality I and Unleash for now.",
+        "Note: We take Brutality I at the beginning when we have no other sources of damage other than Physical. Later on we'll replace it when we have Damage as Extra Lightning from Storm Rune to apply Shock.",
+        "Cut Contagion with your second skill gem. Throw this on a low HP mob and then hit them with Entangle to delete the entire room. Support it with Unleash and Magnified Area I.",
+        "After you kill the King in the Mists you receive +30 Spirit and a Level 4 Spirit Gem. Use this to cut Ravenous Swarm and support it with Corrosion and Escalating Poison. This gives you an Armour Break on Elites and Bosses if you stand near them - a big damage boost!",
+        "After you kill the Executioner you receive a Level 5 Skill Gem. Use this to cut Thunderstorm and support it with Magnified Area I and Shock. Cast this on top of your plants to overgrow them and apply Shock to enemies. Later on we'll automate this!",
+        "After you allocate Wildsurge Incantation, drop Contagion as your plants will carry from here on out. With the mana reduction from this node you can now drop Unleash for Zenith I on Entangle. As long as you throw your plants above 90% mana, which should be nearly always, you'll get a big damage boost and can now benefit from Damage as Extra Lightning on gear to apply Shock with your plants.",
+        "If you want some extra firepower on bosses until we get Thrashing Vines, cut Bonestorm and support it with Burgeon I and Brutality I. Channel it to full power then unleash it to Kamehameha big targets into oblivion."
+      ]
+    },
+    {
+      "title": "Act 2",
+      "steps": [
+        "When you get your first level 2 Support Gem, replace Brutality I withAccelerated Growth on Entangle to make your plants trigger bombs. Make sure to look for sources of Damage as Extra Lightning on your weapon, and socket it with a Storm Rune to make the plants apply Shock.",
+        "Keep using regex above to constantly check vendors for more Spell Power and Physical Spell Levels on weapons.",
+        "Make sure to keep raising the levels of your Entangle, Thunderstorm and Ravenous Swarm as you get more Skill and Spirit Gems."
+      ]
+    },
+    {
+      "title": "Act 3",
+      "steps": [
+        "Use your first Level 9 Skill Gem to cut Thrashing Vines and support it with Concentrated Area and Accelerated Growth. This is our single target ability for bosses. You should now be able to drop Bonestorm.",
+        "After you kill the Bog Witch you receive +30 Spirit and a Level 10 Spirit Gem. Use this to cut Blasphemy and drop Ravenous Swarm. Blasphemy auto casts a socketed curse around us for the rest of the campaign, and you have 3 choices:",
+        "Repulsion is a new godly curse we can use to blast our enemies to another dimension. If you find this as a reward in the season mechanic, grab it 100%. WARNING: Because GGG moved the runes to Act 4, it may take longer to acquire a Repulsion than before. Grab one of the other curses below in the meantime.Vulnerability helps break armour even faster for more damage, especially on trash. The reason why this isn't as good as it appears is because we already break their armor very quickly on our own from Cut to the Bone and Return to Nature.Enfeeble which makes the monsters do significantly less damage; very good for bossing.Temporal Chains which makes the enemies so slow they can't even play anymore. The downside is taking this makes it more difficult for the enemies to chase you and step on your plants.You could even swap these curses around depending how things are going / the gear you have!If you get extra sources of Spirit on your gear, consider adding Clarity I and Vitality I.",
+        "Add Branching Fissures I to Entangle when you get your first Lesser Jeweler Orb."
+      ]
+    },
+    {
+      "title": "Act 4 & Interludes",
+      "steps": [
+        "At the very end of the campaign we finally get Cast on Critical and drop Blasphemy. Now we can socket Thunderstorm and it's supports directly into this Spirit Gem to auto water our plants. Life is beautiful.",
+        "Hint: Remember that your Thunderstorm will cast faster as you get stronger because its based on the damage you deal relative to the monster's ailment threshold. In plain English: you deal more damage, you get more thunderstorms."
+      ]
+    },
+    {
+      "title": "Act 4 Shark Fin Reward",
+      "steps": [
+        "I took +30% Energy Shield. I think Later on the recharge will be better, but for now the magnitude is helpful."
+      ]
+    }
+  ],
+  "vendor_regex": "\"y: (r|m)\" \"\\d+% i.+mov|ph.*da|ell.*ge$|^\\+.*l sp.*ls$|^\\+.*al sp.*ls$|spiri|st spe|\\d.+life\" \"s: (am|ri|be|wa|st|gl|boo|bod|he|fo)\""
 }

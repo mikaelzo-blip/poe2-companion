@@ -78,6 +78,12 @@ class BreakerRule(BaseModel):
         return list(dict.fromkeys(canon))
 
 
+class GemNote(BaseModel):
+    """One section of the guide's gem progression text ("Act 1": its steps)."""
+    title: str
+    steps: list[str] = []
+
+
 class GuideStage(BaseModel):
     id: str
     title: str
@@ -98,6 +104,8 @@ class GuideProfile(BaseModel):
     has_pob: bool = False
     pob_stage_id: str | None = None
     breaker_rules: list[BreakerRule] = []
+    gem_notes: list[GemNote] = []
+    vendor_regex: str | None = None
 
     @field_validator("stages")
     @classmethod

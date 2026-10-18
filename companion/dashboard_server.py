@@ -331,6 +331,20 @@ def _api_guides(q: dict[str, str]) -> Any:
     return get_available_guides(RUNTIME_DIR, normalize_char_id(q.get("char_id")) if q.get("char_id") else None)
 
 
+_RANKING_LOCK = threading.Lock()
+
+
+def _api_slot_ranking(payload: dict[str, Any]) -> Any:
+    from companion.builds.advisor import rank_slots
+    if not _RANKING_LOCK.acquire(blocking=False):
+        return {"error": "Ranking masih berjalan; tunggu hasilnya."}  # one ranking at a time per PoB engine
+    try:
+        char_id = normalize_char_id(payload.get("character_id"))
+        return rank_slots(RUNTIME_DIR, char_id, get_or_create_pob_session(char_id, force_retry=True))
+    finally:
+        _RANKING_LOCK.release()
+
+
 def _api_import_guide(payload: dict[str, Any]) -> Any:
     from companion.dashboard_api import import_guide_payload
     return import_guide_payload(payload, RUNTIME_DIR)
@@ -438,6 +452,7 @@ POST_ROUTES: dict[str, Callable[[dict[str, Any]], Any]] = {
     "/api/guides/delete": _api_delete_guide,
     "/api/guides/rules": _api_guide_rules,
     "/api/character-guide": _api_character_guide,
+    "/api/slot-ranking": _api_slot_ranking,
 }
 
 

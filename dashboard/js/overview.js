@@ -274,12 +274,21 @@ export function renderObjectivesTable(objectives) {
         <strong style="color: #FFFFFF; font-size: 13px;">${esc(obj.title)}</strong>
         <div style="font-size: 10px; color: var(--text-dim); font-family: var(--font-mono);">${esc(obj.id)}</div>
       </td>
-      <td style="color: var(--text-gold); font-size: 12px;">${esc(obj.action)}</td>
+      <td class="obj-action" style="color: var(--text-gold); font-size: 12px;">${esc(obj.action)}${obj.id === 'guide:regex' ? ' <button class="btn-copy-regex" type="button">Salin</button>' : ''}</td>
       <td style="font-size: 11px; color: var(--text-muted);">${esc(obj.source)}</td>
       <td>
         <span style="font-family: var(--font-mono); font-size: 11px; color: #F59E0B;">Trust: ${esc(obj.evidence_trust || 3)}</span>
       </td>
     `;
+    const copyBtn = tr.querySelector('.btn-copy-regex');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(obj.action).then(
+          () => { copyBtn.textContent = 'Tersalin'; },
+          () => { copyBtn.textContent = 'Gagal'; },
+        );
+      });
+    }
     tbody.appendChild(tr);
   });
 }
@@ -473,4 +482,50 @@ export function renderSlotInspector(slotKey, item) {
       if (textarea) textarea.focus();
     });
   }
+}
+
+
+const pct = (v) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
+
+export function setupSlotRanking() {
+  const btn = document.getElementById('btn-slot-ranking');
+  const out = document.getElementById('slot-ranking-result');
+  if (!btn || !out) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    out.innerHTML = '<p style="font-size: 12px;">Menghitung di PoB2 (bisa 10-60 detik)…</p>';
+    try {
+      const res = await fetch('/api/slot-ranking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ character_id: appState.activeCharId }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        out.innerHTML = `<p style="color: #EF4444; font-size: 12px;">${esc(data.error || 'Gagal menghitung ranking.')}</p>`;
+        return;
+      }
+      const rows = data.rows.map((r, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td><strong>${esc(r.slot)}</strong></td>
+          <td>${esc(r.current_item || '-')}</td>
+          <td>${esc(r.guide_item)}</td>
+          <td style="color: ${r.dps_pct >= 0 ? '#10B981' : '#EF4444'};">${pct(r.dps_pct)}</td>
+          <td style="color: ${r.ehp_pct >= 0 ? '#10B981' : '#EF4444'};">${pct(r.ehp_pct)}</td>
+        </tr>`).join('');
+      const skipped = (data.skipped || []).map((s) => `<li>${esc(s)}</li>`).join('');
+      out.innerHTML = `
+        <p style="font-size: 11px; color: var(--text-muted);">Stage: ${esc(data.stage)} · Skill: ${esc(data.main_skill || '-')}</p>
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Slot</th><th>Sekarang</th><th>Target guide</th><th>DPS</th><th>EHP</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${skipped ? `<ul style="font-size: 11px; color: var(--text-muted);">${skipped}</ul>` : ''}`;
+    } catch (e) {
+      out.innerHTML = `<p style="color: #EF4444; font-size: 12px;">${esc(String(e))}</p>`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
 }

@@ -617,6 +617,18 @@ def get_dashboard_status(
             obj_data = json.loads(obj_file.read_text(encoding="utf-8"))
         except Exception:
             pass
+    if obj_data.get("character_id") != char_id:
+        obj_data = {}  # the legacy objective file belongs to whichever character last ran the pipeline
+    try:
+        from companion.builds.advisor import guide_objectives
+        guide_obj = guide_objectives(runtime_dir, char_id)
+    except Exception:
+        logger.warning("Guide objectives failed for %s", char_id, exc_info=True)
+        guide_obj = None
+    if guide_obj is not None:
+        merged = guide_obj["all_objectives"] + list(obj_data.get("all_objectives") or [])
+        merged.sort(key=lambda o: -(o.get("priority") or 0))  # stable: guide objectives win ties
+        obj_data = {**guide_obj, "all_objectives": merged, "primary_objective": merged[0] if merged else None}
 
     from companion.equipment.loadout_cli import load_loadout
     loadout = load_loadout(runtime_dir, char_id)

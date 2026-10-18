@@ -1292,3 +1292,34 @@ def test_missing_character_id_resolves_to_active_character(tmp_path):
     assert resolve_char_id(None, tmp_path) == "BOMSHAK"  # nothing selected yet
     (tmp_path / "active_character.json").write_text('{"active_character_id": "plantouzes"}', encoding="utf-8")
     assert resolve_char_id("", tmp_path) == "PLantouzes"
+
+
+def test_status_drops_another_characters_objectives_and_adds_guide_ones(tmp_path):
+    from companion.builds.guide import GemNote, GuideProfile, GuideStage
+    from companion.builds.store import save_guide, set_assignment
+    from companion.dashboard_api import get_dashboard_status
+
+    (tmp_path / "characters").mkdir()
+    (tmp_path / "characters" / "P.json").write_text('{"level": {"value": 5}}', encoding="utf-8")
+    legacy = {"character_id": "BOMSHAK", "primary_objective": {"id": "passive:x", "priority": 5},
+              "all_objectives": [{"id": "passive:x", "priority": 5}]}
+    (tmp_path / "CURRENT_OBJECTIVE.json").write_text(json.dumps(legacy), encoding="utf-8")
+    assert get_dashboard_status(tmp_path, char_id="P")["objective"] == {}  # no guide, foreign legacy file
+
+    save_guide(tmp_path, GuideProfile(slug="g", name="G", imported_at="2026-01-01T00:00:00Z",
+                                      stages=[GuideStage(id="s", title="S")],
+                                      gem_notes=[GemNote(title="Act 1", steps=["Cut Entangle"])]))
+    set_assignment(tmp_path, "P", "g", None)
+    obj = get_dashboard_status(tmp_path, char_id="P")["objective"]
+    assert [o["id"] for o in obj["all_objectives"]] == ["guide:gems:1"]
+    assert obj["primary_objective"]["action"] == "• Cut Entangle"
+
+
+def test_slot_ranking_refuses_a_second_concurrent_run(monkeypatch):
+    from companion import dashboard_server
+
+    assert dashboard_server._RANKING_LOCK.acquire(blocking=False)
+    try:
+        assert "masih berjalan" in dashboard_server._api_slot_ranking({"character_id": "P"})["error"]
+    finally:
+        dashboard_server._RANKING_LOCK.release()

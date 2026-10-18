@@ -101,6 +101,8 @@ class CharacterStatBaseline(BaseModel):
     character_id: str
     anchored_loadout_revision: int
     anchored_loadout_fingerprint: str | None = None
+    # elemental resistance penalty PoB applied to the derived resist facts (-60 = PoB's endgame default)
+    resist_penalty: int | None = None
 
     life: CharacterFact[int] = Field(default_factory=CharacterFact[int].unknown)
     armour: CharacterFact[int] = Field(default_factory=CharacterFact[int].unknown)

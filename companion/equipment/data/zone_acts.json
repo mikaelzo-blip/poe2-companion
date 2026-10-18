@@ -1,4 +1,13 @@
 {
+"act_min_level": {
+"1": 1,
+"10": 65,
+"2": 16,
+"3": 33,
+"4": 46,
+"6": 54
+},
+"zones": {
 "Abandoned Prison": 4,
 "Abyssal Depths": 2,
 "Act 1": 1,
@@ -160,4 +169,5 @@
 "Your Guild Hideout": 1,
 "Your Hideout": 1,
 "Ziggurat Encampment": 3
+}
 }

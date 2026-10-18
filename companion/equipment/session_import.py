@@ -206,6 +206,8 @@ def apply_session_to_runtime(runtime_dir: Path, character_id: str, session: Any)
             baseline.anchored_loadout_revision = loadout.revision
             baseline.anchored_loadout_fingerprint = loadout.compute_fingerprint()
             _apply_baseline(baseline, defenses, stats)
+            penalty = getattr(session, "resist_penalty", None)
+            baseline.resist_penalty = penalty if isinstance(penalty, int) else -60
             save_baseline(runtime_dir, baseline)
     except Exception as exc:
         logger.warning("apply_session_to_runtime failed for %s", character_id, exc_info=True)

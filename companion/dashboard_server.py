@@ -133,7 +133,8 @@ def maybe_refresh_pob_session(
 
     def run() -> None:
         try:
-            if sess.sync_character():
+            synced = sess.sync_character()
+            if sess.apply_zone(zone) or synced:
                 _apply_session(character_id, sess)
         except Exception:
             logger.warning("PoB2 refresh failed for %s", character_id, exc_info=True)
@@ -406,7 +407,7 @@ def _api_select_character(payload: dict[str, Any]) -> Any:
 
 def _api_fetch_public_profile(payload: dict[str, Any]) -> Any:
     from companion.dashboard_api import fetch_public_profile
-    character_id = payload.get("character_id", "BOMSHAK")
+    character_id = normalize_char_id(payload.get("character_id"))
     result = fetch_public_profile(
         payload.get("account_name", ""),
         character_id,
@@ -459,14 +460,8 @@ def serve_dashboard(port: int = 8080, open_browser: bool = True) -> None:
     """Start local HTTP server for dashboard without external dependencies."""
     try:
         # Pre-warm PoB2 session in background thread
-        active_char_path = RUNTIME_DIR / "active_character.json"
-        char_to_warm = "BOMSHAK"
-        if active_char_path.is_file():
-            try:
-                cdata = json.loads(active_char_path.read_text(encoding="utf-8"))
-                char_to_warm = cdata.get("active_character_id") or "BOMSHAK"
-            except Exception:
-                pass
+        from companion.dashboard_api import active_char_id
+        char_to_warm = active_char_id(RUNTIME_DIR)
         threading.Thread(
             target=get_or_create_pob_session,
             args=(char_to_warm,),

@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from functools import lru_cache
 from pathlib import Path
 import sys
 import threading
@@ -229,6 +230,46 @@ def _main_dps(engine: Any, group: int) -> float:
     return float((engine.call("set_main_skill", group=group) or {}).get("mainDPS") or 0)
 
 
+@lru_cache(maxsize=1)
+def _zone_acts() -> dict[str, int]:
+    # Generated from the PoB fork's Data/WorldAreas.lua by scripts/gen_zone_acts.py.
+    return json.loads((Path(__file__).parent / "data" / "zone_acts.json").read_text(encoding="utf-8"))
+
+
+def resist_penalty_for_zone(zone: str | None) -> int | None:
+    """PoB's elemental resistance penalty for the act of ``zone`` (Act 1 = 0 ... endgame = -60); None if unknown."""
+    act = _zone_acts().get(zone or "")
+    return None if act is None else max(-10 * (act - 1), -60)
+
+
+def _set_resist_penalty_in_xml(xml_str: str, penalty: int) -> str:
+    """Write PoB's ``resistancePenalty`` config input (absent = endgame -60) into the active config set."""
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(xml_str)
+    config = root.find("Config")
+    if config is None:
+        config = ET.SubElement(root, "Config", {"activeConfigSet": "1"})
+    active = config.get("activeConfigSet", "1")
+    target = next((cs for cs in config.findall("ConfigSet") if cs.get("id") == active), None)
+    if target is None:
+        target = config if not config.findall("ConfigSet") else ET.SubElement(config, "ConfigSet", {"id": active})
+    for node in target.findall("Input"):
+        if node.get("name") == "resistancePenalty":
+            target.remove(node)
+    ET.SubElement(target, "Input", {"name": "resistancePenalty", "number": str(penalty)})
+    return ET.tostring(root, encoding="unicode")
+
+
+def _skill_index(engine: Any) -> dict[str, int]:
+    """Active skill name -> socket group index in the build loaded right now.
+
+    ponytail: two groups with the same active skill collapse to the first one.
+    """
+    groups = (engine.call("list_skills") or {}).get("groups") or []
+    return {g["activeSkill"]: g["index"] for g in reversed(groups) if g.get("activeSkill")}
+
+
 def _clear_slots_in_xml(xml_str: str, clear_slots: tuple[str, ...] | list[str]) -> str:
     """Clear specific slot itemIds (set to 0) in PoB XML."""
     import xml.etree.ElementTree as ET
@@ -344,6 +385,8 @@ class Pob2EquipmentSession:
         self.main_group: int | None = None
         # enabled socket groups with an active skill (1-based), from the same refresh
         self.skill_groups: list[int] = []
+        # elemental resistance penalty of the character's act, written into self.xml (None = PoB's endgame default)
+        self.resist_penalty: int | None = None
 
         # Concurrency & async correctness primitives
         # _engine_lock ONLY serializes expensive PoB engine simulation calls
@@ -615,8 +658,9 @@ class Pob2EquipmentSession:
                 if not export_res or not export_res.get("xml"):
                     return False
                 self.xml = export_res["xml"]
-                # 4. Refresh equipped_items and baseline defense/stats
+                # 4. Refresh equipped_items, socket groups (a skill-granting item reorders them) and baseline defense/stats
                 self.equipped_items[canonical_slot] = self.engine.call("get_equipped", slot=canonical_slot)
+                self._refresh_main_group()
                 self.defenses_before = self.engine.call("get_defenses")
                 self.stats_before = self.engine.call("calc_stats")
                 return True
@@ -649,6 +693,9 @@ class Pob2EquipmentSession:
                     if equipped:
                         self.equipped_items[slot] = equipped
 
+                if self.resist_penalty is not None and self.xml:  # a fresh import drops the act penalty
+                    self.xml = _set_resist_penalty_in_xml(self.xml, self.resist_penalty)
+                    self.engine.call("import_build", xml=self.xml)
                 self._refresh_main_group()
                 self.defenses_before = self.engine.call("get_defenses")
                 self.stats_before = self.engine.call("calc_stats")
@@ -657,6 +704,25 @@ class Pob2EquipmentSession:
             except Exception as exc:
                 logging.getLogger(__name__).warning("Failed to sync character in PoB2 session: %s", exc)
                 return False
+
+    def apply_zone(self, zone: str | None) -> bool:
+        """Set the baseline's elemental resistance penalty to the act of ``zone``; True when it changed."""
+        penalty = resist_penalty_for_zone(zone)
+        if penalty is None or penalty == self.resist_penalty or not self.is_available or self.engine is None or not self.xml:
+            return False
+        with self._engine_lock:
+            try:
+                xml = _set_resist_penalty_in_xml(self.xml, penalty)
+                self.engine.call("import_build", xml=xml)
+                self.xml = xml
+                self._refresh_main_group()
+                self.defenses_before = self.engine.call("get_defenses")
+                self.stats_before = self.engine.call("calc_stats")
+            except Exception as exc:
+                logging.getLogger(__name__).warning("Failed to apply resistance penalty for %r: %s", zone, exc)
+                return False
+            self.resist_penalty = penalty
+            return True
 
     def needs_refresh(
         self,
@@ -880,28 +946,38 @@ class Pob2EquipmentSession:
 
             engine = self.sandbox_engine
             group = (self.find_socket_group_for_skill(main_skill) if main_skill else None) or self.main_group
+            locked: str | None = None  # skill name: equipping an item that grants a skill reorders the groups
 
             def lock_skill() -> None:
-                if base_xml is None and group is not None:
-                    engine.call("set_main_skill", group=group)
+                index = _skill_index(engine).get(locked) if locked else None
+                if base_xml is None and index is not None:
+                    engine.call("set_main_skill", group=index)
 
             try:
                 base_to_use = base_xml if base_xml is not None else self.xml
                 xml_set = _set_weapon_set_in_xml(base_to_use, 2 if canonical_slot.endswith("Swap") else 1)
+                engine.call("import_build", xml=xml_set)
+                names = {i: n for n, i in _skill_index(engine).items()}
+                locked = names.get(group)
                 if base_xml is None and canonical_slot.startswith("Weapon") and self.skill_groups:
-                    # A weapon often feeds only its own skill (BOMSHAK: swap crossbow -> Oil Grenade),
-                    # so lock the group whose DPS the swap changes most; unchanged -> keep `group`.
+                    # A weapon often feeds only its own skill (BOMSHAK: swap crossbow -> Oil Grenade), so when
+                    # the weapon leaves `locked` untouched, lock the skill whose DPS the swap changes most.
                     # ponytail: 2 recalcs per group per weapon compare; cache per slot if it gets slow
-                    engine.call("import_build", xml=xml_set)
-                    dps_before = {g: _main_dps(engine, g) for g in self.skill_groups}
+                    skills = [names[g] for g in self.skill_groups if g in names]
+                    dps_before = {n: _main_dps(engine, i) for n, i in _skill_index(engine).items() if n in skills}
                     if clear_slots:
                         engine.call("import_build", xml=_clear_slots_in_xml(xml_set, clear_slots))
                     engine.call("equip_item", slot=canonical_slot, raw=raw)
-                    change = {g: abs(_main_dps(engine, g) - dps_before[g]) for g in self.skill_groups}
-                    best = max(self.skill_groups, key=lambda g: (change[g], g == group))
-                    if change[best] > 0:
-                        group = best
-                engine.call("import_build", xml=xml_set)
+                    after = _skill_index(engine)
+                    change = {
+                        n: abs((_main_dps(engine, after[n]) if n in after else 0.0) - dps_before.get(n, 0.0))
+                        for n in skills
+                    }
+                    if skills and change.get(locked, 0.0) == 0:
+                        best = max(skills, key=lambda n: (change[n], n == locked))
+                        if change[best] > 0:
+                            locked = best
+                    engine.call("import_build", xml=xml_set)
                 lock_skill()
                 def_before = engine.call("get_defenses")
                 stats_before = engine.call("calc_stats")

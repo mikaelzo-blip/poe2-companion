@@ -1282,3 +1282,13 @@ def test_reimport_keeps_revision_line_and_history(tmp_path: Path) -> None:
     snapshots = sorted(p.name for p in get_loadout_history_dir(tmp_path, "rev_char").glob("rev_*.json"))
     assert snapshots == ["rev_000001.json"]
     assert lo.get_slot(SlotType.AMULET) is not None
+
+
+def test_missing_character_id_resolves_to_active_character(tmp_path):
+    from companion.dashboard_api import resolve_char_id
+
+    (tmp_path / "characters").mkdir()
+    (tmp_path / "characters" / "PLantouzes.json").write_text("{}", encoding="utf-8")
+    assert resolve_char_id(None, tmp_path) == "BOMSHAK"  # nothing selected yet
+    (tmp_path / "active_character.json").write_text('{"active_character_id": "plantouzes"}', encoding="utf-8")
+    assert resolve_char_id("", tmp_path) == "PLantouzes"

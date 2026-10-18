@@ -186,3 +186,58 @@ def test_weapon_slot_keeps_guide_skill_when_no_group_changes(session):
 def test_find_socket_group_crossbow_alias_without_match_returns_none(session):
     assert session.find_socket_group_for_skill("CROSSBOW_LEVELING") is None
 
+
+
+WAND = "Rarity: Rare\nWand Thing\nAdd Wand"
+
+
+class ReorderEngine(FakeEngine):
+    """Equipping a skill-granting wand re-adds its Bone Blast group last, shifting every index (PLantouzes)."""
+
+    BEFORE = ["Bone Blast", "Thunderstorm", "Entangle"]
+    AFTER = ["Thunderstorm", "Entangle", "Bone Blast"]
+    DPS = {False: {"Bone Blast": 110.0, "Thunderstorm": 85.0, "Entangle": 75.0},
+           True: {"Bone Blast": 65.0, "Thunderstorm": 76.0, "Entangle": 80.0}}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.main: str | None = None
+
+    def call(self, action: str, **kw: Any) -> dict[str, Any]:
+        order = self.AFTER if self._equipped else self.BEFORE
+        if action == "list_skills":
+            self.calls.append((action, kw))
+            return {"mainSocketGroup": 1, "groups": [
+                {"index": i, "enabled": True, "activeSkill": n, "gems": []} for i, n in enumerate(order, 1)]}
+        if action == "set_main_skill":
+            self.calls.append((action, kw))
+            self.main = order[kw["group"] - 1]
+            return {"mainDPS": self.DPS[self._equipped][self.main]}
+        if action == "export_xml":
+            self.calls.append((action, kw))
+            return {"xml": BASE_XML}
+        out = super().call(action, **kw)
+        if action == "calc_stats":
+            out["offense"] = {"CombinedDPS": self.DPS[self._equipped].get(self.main, 0.0)}
+        return out
+
+
+def _make_reorder() -> Pob2EquipmentSession:
+    engines = iter([ReorderEngine(), ReorderEngine()])
+    s = Pob2EquipmentSession(engine_factory=lambda: next(engines), poe_api_client=FakeApi())
+    assert s.initialize()
+    return s
+
+
+def test_weapon_measure_follows_skill_name_when_groups_reorder():
+    s = _make_reorder()
+    d = s.measure("Weapon 1", WAND, s.submit_candidate(WAND), main_skill="Entangle")
+    assert _locks(s) == [3, 2]  # Entangle before and after the reorder, not index 3 (= Bone Blast after)
+    assert (d.dps_before, d.dps_after) == (75.0, 80.0)
+
+
+def test_equip_item_refreshes_main_group_after_reorder():
+    s = _make_reorder()
+    assert s.main_group == 1  # Bone Blast, highest DPS before
+    assert s.equip_item("Weapon 1", WAND)
+    assert ReorderEngine.AFTER[s.main_group - 1] == "Entangle"  # highest DPS after the reorder

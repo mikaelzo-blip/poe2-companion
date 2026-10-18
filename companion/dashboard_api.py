@@ -22,9 +22,18 @@ from companion.state.store import CharacterStateStore
 logger = logging.getLogger(__name__)
 
 
+def active_char_id(runtime_dir: Path) -> str:
+    """The dashboard's active character (runtime/active_character.json), BOMSHAK when none is set."""
+    try:
+        data = json.loads((runtime_dir / "active_character.json").read_text(encoding="utf-8"))
+        return str(data.get("active_character_id") or "").strip() or "BOMSHAK"
+    except (OSError, ValueError, AttributeError):
+        return "BOMSHAK"
+
+
 def resolve_char_id(char_id: str | None, runtime_dir: Path) -> str:
-    """Match a character ID case-insensitively against runtime/characters/*.json (default BOMSHAK)."""
-    raw = str(char_id or "").strip() or "BOMSHAK"
+    """Match a character ID case-insensitively against runtime/characters/*.json (default: active character)."""
+    raw = str(char_id or "").strip() or active_char_id(runtime_dir)
     chars_dir = runtime_dir / "characters"
     if chars_dir.is_dir():
         for f in chars_dir.glob("*.json"):
@@ -156,7 +165,7 @@ def check_auto_clipboard(
 
 def update_loadout_item_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
     from companion.equipment.loadout_cli import character_runtime_lock
-    with character_runtime_lock(payload.get("character_id", "BOMSHAK")):
+    with character_runtime_lock(resolve_char_id(payload.get("character_id"), runtime_dir)):
         return _update_loadout_item_payload_locked(payload, runtime_dir)
 
 
@@ -166,7 +175,7 @@ def _update_loadout_item_payload_locked(payload: dict[str, Any], runtime_dir: Pa
     if not raw_text:
         return {"error": "Item text cannot be empty."}
 
-    char_id = payload.get("character_id", "BOMSHAK")
+    char_id = resolve_char_id(payload.get("character_id"), runtime_dir)
     slot_name = payload.get("slot")
     weapon_set_name = payload.get("weapon_set")
 
@@ -225,7 +234,7 @@ def _update_loadout_item_payload_locked(payload: dict[str, Any], runtime_dir: Pa
 
 def import_character_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
     from companion.equipment.loadout_cli import character_runtime_lock
-    with character_runtime_lock(payload.get("character_id", "BOMSHAK")):
+    with character_runtime_lock(resolve_char_id(payload.get("character_id"), runtime_dir)):
         return _import_character_payload_locked(payload, runtime_dir)
 
 
@@ -255,7 +264,7 @@ def _replace_slots(loadout: Any, new: Any) -> bool:
 
 def _import_character_payload_locked(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
     """Import full character equipment JSON (from GGG get-items or export)."""
-    char_id = payload.get("character_id", "BOMSHAK")
+    char_id = resolve_char_id(payload.get("character_id"), runtime_dir)
     raw_payload = payload.get("character_data") or payload
     if not isinstance(raw_payload, dict):
         return {"error": "Invalid character JSON data."}
@@ -358,13 +367,13 @@ def _import_character_payload_locked(payload: dict[str, Any], runtime_dir: Path)
 
 def update_character_stats_payload(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
     from companion.equipment.loadout_cli import character_runtime_lock
-    with character_runtime_lock(payload.get("character_id") or "BOMSHAK"):
+    with character_runtime_lock(resolve_char_id(payload.get("character_id"), runtime_dir)):
         return _update_character_stats_payload_locked(payload, runtime_dir)
 
 
 def _update_character_stats_payload_locked(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
     """Update CharacterState and CharacterStatBaseline with live character stats from in-game / UI."""
-    char_id = payload.get("character_id") or "BOMSHAK"
+    char_id = resolve_char_id(payload.get("character_id"), runtime_dir)
 
     from companion.state.schema import CharacterState, ProvenancedField
     from companion.state.store import CharacterStateStore
@@ -675,20 +684,12 @@ def get_account_characters(
                 "league": "Local",
             })
 
-    active_char_id = "BOMSHAK"
-    active_file = runtime_dir / "active_character.json"
-    if active_file.is_file():
-        try:
-            a_data = json.loads(active_file.read_text(encoding="utf-8"))
-            if a_data.get("active_character_id"):
-                active_char_id = a_data["active_character_id"]
-        except Exception:
-            pass
+    active = active_char_id(runtime_dir)
 
     return {
         "account": account_name,
         "characters": characters,
-        "active_character_id": active_char_id,
+        "active_character_id": active,
         "source": source,
     }
 

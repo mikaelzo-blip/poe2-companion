@@ -216,7 +216,6 @@ def test_dashboard_server_http_evaluate_endpoint() -> None:
     import socketserver
     import threading
     import urllib.request
-    from unittest.mock import patch
 
     with patch("companion.dashboard_server.get_or_create_pob_session", return_value=None):
         with socketserver.TCPServer(("127.0.0.1", 0), CustomHandler) as httpd:

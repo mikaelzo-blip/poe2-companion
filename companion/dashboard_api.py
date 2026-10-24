@@ -404,8 +404,7 @@ def _update_character_stats_payload_locked(payload: dict[str, Any], runtime_dir:
         return {"error": err}
     char_id = resolve_char_id(payload.get("character_id"), runtime_dir)
 
-    from companion.state.schema import CharacterState, ProvenancedField
-    from companion.state.store import CharacterStateStore
+    from companion.state.schema import ProvenancedField
 
     store = CharacterStateStore(runtime_dir=runtime_dir)
     try:

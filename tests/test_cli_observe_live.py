@@ -121,7 +121,7 @@ def test_cli_live_status_text(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     # Lag checks
     assert "Reader Lag: 0" in captured.out  # 100 - 100 = 0
     assert "Review Lag: 20" in captured.out  # 100 - 80 = 20
-    assert "ACTIVE" in captured.out
+    assert "Status: ACTIVE" in captured.out  # bare "ACTIVE" also matches "INACTIVE"
 
 
 def test_cli_live_status_hermes_offline_honest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

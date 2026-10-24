@@ -94,6 +94,7 @@ def assign_level_ranges(profile: GuideProfile) -> GuideProfile:
         prev_max = hi
     # Normalize auto stages so levels 1-100 are covered exactly once, in guide order.
     prev_auto_max = 0
+    last_ok = 0  # first auto stage sets it before any read
     kw_first: int | None = None
     for i, st in enumerate(out):
         if parsed[i][2] and kw_first is None:

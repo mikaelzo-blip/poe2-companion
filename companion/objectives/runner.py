@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from companion.build.delta import compute_build_delta
 from companion.build.input import (

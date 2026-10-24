@@ -666,6 +666,39 @@ def test_select_character_payload(tmp_path: Path) -> None:
 
 
 
+@pytest.mark.parametrize("bad_id", ["../../escape", "a/b", "..\\x", ""])
+def test_character_ids_cannot_escape_runtime(tmp_path: Path, bad_id: str) -> None:
+    from companion.dashboard_api import select_character_payload, update_loadout_item_payload
+    from companion.state.schema import InvalidCharacterIdError
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    assert "error" in select_character_payload({"character_id": bad_id}, runtime_dir=runtime)
+    assert not (runtime / "active_character.json").exists()
+    if bad_id:
+        text = "Item Class: Helmets\nRarity: Normal\nIron Hat\n--------\nArmour: 10\n"
+        with pytest.raises(InvalidCharacterIdError):
+            update_loadout_item_payload({"character_id": bad_id, "slot": "helmet", "raw_text": text}, runtime)
+    assert [p.name for p in tmp_path.rglob("*.json")] == []
+
+
+def test_invalid_active_character_falls_back_to_default(tmp_path: Path) -> None:
+    from companion.dashboard_api import active_char_id
+
+    (tmp_path / "active_character.json").write_text(json.dumps({"active_character_id": "../x"}), encoding="utf-8")
+    assert active_char_id(tmp_path) == "BOMSHAK"
+
+
+@pytest.mark.parametrize("bad", [{"level": -5}, {"level": "abc"}, {"life": -1}, {"fire_res": 500}, {"level": True}])
+def test_update_stats_rejects_bad_numbers_before_any_write(tmp_path: Path, bad: dict) -> None:
+    from companion.dashboard_api import update_character_stats_payload
+
+    res = update_character_stats_payload({"character_id": "BOMSHAK", "strength": 40, **bad}, runtime_dir=tmp_path)
+    assert "error" in res
+    assert not (tmp_path / "characters" / "BOMSHAK.json").exists()
+    assert not (tmp_path / "baselines" / "BOMSHAK.json").exists()
+
+
 def test_get_dashboard_status_respects_explicit_char_id(tmp_path: Path) -> None:
     from companion.dashboard_api import get_dashboard_status
 

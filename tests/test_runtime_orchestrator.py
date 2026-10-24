@@ -163,3 +163,20 @@ def test_backfill_suppresses_notifications_and_transitions_to_live(test_env: tup
     assert orchestrator.notification_manager.suppress_notifications is False
 
     orchestrator.shutdown()
+
+
+def test_default_log_path_finds_poe2_in_secondary_steam_library(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from companion.runtime.orchestrator import default_client_log_path
+
+    steam = tmp_path / "pf86" / "Steam" / "steamapps"
+    steam.mkdir(parents=True)
+    lib = tmp_path / "SteamLibrary"
+    log = lib / "steamapps" / "common" / "Path of Exile 2" / "logs" / "Client.txt"
+    log.parent.mkdir(parents=True)
+    log.write_text("x", encoding="utf-8")
+    escaped = str(lib).replace("\\", "\\\\")  # vdf escapes backslashes
+    (steam / "libraryfolders.vdf").write_text(
+        f'"libraryfolders"\n{{\n\t"0"\n\t{{\n\t\t"path"\t\t"{escaped}"\n\t}}\n}}\n', encoding="utf-8")
+    monkeypatch.setenv("ProgramFiles(x86)", str(tmp_path / "pf86"))
+    monkeypatch.chdir(tmp_path)
+    assert default_client_log_path() == log

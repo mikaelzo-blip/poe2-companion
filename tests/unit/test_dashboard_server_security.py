@@ -48,6 +48,18 @@ def test_unknown_api_routes_404(port):
     assert _req(port, "POST", "/api/nope", {"Content-Length": "2"}, "{}")[0] == 404
 
 
+@pytest.mark.parametrize("body", ["{not json", "[]", "\"x\"", b"\xff\xfe"])
+def test_malformed_post_body_is_400(port, body):
+    raw = body if isinstance(body, bytes) else body.encode()
+    status, data = _req(port, "POST", "/api/update-stats", {"Content-Length": str(len(raw))}, raw)
+    assert status == 400 and b"error" in data
+
+
+def test_invalid_character_id_is_400(port):
+    status, _ = _req(port, "GET", "/api/tracker?char_id=../../x")
+    assert status == 400
+
+
 def test_guides_route_dispatches(port):
     status, body = _req(port, "GET", "/api/guides?x=1")
     assert status == 200 and body.startswith((b"{", b"["))

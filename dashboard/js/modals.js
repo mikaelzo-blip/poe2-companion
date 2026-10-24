@@ -1,6 +1,6 @@
 import { refreshGuides, setupGuides } from './guides.js';
 import { fetchHttpRuntime } from './runtime.js';
-import { addNotification, appState, esc } from './state.js';
+import { addNotification, appState, esc, factVal } from './state.js';
 
 export function setupSyncModal() {
   const modal = document.getElementById('modal-sync-profile');
@@ -191,8 +191,8 @@ export function setupStatsModal() {
       // Populate fields from current active character / baseline
       const char = appState.runtimeData?.character;
       const base = appState.runtimeData?.baseline;
-      const charName = char?.character_name || 'BOMSHAK';
-      const charLevel = char?.level ? (char.level.value || char.level) : 37;
+      const charName = char?.character_name || appState.activeCharId;
+      const charLevel = factVal(char?.level, '');
 
       const nameEl = document.getElementById('stat-edit-char-name');
       const lvlEl = document.getElementById('stat-edit-level');
@@ -200,9 +200,9 @@ export function setupStatsModal() {
       if (lvlEl) lvlEl.value = charLevel;
 
       // Attributes
-      const strVal = char?.attributes?.strength ? (char.attributes.strength.value || char.attributes.strength) : 48;
-      const dexVal = char?.attributes?.dexterity ? (char.attributes.dexterity.value || char.attributes.dexterity) : 85;
-      const intVal = char?.attributes?.intelligence ? (char.attributes.intelligence.value || char.attributes.intelligence) : 53;
+      const strVal = factVal(char?.attributes?.strength, '');
+      const dexVal = factVal(char?.attributes?.dexterity, '');
+      const intVal = factVal(char?.attributes?.intelligence, '');
       const elStr = document.getElementById('stat-edit-str');
       const elDex = document.getElementById('stat-edit-dex');
       const elInt = document.getElementById('stat-edit-int');
@@ -211,12 +211,12 @@ export function setupStatsModal() {
       if (elInt) elInt.value = intVal;
 
       // Defenses & Pools
-      const lifeVal = base?.life?.value != null ? base.life.value : 723;
-      const armVal = base?.armour?.value != null ? base.armour.value : 112;
-      const evaVal = base?.evasion?.value != null ? base.evasion.value : 465;
-      const esVal = base?.energy_shield?.value != null ? base.energy_shield.value : 47;
-      const manaVal = base?.mana?.value != null ? base.mana.value : (char?.resources?.mana?.value ?? 300);
-      const spiritVal = base?.spirit?.value != null ? base.spirit.value : (char?.resources?.spirit?.value ?? 30);
+      const lifeVal = factVal(base?.life, '');
+      const armVal = factVal(base?.armour, '');
+      const evaVal = factVal(base?.evasion, '');
+      const esVal = factVal(base?.energy_shield, '');
+      const manaVal = factVal(base?.mana) ?? factVal(char?.resources?.mana, '');
+      const spiritVal = factVal(base?.spirit) ?? factVal(char?.resources?.spirit, '');
       if (document.getElementById('stat-edit-life')) document.getElementById('stat-edit-life').value = lifeVal;
       if (document.getElementById('stat-edit-armour')) document.getElementById('stat-edit-armour').value = armVal;
       if (document.getElementById('stat-edit-evasion')) document.getElementById('stat-edit-evasion').value = evaVal;
@@ -225,10 +225,10 @@ export function setupStatsModal() {
       if (document.getElementById('stat-edit-spirit')) document.getElementById('stat-edit-spirit').value = spiritVal;
 
       // Resistances
-      const fRes = base?.effective_fire_res?.value != null ? base.effective_fire_res.value : (char?.resistances?.fire?.value ?? 23);
-      const cRes = base?.effective_cold_res?.value != null ? base.effective_cold_res.value : (char?.resistances?.cold?.value ?? -3);
-      const lRes = base?.effective_lightning_res?.value != null ? base.effective_lightning_res.value : (char?.resistances?.lightning?.value ?? -4);
-      const chRes = base?.effective_chaos_res?.value != null ? base.effective_chaos_res.value : (char?.resistances?.chaos?.value ?? 0);
+      const fRes = factVal(base?.effective_fire_res) ?? factVal(char?.resistances?.fire, '');
+      const cRes = factVal(base?.effective_cold_res) ?? factVal(char?.resistances?.cold, '');
+      const lRes = factVal(base?.effective_lightning_res) ?? factVal(char?.resistances?.lightning, '');
+      const chRes = factVal(base?.effective_chaos_res) ?? factVal(char?.resistances?.chaos, '');
       if (document.getElementById('stat-edit-fire')) document.getElementById('stat-edit-fire').value = fRes;
       if (document.getElementById('stat-edit-cold')) document.getElementById('stat-edit-cold').value = cRes;
       if (document.getElementById('stat-edit-light')) document.getElementById('stat-edit-light').value = lRes;
@@ -254,23 +254,28 @@ export function setupStatsModal() {
     btnSave.addEventListener('click', async () => {
       btnSave.disabled = true;
       btnSave.textContent = '⏳ Menyimpan stat...';
-      const charId = document.getElementById('stat-edit-char-name')?.value || 'BOMSHAK';
+      const charId = document.getElementById('stat-edit-char-name')?.value || appState.activeCharId;
+      // Blank field = unknown: send null so the server keeps the stored fact instead of saving an invented number.
+      const num = (id) => {
+        const v = parseInt(document.getElementById(id)?.value, 10);
+        return Number.isNaN(v) ? null : v;
+      };
       const payload = {
         character_id: charId,
-        level: parseInt(document.getElementById('stat-edit-level')?.value, 10) || 37,
-        strength: parseInt(document.getElementById('stat-edit-str')?.value, 10) || 10,
-        dexterity: parseInt(document.getElementById('stat-edit-dex')?.value, 10) || 10,
-        intelligence: parseInt(document.getElementById('stat-edit-int')?.value, 10) || 10,
-        life: parseInt(document.getElementById('stat-edit-life')?.value, 10) || 723,
-        mana: parseInt(document.getElementById('stat-edit-mana')?.value, 10) || 284,
-        spirit: parseInt(document.getElementById('stat-edit-spirit')?.value, 10) || 30,
-        energy_shield: parseInt(document.getElementById('stat-edit-es')?.value, 10) || 0,
-        armour: parseInt(document.getElementById('stat-edit-armour')?.value, 10) || 0,
-        evasion: parseInt(document.getElementById('stat-edit-evasion')?.value, 10) || 0,
-        fire_res: parseInt(document.getElementById('stat-edit-fire')?.value, 10) || 0,
-        cold_res: parseInt(document.getElementById('stat-edit-cold')?.value, 10) || 0,
-        lightning_res: parseInt(document.getElementById('stat-edit-light')?.value, 10) || 0,
-        chaos_res: parseInt(document.getElementById('stat-edit-chaos')?.value, 10) || 0,
+        level: num('stat-edit-level'),
+        strength: num('stat-edit-str'),
+        dexterity: num('stat-edit-dex'),
+        intelligence: num('stat-edit-int'),
+        life: num('stat-edit-life'),
+        mana: num('stat-edit-mana'),
+        spirit: num('stat-edit-spirit'),
+        energy_shield: num('stat-edit-es'),
+        armour: num('stat-edit-armour'),
+        evasion: num('stat-edit-evasion'),
+        fire_res: num('stat-edit-fire'),
+        cold_res: num('stat-edit-cold'),
+        lightning_res: num('stat-edit-light'),
+        chaos_res: num('stat-edit-chaos'),
       };
 
       try {
@@ -286,7 +291,7 @@ export function setupStatsModal() {
             msgEl.style.color = 'var(--accent-green)';
             msgEl.textContent = `✓ ${resData.message}`;
           }
-          addNotification('Stat Karakter Terupdate', `Level ${payload.level} (${payload.strength} Str, ${payload.dexterity} Dex, ${payload.intelligence} Int)`, 'info');
+          addNotification('Stat Karakter Terupdate', `Level ${payload.level ?? '-'} (${payload.strength ?? '-'} Str, ${payload.dexterity ?? '-'} Dex, ${payload.intelligence ?? '-'} Int)`, 'info');
           await fetchHttpRuntime();
           setTimeout(() => { modal.style.display = 'none'; }, 1500);
         } else {

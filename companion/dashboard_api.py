@@ -19,7 +19,7 @@ from companion.equipment.evaluation import EvaluationResult, _resolve_guide, eva
 from companion.equipment.parser import parse_item_text
 from companion.equipment.pob2_equipment_advisor import load_pob_mcp_modules
 from companion.equipment.slot_resolver import UI_SLOT_KEYS
-from companion.state.schema import CharacterState, split_class_code
+from companion.state.schema import CharacterState, InvalidCharacterIdError, split_class_code, validate_character_id
 from companion.state.store import CharacterStateStore, atomic_write_file
 
 logger = logging.getLogger(__name__)
@@ -29,14 +29,17 @@ def active_char_id(runtime_dir: Path) -> str:
     """The dashboard's active character (runtime/active_character.json), BOMSHAK when none is set."""
     try:
         data = json.loads((runtime_dir / "active_character.json").read_text(encoding="utf-8"))
-        return str(data.get("active_character_id") or "").strip() or "BOMSHAK"
+        return validate_character_id(str(data.get("active_character_id") or "").strip())
     except (OSError, ValueError, AttributeError):
         return "BOMSHAK"
 
 
 def resolve_char_id(char_id: str | None, runtime_dir: Path) -> str:
-    """Match a character ID case-insensitively against runtime/characters/*.json (default: active character)."""
-    raw = str(char_id or "").strip() or active_char_id(runtime_dir)
+    """Match a character ID case-insensitively against runtime/characters/*.json (default: active character).
+
+    Raises InvalidCharacterIdError for IDs that are not safe file names (they become runtime paths).
+    """
+    raw = validate_character_id(str(char_id or "").strip() or active_char_id(runtime_dir))
     chars_dir = runtime_dir / "characters"
     if chars_dir.is_dir():
         for f in chars_dir.glob("*.json"):
@@ -374,8 +377,31 @@ def update_character_stats_payload(payload: dict[str, Any], runtime_dir: Path) -
         return _update_character_stats_payload_locked(payload, runtime_dir)
 
 
+_STAT_RANGES = {
+    "level": (1, 100),
+    **{k: (0, 10**7) for k in ("strength", "dexterity", "intelligence", "life", "mana", "spirit", "energy_shield",
+                               "armour", "evasion", "deflection", "movement_speed")},
+    **{k: (-200, 100) for res in ("fire", "cold", "lightning", "chaos") for k in (res, f"{res}_res")},
+}
+
+
+def _stat_error(payload: dict[str, Any]) -> str | None:
+    """Reject the whole update before any write, so a bad field cannot leave state and baseline half-saved."""
+    for key, (lo, hi) in _STAT_RANGES.items():
+        val = payload.get(key)
+        if val is None:
+            continue
+        if isinstance(val, bool) or not isinstance(val, (int, str)) or not re.fullmatch(r"-?\d+", str(val).strip()):
+            return f"{key} harus bilangan bulat."
+        if not lo <= int(val) <= hi:
+            return f"{key} harus antara {lo} dan {hi}."
+    return None
+
+
 def _update_character_stats_payload_locked(payload: dict[str, Any], runtime_dir: Path) -> dict[str, Any]:
     """Update CharacterState and CharacterStatBaseline with live character stats from in-game / UI."""
+    if (err := _stat_error(payload)) is not None:
+        return {"error": err}
     char_id = resolve_char_id(payload.get("character_id"), runtime_dir)
 
     from companion.state.schema import CharacterState, ProvenancedField
@@ -463,13 +489,18 @@ def _update_character_stats_payload_locked(payload: dict[str, Any], runtime_dir:
     if payload.get("intelligence") is not None:
         baseline.intelligence = CharacterFact[int].create(int(payload["intelligence"]), source=BaselineSource.MANUAL_USER_INPUT)
 
-    # Resistances on baseline
+    # Resistances on baseline; in-game numbers include the current act's penalty, so record it with them
+    from companion.builds.advisor import MANUAL_PENALTY_REF, character_level_and_act
+    from companion.equipment.pob2_equipment_advisor import resist_penalty_for_act
+    ref = f"{MANUAL_PENALTY_REF}{resist_penalty_for_act(character_level_and_act(runtime_dir, char_id)[1])}"
     for res in ("fire", "cold", "lightning", "chaos"):
         val = payload.get(f"{res}_res") if payload.get(f"{res}_res") is not None else payload.get(res)
         if val is not None:
             int_val = int(val)
-            setattr(baseline, f"raw_{res}_res", CharacterFact[int].create(int_val, source=BaselineSource.MANUAL_USER_INPUT))
-            setattr(baseline, f"effective_{res}_res", CharacterFact[int].create(int_val, source=BaselineSource.MANUAL_USER_INPUT))
+            setattr(baseline, f"raw_{res}_res", CharacterFact[int].create(
+                int_val, source=BaselineSource.MANUAL_USER_INPUT, evidence_ref=ref))
+            setattr(baseline, f"effective_{res}_res", CharacterFact[int].create(
+                int_val, source=BaselineSource.MANUAL_USER_INPUT, evidence_ref=ref))
             setattr(baseline, f"max_{res}_res", CharacterFact[int].create(75, source=BaselineSource.MANUAL_USER_INPUT))
 
     save_baseline(runtime_dir, baseline)
@@ -714,9 +745,13 @@ def select_character_payload(
     runtime_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Switch the active character across the companion suite."""
-    char_id = payload.get("character_id", "").strip()
+    char_id = str(payload.get("character_id") or "").strip()
     if not char_id:
         return {"error": "character_id is required."}
+    try:
+        validate_character_id(char_id)
+    except InvalidCharacterIdError as exc:
+        return {"error": str(exc)}
 
     if runtime_dir is None:
         runtime_dir = Path("runtime")

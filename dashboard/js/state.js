@@ -4,6 +4,7 @@ export const appState = {
   pollTimer: null,
   activeCharId: 'BOMSHAK',
   runtimeStatus: null,
+  runtimeData: null,
   characterState: null,
   currentObjective: null,
   loadout: null,
@@ -15,6 +16,12 @@ export const appState = {
 
 export function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/** Value of a provenanced fact ({value, source, ...}) or a bare value; `fallback` only when unknown (0 is a value). */
+export function factVal(f, fallback = null) {
+  const v = f !== null && typeof f === 'object' ? f.value : f;
+  return v ?? fallback;
 }
 
 export const SLOT_LABELS = {

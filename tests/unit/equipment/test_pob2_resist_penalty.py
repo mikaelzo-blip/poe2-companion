@@ -1,6 +1,8 @@
 """Act-based elemental resistance penalty written into the PoB2 baseline XML."""
 from __future__ import annotations
 
+import pytest
+
 from companion.equipment.pob2_equipment_advisor import _set_resist_penalty_in_xml, resist_penalty_for_zone
 from tests.unit.equipment.test_pob2_measure import _make
 
@@ -47,3 +49,13 @@ def test_unknown_zone_falls_back_to_the_level_act_only_before_any_penalty():
     s = _make()
     assert s.apply_zone("Unknown", 27) is True and s.resist_penalty == -10  # level 27 = act 2
     assert s.apply_zone("Unknown", 40) is False and s.resist_penalty == -10  # a known penalty wins over level
+
+
+@pytest.mark.parametrize("zone, act", [
+    ("G3_3", 3), ("G1_town", 1), ("P1_Town", 6),  # Client.txt area IDs ("Generating level 34 area "G3_3"")
+    ("Jungle Ruins", 3),  # display names still resolve
+    ("PersonalHideout", None), ("Your Hideout", None), ("CharacterSelect", None),  # no act
+])
+def test_act_of_zone_knows_log_area_ids(zone, act):
+    from companion.equipment.pob2_equipment_advisor import act_of_zone
+    assert act_of_zone(zone) == act

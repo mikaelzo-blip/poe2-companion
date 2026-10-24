@@ -58,6 +58,18 @@ def character_level_and_act(runtime_dir: Path, char_id: str) -> tuple[Any, int]:
     return level, act_of_zone(zone) or act_for_level(level) or 1
 
 
+MANUAL_PENALTY_REF = "resist_penalty:"
+
+
+def manual_penalty(fact: Any) -> int | None:
+    """The act penalty a manual (in-game) resist was entered under, from its evidence_ref."""
+    ref = fact.evidence_ref or ""
+    try:
+        return int(ref[len(MANUAL_PENALTY_REF):]) if ref.startswith(MANUAL_PENALTY_REF) else None
+    except ValueError:
+        return None
+
+
 def resist_by_act(baseline: Any, act: int, current_act: int) -> dict[str, int] | None:
     """Effective elemental resists the character would have in ``act``.
 
@@ -73,7 +85,9 @@ def resist_by_act(baseline: Any, act: int, current_act: int) -> dict[str, int] |
         if fact.value is None:
             return None
         if fact.source == BaselineSource.MANUAL_USER_INPUT:
-            used = resist_penalty_for_act(current_act)
+            used = manual_penalty(fact)
+            if used is None:  # entered before the penalty was recorded: assume the current act's
+                used = resist_penalty_for_act(current_act)
         else:
             used = -60 if baseline.resist_penalty is None else baseline.resist_penalty
         cap = getattr(baseline, f"max_{el}_res").value or RES_TARGET

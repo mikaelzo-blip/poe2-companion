@@ -761,7 +761,8 @@ def handle_session_tail(args: argparse.Namespace) -> int:
             if char is None:
                 return 1
 
-            log_path = Path(args.log) if args.log else Path("Client.txt")
+            from companion.runtime.orchestrator import default_client_log_path
+            log_path = Path(args.log) if args.log else default_client_log_path()
             tailer = ClientLogTailer(log_path)
             logger = JourneyHistoryLogger(runtime_dir / "journey_history.jsonl")
 

@@ -61,6 +61,28 @@ def test_resists_reproject_from_the_recorded_penalty():
     assert advisor.resist_by_act(_baseline((90, 90, 90), 0), 1, current_act=1)["fire"] == 75  # capped
 
 
+def test_manual_resists_keep_the_penalty_they_were_entered_under():
+    b = CharacterStatBaseline.create_empty("P")
+    for el in ("fire", "cold", "lightning"):  # entered in Act 2 (-10), character has since moved on to Act 3
+        setattr(b, f"raw_{el}_res", CharacterFact[int].create(
+            40, source=BaselineSource.MANUAL_USER_INPUT, evidence_ref=f"{advisor.MANUAL_PENALTY_REF}-10"))
+    assert advisor.resist_by_act(b, 3, current_act=3) == {"fire": 30, "cold": 30, "lightning": 30}
+
+
+def test_update_stats_records_the_act_penalty_with_manual_resists(tmp_path):
+    from companion.dashboard_api import update_character_stats_payload
+    from companion.equipment.baseline_cli import load_baseline
+
+    (tmp_path / "characters").mkdir()
+    (tmp_path / "characters" / "P.json").write_text(json.dumps({
+        "character_id": "P", "character_name": "P", "level": {"value": 30, "source": "X", "observed_at": "2026-10-01T00:00:00+00:00"},
+        "current_zone": {"value": "G3_3", "source": "X", "observed_at": "2026-10-01T00:00:00+00:00"},
+    }), encoding="utf-8")
+    assert update_character_stats_payload({"character_id": "P", "fire_res": 40}, tmp_path)["success"]
+    fact = load_baseline(tmp_path, "P").raw_fire_res
+    assert advisor.manual_penalty(fact) == -20  # G3_3 is Act 3
+
+
 def test_slot_gaps_weight_skill_levels_and_count_all_resist(runtime):
     gaps = {slot: (round(gap, 2), missing) for slot, gap, missing in
             advisor.slot_gaps(runtime, "P", _profile().stages[0])}

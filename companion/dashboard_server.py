@@ -14,6 +14,8 @@ from urllib.parse import parse_qs, urlparse
 import webbrowser
 from typing import Any, Callable
 
+from companion.state.schema import InvalidCharacterIdError
+
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RUNTIME_DIR = PROJECT_ROOT / "runtime"
@@ -271,6 +273,8 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json(compute())
         except ConnectionError:
             return
+        except InvalidCharacterIdError as exc:
+            self.send_json({"error": str(exc)}, 400)
         except Exception as exc:
             self.send_json({"error": str(exc)}, 500)
 
@@ -306,7 +310,14 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
-        self._dispatch(lambda: route(json.loads(body.decode("utf-8")) if body else {}))
+        try:
+            payload = json.loads(body.decode("utf-8")) if body else {}
+        except ValueError:
+            payload = None
+        if not isinstance(payload, dict):
+            self.send_json({"error": "Body harus objek JSON."}, 400)
+            return
+        self._dispatch(lambda: route(payload))
 
 
 def _api_status(q: dict[str, str]) -> Any:

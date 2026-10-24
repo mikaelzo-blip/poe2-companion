@@ -1,10 +1,10 @@
 """Regenerate companion/equipment/data/zone_acts.json from PoB2's WorldAreas.
 
-Output: {"zones": {zone name: act}, "act_min_level": {act: lowest area level}}.
+Output: {"zones": {zone name or area ID: act}, "act_min_level": {act: lowest area level}}.
 
 Usage: uv run python scripts/gen_zone_acts.py [path/to/fork]
 Default fork path: ../path-of-building-2-mcp/fork (sibling checkout).
-Hideouts, maps and names shared by areas of different acts are left out (act unknown).
+Hideouts, maps, level-0 placeholders and names shared by areas of different acts are left out (act unknown).
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "companion" / "equipment" / "data" / "zone_acts.json"
-_AREA_RE = re.compile(r'^worldAreas\["[^"]+"\] = \{(.*?)^\}', re.M | re.S)
+_AREA_ID_RE = re.compile(r'^worldAreas\["([^"]+)"\] = \{(.*?)^\}', re.M | re.S)
 
 
 def _field(body: str, name: str) -> str | None:
@@ -26,19 +26,24 @@ def _field(body: str, name: str) -> str | None:
 
 def collect(fork: Path) -> dict[str, dict]:
     text = (fork / "src" / "Data" / "WorldAreas.lua").read_text(encoding="utf-8")
-    areas = _AREA_RE.findall(text)
+    areas = _AREA_ID_RE.findall(text)
     if len(areas) != text.count("worldAreas[\""):
         raise SystemExit(f"parsed {len(areas)} of {text.count('worldAreas[')} areas; format changed?")
     acts: dict[str, set[int]] = {}
+    ids: dict[str, str] = {}
     levels: dict[int, list[int]] = {}
-    for body in areas:
+    for area_id, body in areas:
         name, act, level = _field(body, "baseName"), _field(body, "act"), _field(body, "level")
         if not name or not act or _field(body, "isHideout") == "true" or _field(body, "isMap") == "true":
             continue
+        if level == "0":  # act-less placeholders: Your Hideout, character select, world maps
+            continue
         acts.setdefault(json.loads(name), set()).add(int(act))
+        ids[area_id] = json.loads(name)  # Client.txt names areas by ID ("Generating level 34 area "G3_3"")
         if level:
             levels.setdefault(int(act), []).append(int(level))
     zones = {name: next(iter(a)) for name, a in acts.items() if len(a) == 1}
+    zones |= {area_id: zones[name] for area_id, name in ids.items() if name in zones}  # same rule as names
     # An act starts at its lowest area level above the previous act's start (towns are 0, odd areas lower).
     act_min_level, prev = {}, 0
     for act in sorted(levels):

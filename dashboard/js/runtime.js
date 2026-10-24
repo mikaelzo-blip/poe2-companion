@@ -39,6 +39,7 @@ export async function fetchHttpRuntime() {
     const res = await fetch(`/api/status?char_id=${encodeURIComponent(charId)}`);
     if (res.ok) {
       const data = await res.json();
+      appState.runtimeData = data;  // the stats modal pre-fills from this
       applyEngineStatusBadge(data.engine_status);
       loadDataIntoUI(data.status, data.character, data.objective, data.loadout, data.baseline);
       document.getElementById('last-sync-time').textContent = 'Live Sync: ' + new Date().toLocaleTimeString();

@@ -1,5 +1,5 @@
 import { renderCompareForSlot } from './compare.js';
-import { SLOT_LABELS, appState, esc } from './state.js';
+import { SLOT_LABELS, appState, esc, factVal } from './state.js';
 
 // Setup Tab Navigation
 export function setupNavigation() {
@@ -39,7 +39,7 @@ export function loadDataIntoUI(status, character, objective, loadout, baseline =
 
   if (character) {
     appState.characterState = character;
-    const charLevel = character.level ? (character.level.value || character.level) : 17;
+    const charLevel = factVal(character.level, '?');
     const charName = character.character_name || character.character_id || 'BOMSHAK';
 
     const charSelect = document.getElementById('header-char-select');
@@ -53,7 +53,7 @@ export function loadDataIntoUI(status, character, objective, loadout, baseline =
     const hdrLevel = document.getElementById('hdr-char-level');
     if (hdrLevel) hdrLevel.textContent = charLevel;
     const hdrZone = document.getElementById('hdr-char-zone');
-    if (hdrZone) hdrZone.textContent = `Zone: ${character.current_zone ? (character.current_zone.value || character.current_zone) : 'N/A'}`;
+    if (hdrZone) hdrZone.textContent = `Zone: ${factVal(character.current_zone, 'N/A')}`;
 
     const loadoutTitle = document.getElementById('equipped-loadout-title');
     if (loadoutTitle) loadoutTitle.textContent = `Equipped Loadout (${charName})`;
@@ -63,18 +63,18 @@ export function loadDataIntoUI(status, character, objective, loadout, baseline =
     const statClassSub = document.getElementById('stat-class-sub');
     if (statClassSub) statClassSub.textContent = character.ascendancy || character.character_class || 'Unknown';
     const statDeaths = document.getElementById('stat-deaths');
-    if (statDeaths) statDeaths.textContent = character.death_count ? (character.death_count.value || character.death_count) : '0';
+    if (statDeaths) statDeaths.textContent = factVal(character.death_count, '-');
     const statZone = document.getElementById('stat-zone');
-    if (statZone) statZone.textContent = character.current_zone ? (character.current_zone.value || character.current_zone) : 'G2_1';
+    if (statZone) statZone.textContent = factVal(character.current_zone, 'N/A');
 
-    const wset = character.equipped_weapon_set ? (character.equipped_weapon_set.value || character.equipped_weapon_set) : 1;
+    const wset = factVal(character.equipped_weapon_set, 1);
     const statWset = document.getElementById('stat-weapon-set');
     if (statWset) statWset.textContent = `Set ${wset}`;
 
     if (character.attributes) {
-      const s = character.attributes.strength ? (character.attributes.strength.value || character.attributes.strength) : 10;
-      const d = character.attributes.dexterity ? (character.attributes.dexterity.value || character.attributes.dexterity) : 14;
-      const i = character.attributes.intelligence ? (character.attributes.intelligence.value || character.attributes.intelligence) : 10;
+      const s = factVal(character.attributes.strength, '-');
+      const d = factVal(character.attributes.dexterity, '-');
+      const i = factVal(character.attributes.intelligence, '-');
 
       const elStr = document.getElementById('val-str');
       const elDex = document.getElementById('val-dex');
@@ -86,9 +86,9 @@ export function loadDataIntoUI(status, character, objective, loadout, baseline =
       const bStr = document.getElementById('bar-str');
       const bDex = document.getElementById('bar-dex');
       const bInt = document.getElementById('bar-int');
-      if (bStr) bStr.style.width = Math.min(100, (s / 120) * 100) + '%';
-      if (bDex) bDex.style.width = Math.min(100, (d / 120) * 100) + '%';
-      if (bInt) bInt.style.width = Math.min(100, (i / 120) * 100) + '%';
+      if (bStr) bStr.style.width = Math.min(100, ((Number(s) || 0) / 120) * 100) + '%';
+      if (bDex) bDex.style.width = Math.min(100, ((Number(d) || 0) / 120) * 100) + '%';
+      if (bInt) bInt.style.width = Math.min(100, ((Number(i) || 0) / 120) * 100) + '%';
     }
   }
 

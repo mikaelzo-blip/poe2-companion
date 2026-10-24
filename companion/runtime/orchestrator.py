@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import json
 import logging
 import os
+import re
 from pathlib import Path
 import signal
 import sys
@@ -58,6 +59,32 @@ from companion.state.store import CharacterStateStore
 
 logger = logging.getLogger(__name__)
 
+_POE2_LOG = Path("steamapps") / "common" / "Path of Exile 2" / "logs" / "Client.txt"
+
+
+def _steam_libraries(steam_root: Path) -> list[Path]:
+    """Library folders listed in Steam's libraryfolders.vdf (games often live on another drive)."""
+    try:
+        vdf = (steam_root / "steamapps" / "libraryfolders.vdf").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return [Path(p.replace("\\\\", "\\")) for p in re.findall(r'"path"\s+"([^"]+)"', vdf)]
+
+
+def default_client_log_path() -> Path:
+    """./Client.txt when present, else the PoE2 log in a Steam library or standalone install, else ./Client.txt."""
+    local_p = Path("Client.txt")
+    if local_p.is_file():
+        return local_p
+    prog_x86 = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)"))
+    steam_roots = [prog_x86 / "Steam", Path("C:/Program Files/Steam")]
+    candidates = [lib / _POE2_LOG for root in steam_roots for lib in [root, *_steam_libraries(root)]]
+    candidates += [
+        prog_x86 / "Grinding Gear Games" / "Path of Exile 2" / "logs" / "Client.txt",
+        Path("C:/Program Files/Grinding Gear Games/Path of Exile 2/logs/Client.txt"),
+    ]
+    return next((c for c in candidates if c.is_file()), local_p)
+
 
 class ContinuousRuntimeOrchestrator:
     """Continuous foreground loop coordinating process, log streaming, state, and objectives."""
@@ -96,21 +123,7 @@ class ContinuousRuntimeOrchestrator:
     def client_log_path(self) -> Path:
         if self.config.client_log_path:
             return self.config.client_log_path
-        local_p = Path("Client.txt")
-        if local_p.is_file():
-            return local_p
-        import os
-        prog_x86 = os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")
-        candidates = [
-            Path(prog_x86) / "Steam" / "steamapps" / "common" / "Path of Exile 2" / "logs" / "Client.txt",
-            Path(prog_x86) / "Grinding Gear Games" / "Path of Exile 2" / "logs" / "Client.txt",
-            Path("C:/Program Files/Steam/steamapps/common/Path of Exile 2/logs/Client.txt"),
-            Path("C:/Program Files/Grinding Gear Games/Path of Exile 2/logs/Client.txt"),
-        ]
-        for c in candidates:
-            if c.is_file():
-                return c
-        return local_p
+        return default_client_log_path()
 
     def initialize_startup(self) -> None:
         """Resolve startup boundary, acquire lifetime writer lock, and persist dirty checkpoint."""

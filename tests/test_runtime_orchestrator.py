@@ -180,3 +180,25 @@ def test_default_log_path_finds_poe2_in_secondary_steam_library(tmp_path: Path, 
     monkeypatch.setenv("ProgramFiles(x86)", str(tmp_path / "pf86"))
     monkeypatch.chdir(tmp_path)
     assert default_client_log_path() == log
+
+
+def test_guide_character_skips_the_fubgun_objective_pipeline(test_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    from companion.builds.guide import GuideProfile, GuideStage
+    from companion.builds.store import save_guide, set_assignment
+    from companion.runtime import orchestrator as orch_mod
+
+    runtime_dir, log_file = test_env
+    calls: list[str] = []
+    monkeypatch.setattr(orch_mod, "run_objective_pipeline", lambda char: calls.append(char.character_id))
+    orc = ContinuousRuntimeOrchestrator(
+        RuntimeConfig(runtime_dir=runtime_dir, client_log_path=log_file, character_id="Witch", poll_interval=0.01))
+    orc.initialize_startup()
+    save_guide(runtime_dir, GuideProfile(slug="some-guide", name="G", imported_at="2026-01-01T00:00:00Z",
+                                         stages=[GuideStage(id="s", title="S")]))
+    set_assignment(runtime_dir, "Witch", "some-guide", None)
+    with log_file.open("ab") as f:
+        f.write(b'\n2026/10/23 16:35:00 1 2caa229f [DEBUG Client 1] Generating level 34 area "G3_3" with seed 1\n')
+    orc.poll_tick()
+    orc.shutdown()
+    assert calls == []
+    assert CharacterStateStore(runtime_dir).load_character("Witch").current_zone.value == "G3_3"

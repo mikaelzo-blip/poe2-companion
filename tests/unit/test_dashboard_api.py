@@ -1347,6 +1347,13 @@ def test_status_drops_another_characters_objectives_and_adds_guide_ones(tmp_path
     assert [o["id"] for o in obj["all_objectives"]] == ["guide:gems:1"]
     assert obj["primary_objective"]["action"] == "• Cut Entangle"
 
+    # The character's own legacy (Fubgun snapshot, 1 = most urgent) objectives must not outrank the guide.
+    legacy = {"character_id": "P", "primary_objective": {"id": "gear:Amulet1", "priority": 7},
+              "all_objectives": [{"id": "gear:Amulet1", "priority": 7}]}
+    (tmp_path / "CURRENT_OBJECTIVE.json").write_text(json.dumps(legacy), encoding="utf-8")
+    obj = get_dashboard_status(tmp_path, char_id="P")["objective"]
+    assert [o["id"] for o in obj["all_objectives"]] == ["guide:gems:1"]
+
 
 def test_slot_ranking_refuses_a_second_concurrent_run(monkeypatch):
     from companion import dashboard_server

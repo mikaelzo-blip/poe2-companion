@@ -660,9 +660,9 @@ def get_dashboard_status(
         logger.warning("Guide objectives failed for %s", char_id, exc_info=True)
         guide_obj = None
     if guide_obj is not None:
-        merged = guide_obj["all_objectives"] + list(obj_data.get("all_objectives") or [])
-        merged.sort(key=lambda o: -(o.get("priority") or 0))  # stable: guide objectives win ties
-        obj_data = {**guide_obj, "all_objectives": merged, "primary_objective": merged[0] if merged else None}
+        # The legacy pipeline targets the fixed Fubgun snapshots and ranks 1 = most urgent (guide: 5 = most
+        # urgent), so merging the two buried the guide's objectives under another build's audits.
+        obj_data = guide_obj
 
     from companion.equipment.loadout_cli import load_loadout
     loadout = load_loadout(runtime_dir, char_id)

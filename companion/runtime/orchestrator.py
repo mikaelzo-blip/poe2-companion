@@ -15,6 +15,7 @@ from types import FrameType
 from typing import Any
 import uuid
 
+from companion.builds.store import get_assignment
 from companion.notifications.schema import (
     NotificationCategory,
     NotificationPayload,
@@ -118,6 +119,16 @@ class ContinuousRuntimeOrchestrator:
         self._active_character: CharacterState | None = None
         self._started_at_iso = datetime.now(timezone.utc).isoformat()
         self.observer: Any | None = None
+
+    def _has_guide(self) -> bool:
+        """A character with an assigned guide gets the guide's objectives (dashboard), not the Fubgun snapshots."""
+        if self._active_character is None:
+            return False
+        try:
+            return get_assignment(self.runtime_dir, self._active_character.character_id)[0] is not None
+        except Exception:
+            logger.warning("Guide assignment lookup failed", exc_info=True)
+            return False
 
     @property
     def client_log_path(self) -> Path:
@@ -411,7 +422,7 @@ class ContinuousRuntimeOrchestrator:
                 )
 
             self.change_tracker.compute_delta(previous_char_state, self._active_character)
-            if self.change_tracker.should_reevaluate_objectives():
+            if self.change_tracker.should_reevaluate_objectives() and not self._has_guide():
                 try:
                     obj_result = run_objective_pipeline(self._active_character)
                     save_current_objective_artifact(

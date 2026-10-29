@@ -23,7 +23,7 @@ from companion.equipment.policy import VERDICT_RANK, SlotResult, _pct, decide, i
 from companion.equipment.safety import breaker_reasons, weapon_not_in_guide
 from companion.equipment.schema import SlotType
 from companion.equipment.slot_resolver import SlotPlan, item_class_of, resolve_slots
-from companion.equipment.tactical_advisor import generate_tactical_advice, merge_verdicts
+from companion.equipment.tactical_advisor import extract_spirit, generate_tactical_advice, merge_verdicts
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +182,7 @@ def evaluate(
                 state["cid"] = pob_session.submit_candidate(raw_text, candidate.name, plans[0].slot, source)
             return pob_session.measure(
                 plan.slot, raw_text, state["cid"], source=source, clear_slots=plan.clear_slots, main_skill=stage.main_skill,
+                candidate_name=candidate.name or candidate.base_type,
             )
         except Exception:
             logger.warning("PoB2 measurement failed for %s", plan.slot, exc_info=True)
@@ -233,6 +234,7 @@ def evaluate(
             if delta is None:
                 results.append(insufficient(slot, "Life baseline belum diketahui"))
                 continue
+            delta = delta.model_copy(update={"spirit_delta": extract_spirit(raw_text) - extract_spirit(current_raw(slot))})
         results.append(decide(delta, unmet_requirements=unmet, priority=signals[slot], is_empty=empty))
 
     chosen = max(results, key=lambda r: (r.is_empty and r.verdict != "REJECT", VERDICT_RANK[r.verdict], r.dps_pct, r.ehp_pct))
@@ -252,7 +254,7 @@ def evaluate(
         "dps_pct": chosen.dps_pct, "ehp_pct": chosen.ehp_pct, "life": d.life_delta, "armour": d.armour_delta,
         "evasion": d.evasion_delta, "energy_shield": d.es_delta, "fire_res": d.fire_res_delta,
         "cold_res": d.cold_res_delta, "lightning_res": d.lightning_res_delta, "chaos_res": d.chaos_res_delta,
-        "movement_speed": d.movement_speed_delta,
+        "movement_speed": d.movement_speed_delta, "spirit": d.spirit_delta,
     }
 
     # Step 7: Guide-build simulation on the guide's PoB stage

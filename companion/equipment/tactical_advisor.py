@@ -79,6 +79,14 @@ RE_ATTR = re.compile(
     r"(?:\+?\s*([0-9]+)(?:\([0-9\-]+\))?\s+(?:to\s+)?(Strength|Dexterity|Intelligence|all\s+Attributes)|(?:Strength|Dexterity|Intelligence):\s*\+?\s*([0-9]+))",
     re.IGNORECASE,
 )
+RE_SPIRIT = re.compile(r"^\+?([0-9]+)(?:\([0-9\-]+\))?\s+to\s+Spirit\b", re.IGNORECASE | re.MULTILINE)
+
+
+def extract_spirit(text: str) -> int:
+    """Sum of ``+N to Spirit`` mod lines in an item's clipboard text."""
+    return sum(int(m.group(1)) for m in RE_SPIRIT.finditer(text))
+
+
 def _extract_life_regen(text: str) -> float:
     match = RE_LIFE_REGEN.search(text)
     if match:
@@ -254,6 +262,13 @@ def generate_tactical_advice(
                 f"akibat kehilangan {attr} dari {current_name}."
             )
 
+    spirit_delta = getattr(delta, "spirit_delta", 0) or 0
+    if spirit_delta < 0:
+        attr_warnings.append(
+            f"{spirit_delta} Spirit: Pastikan aura, buff persisten, dan minion tetap bisa di-reserve "
+            f"tanpa Spirit dari {current_name}."
+        )
+
     # 3. Zone threat audit
     fire_delta = getattr(delta, "fire_res_delta", 0)
     cold_delta = getattr(delta, "cold_res_delta", 0)
@@ -298,6 +313,8 @@ def generate_tactical_advice(
             )
         else:
             sustain_note = f"{cand_regen:.1f} Life Regeneration per second (sebanding dengan gear lama)."
+    if regen_delta < 0:
+        sustain_note = f"{regen_delta:.1f} Life Regeneration per second: sustain pasif dari {current_name} hilang."
 
     # 4b. Audit Character Stats Baseline & Requirements
     trade_off_bullets: list[str] = []

@@ -335,6 +335,7 @@ class PobEquipmentDelta(BaseModel):
     dexterity_delta: int = 0
     intelligence_delta: int = 0
     mana_delta: int = 0
+    spirit_delta: int = 0
     crit_chance_delta: float = 0.0  # percentage points
     crit_bonus_delta: float = 0.0  # Critical Damage Bonus, percentage points
     average_hit_pct: float = 0.0  # percent change of the main skill's Average Hit
@@ -919,6 +920,7 @@ class Pob2EquipmentSession:
         crit_b, crit_a = _off("CritChance")
         multi_b, multi_a = _off("CritMultiplier")  # PoB multiplier (2.0 = +100% Critical Damage Bonus)
         mana_delta = int((def_after.get("Mana") or 0) - (def_before.get("Mana") or 0))
+        spirit_delta = int((def_stats_after.get("Spirit") or 0) - (def_stats_before.get("Spirit") or 0))
 
         cur_name = self.get_current_item_name(canonical_slot)
 
@@ -940,6 +942,7 @@ class Pob2EquipmentSession:
             ehp_delta=ehp_delta,
             dps_delta=dps_delta,
             mana_delta=mana_delta,
+            spirit_delta=spirit_delta,
             crit_chance_delta=round(crit_a - crit_b, 1),
             crit_bonus_delta=round((multi_a - multi_b) * 100, 1),
             average_hit_pct=_pct("AverageHit"),

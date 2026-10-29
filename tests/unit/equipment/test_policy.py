@@ -69,3 +69,11 @@ def test_helpers_and_rank():
 def test_deltas_that_round_to_zero_are_not_listed():
     r = decide(_delta(1000, 1000, 500, 500, average_hit_pct=0.04, movement_speed_delta=-1e-9))
     assert r.gains == [] and r.trade_offs == []
+
+
+def test_spirit_loss_caps_equip_now():
+    # Behemoth Carapace (+31 Spirit) vs Storm Shelter: +2% EHP must not hide the Spirit loss
+    r = decide(_delta(1000, 1000, 1350, 1377, life_delta=-50, spirit_delta=-31))
+    assert r.verdict == "CONDITIONAL_UPGRADE"
+    assert "-31 Spirit" in r.trade_offs
+    assert r.reasons[0].startswith("Spirit turun 31")

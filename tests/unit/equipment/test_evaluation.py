@@ -374,3 +374,11 @@ def test_measure_receives_stage_main_skill(tmp_path, positive_pob_stub):
     evaluate(BOOTS_TEXT, "BOMSHAK", runtime_dir=tmp_path, pob_session=positive_pob_stub,
              source="manual", stage_override=stage.id)
     assert positive_pob_stub.calls[0]["main_skill"] == "Flameblast"
+
+
+def test_engine_measure_gets_the_candidate_name(tmp_path):
+    # without it the engine labels the item "Candidate Boots" in every tactical headline
+    _write_char(tmp_path, "X", level=19)
+    stub = Stub()
+    evaluate(BOOTS_TEXT, "X", runtime_dir=tmp_path, pob_session=stub, source="manual")
+    assert stub.calls and all(c["candidate_name"] == "Doom Name" for c in stub.calls)

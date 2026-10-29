@@ -261,3 +261,26 @@ def test_tactical_text_has_no_fubgun(verdict):
     adv = generate_tactical_advice(_clean_upgrade_delta(), base_verdict=verdict)
     text = adv.model_dump_json().lower()
     assert "fubgun" not in text and "granat" not in text and "grenade" not in text
+
+
+def test_storm_shelter_over_behemoth_reports_spirit_and_regen_loss():
+    """Behemoth Carapace (+31 Spirit, 7.4 regen) replaced by Storm Shelter: both losses are named."""
+    delta = PobEquipmentDelta(
+        slot="Body Armour", candidate_id=1, candidate_name="Storm Shelter",
+        current_item_name="Behemoth Carapace", life_delta=-50, es_delta=31, armour_delta=117,
+        fire_res_delta=1, lightning_res_delta=12, ehp_delta=27.1, spirit_delta=-31,
+    )
+    current = "Behemoth Carapace\nShaman Mantle\n--------\n+63 to maximum Life\n+31 to Spirit\n7.4 Life Regeneration per second\n"
+    candidate = "Storm Shelter\nCleric Vestments\n--------\n+13 to maximum Life\n+12% to Lightning Resistance\n"
+    advice = generate_tactical_advice(delta, candidate, current, base_verdict=Verdict.CONDITIONAL_UPGRADE)
+
+    assert advice.verdict == Verdict.CONDITIONAL_UPGRADE
+    assert "-31 Spirit" in advice.attribute_warning
+    assert advice.sustain_evaluation.startswith("-7.4 Life Regeneration per second")
+
+
+def test_extract_spirit_sums_mod_lines_only():
+    from companion.equipment.tactical_advisor import extract_spirit
+
+    assert extract_spirit("+31(30-34) to Spirit\n+5 to Spirit\n") == 36
+    assert extract_spirit("Spirit: 100\nRequires: Level 5\n+31 to maximum Life\n") == 0

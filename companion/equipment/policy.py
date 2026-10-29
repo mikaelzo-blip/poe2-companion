@@ -25,6 +25,7 @@ VERDICT_RANK = {"EQUIP_NOW": 3, "CONDITIONAL_UPGRADE": 2, "INSUFFICIENT_DATA": 1
 _FLAT_STATS = (
     ("life_delta", "maximum Life", ""),
     ("mana_delta", "maximum Mana", ""),
+    ("spirit_delta", "Spirit", ""),
     ("es_delta", "maximum Energy Shield", ""),
     ("armour_delta", "Armour", ""),
     ("evasion_delta", "Evasion Rating", ""),
@@ -111,6 +112,10 @@ def decide(
     if missing and verdict == "EQUIP_NOW":
         verdict = "CONDITIONAL_UPGRADE"
         reasons.insert(0, "Mod wajib dari guide belum ada.")
+    # the engine reports total Spirit, not reservations, so a loss may switch off auras or minions
+    if delta.spirit_delta < 0 and verdict == "EQUIP_NOW":
+        verdict = "CONDITIONAL_UPGRADE"
+        reasons.insert(0, f"Spirit turun {-delta.spirit_delta}; pastikan reservasi Spirit masih cukup.")
 
     return SlotResult(
         slot=delta.slot, verdict=verdict, dps_pct=dps_pct, ehp_pct=ehp_pct, gains=gains,

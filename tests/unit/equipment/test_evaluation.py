@@ -113,6 +113,14 @@ def test_heuristic_path_projects_life_from_baseline_and_loadout(tmp_path):
     assert r.dims["dps_pct"] == 0 and r.dims["cold_res"] == 5
 
 
+def test_heuristic_ehp_counts_energy_shield(tmp_path):
+    _write_char(tmp_path, "H", level=30)
+    _seed_boots_and_life(tmp_path, "H", _item("Boots", "Wool Shoes", ["+40 to maximum Life"], name="Old Tread"))
+    cand = _item("Boots", "Wool Shoes", ["+20 to maximum Life"]).replace("--------\n", "--------\nEnergy Shield: 41\n--------\n", 1)
+    r = evaluate(cand, "H", runtime_dir=tmp_path, pob_session=None, source="manual")
+    assert r.dims["life"] == -20 and r.dims["ehp_pct"] == pytest.approx(0.021)
+
+
 def test_already_equipped_detects_same_rare_but_not_magic(tmp_path):
     _write_char(tmp_path, "A", level=30)
     _seed_boots_and_life(tmp_path, "A", BOOTS_TEXT)

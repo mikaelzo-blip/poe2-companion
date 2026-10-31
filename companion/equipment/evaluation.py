@@ -88,6 +88,9 @@ def _heuristic_delta(runtime_dir: Path, char_id: str, candidate: Any, slot: str,
         return None
     life_after = int(proj.life.projected_absolute)
     life_before = life_after - int(proj.life.delta)
+    # EHP = life + ES; the item's local ES delta skips global ES scaling, so this undercounts ES gains
+    es_before = _fact(baseline, "energy_shield") or 0
+    es_after = es_before + int(proj.energy_shield.delta)
     res_before: dict[str, float] = {}
     res_after: dict[str, float] = {}
     for key in _RES_KEYS:
@@ -104,8 +107,8 @@ def _heuristic_delta(runtime_dir: Path, char_id: str, candidate: Any, slot: str,
         movement_speed_delta=float(proj.movement_speed.delta),
         strength_delta=int(proj.strength.delta), dexterity_delta=int(proj.dexterity.delta),
         intelligence_delta=int(proj.intelligence.delta),
-        life_before=life_before, life_after=life_after, ehp_before=float(life_before),
-        ehp_after=float(life_after), ehp_delta=float(life_after - life_before),
+        life_before=life_before, life_after=life_after, ehp_before=float(life_before + es_before),
+        ehp_after=float(life_after + es_after), ehp_delta=float(life_after + es_after - life_before - es_before),
         res_before=res_before, res_after=res_after,
     )
 

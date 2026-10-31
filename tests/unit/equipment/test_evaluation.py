@@ -121,6 +121,15 @@ def test_heuristic_ehp_counts_energy_shield(tmp_path):
     assert r.dims["life"] == -20 and r.dims["ehp_pct"] == pytest.approx(0.021)
 
 
+def test_heuristic_tactical_names_the_equipped_item(tmp_path):
+    # without it the advice says "Current Boots" instead of the equipped item's name
+    _write_char(tmp_path, "H", level=30)
+    _seed_boots_and_life(tmp_path, "H", _item("Boots", "Wool Shoes", ["+40 to maximum Life"], name="Old Tread"))
+    r = evaluate(BOOTS_TEXT, "H", runtime_dir=tmp_path, pob_session=None, source="manual")
+    text = str(r.tactical_advice)
+    assert "Old Tread" in text and "Current Boots" not in text
+
+
 def test_already_equipped_detects_same_rare_but_not_magic(tmp_path):
     _write_char(tmp_path, "A", level=30)
     _seed_boots_and_life(tmp_path, "A", BOOTS_TEXT)

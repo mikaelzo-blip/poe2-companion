@@ -284,3 +284,18 @@ def test_extract_spirit_sums_mod_lines_only():
 
     assert extract_spirit("+31(30-34) to Spirit\n+5 to Spirit\n") == 36
     assert extract_spirit("Spirit: 100\nRequires: Level 5\n+31 to maximum Life\n") == 0
+
+
+def test_regen_stash_advice_names_the_resistances_lost():
+    """Behemoth Carapace over Storm Shelter loses Lightning, not Fire: the stash advice must say so."""
+    delta = PobEquipmentDelta(
+        slot="Body Armour", candidate_id=1, candidate_name="Behemoth Carapace",
+        current_item_name="Storm Shelter", life_delta=50, es_delta=-24, armour_delta=-90,
+        fire_res_delta=-1, lightning_res_delta=-12, spirit_delta=31,
+    )
+    candidate = "Behemoth Carapace\nShaman Mantle\n--------\n+63 to maximum Life\n7.4 Life Regeneration per second\n"
+    stats = {"level": 53, "life": 834, "energy_shield": 194, "fire_res": 40, "cold_res": 31, "lightning_res": 68}
+    advice = generate_tactical_advice(delta, candidate, "", None, 53, base_verdict=Verdict.EQUIP_NOW, character_stats=stats)
+
+    assert advice.verdict == Verdict.REJECT
+    assert "saat Fire/Lightning Resistance Anda sudah tertutup" in advice.actionable_recommendation

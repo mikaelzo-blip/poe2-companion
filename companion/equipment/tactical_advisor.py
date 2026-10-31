@@ -496,9 +496,11 @@ def generate_tactical_advice(
         ):
             pass  # already populated in action above
         elif cand_regen > 3.0:
+            lost = [n for n, d in (("Fire", fire_delta), ("Cold", cold_delta), ("Lightning", lightning_delta)) if d < 0]
+            gap = f"{'/'.join(lost)} Resistance" if lost else "pertahanan"
             action = (
                 f"Rekomendasi: Tetap gunakan {current_name} untuk menghadapi {zone_profile.upcoming_boss}. "
-                f"Simpan {candidate_name} di Stash/Tas Anda — pasang nanti saat Fire Resistance Anda sudah "
+                f"Simpan {candidate_name} di Stash/Tas Anda — pasang nanti saat {gap} Anda sudah "
                 f"tertutup dari slot Ring/Amulet untuk memanfaatkan sustain {cand_regen:.1f} regen/s."
             )
         else:

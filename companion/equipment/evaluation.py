@@ -205,6 +205,7 @@ def evaluate(
             results.append(rejected(slot, reasons))
             continue
         empty = is_empty(slot, state["pob_ok"])
+        parsed = None
         if not empty:
             cur = current_raw(slot)
             try:
@@ -237,7 +238,10 @@ def evaluate(
             if delta is None:
                 results.append(insufficient(slot, "Life baseline belum diketahui"))
                 continue
-            delta = delta.model_copy(update={"spirit_delta": extract_spirit(raw_text) - extract_spirit(current_raw(slot))})
+            delta = delta.model_copy(update={
+                "spirit_delta": extract_spirit(raw_text) - extract_spirit(current_raw(slot)),
+                "current_item_name": parsed and (parsed.name or parsed.base_type),
+            })
         results.append(decide(delta, unmet_requirements=unmet, priority=signals[slot], is_empty=empty))
 
     chosen = max(results, key=lambda r: (r.is_empty and r.verdict != "REJECT", VERDICT_RANK[r.verdict], r.dps_pct, r.ehp_pct))
